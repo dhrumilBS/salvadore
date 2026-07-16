@@ -1,0 +1,10 @@
+
+INSERT INTO user SET gratify_user_id ='1',event_type = '1',user_first_name = 'Bhavik',user_last_name = 'Pansheriya', mobile_number='0', email_id='', event_date = '1999-06-12',entry_date =NOW(),status=1;
+INSERT INTO user SET gratify_user_id ='1',event_type = '1',user_first_name = 'Bhavik',user_last_name = 'Pansheriya', mobile_number='0',email_id='', event_date = '1999-06-12',entry_date =NOW(),status=1;
+INSERT INTO user SET gratify_user_id ='1',event_type = '1',user_first_name = 'Bhavik',user_last_name = 'Pansheriya', mobile_number='0', email_id='', event_date ='1999-06-12',entry_date =NOW(),status=1;
+INSERT INTO user SET gratify_user_id ='1',event_type = '1',user_first_name = 'Bhavik',user_last_name = 'Pansheriya', mobile_number='0', email_id='', event_date = '1999-06-12',entry_date=NOW(),status=1;
+INSERT INTO user SET gratify_user_id ='1',event_type = '1',user_first_name = 'Bhavik',user_last_name = 'Pansheriya', mobile_number='0', email_id='', event_date = '1999-06-12',entry_date =NOW(),status=1;
+INSERT INTO user SET gratify_user_id ='1',event_type = '1',user_first_name = 'Bhavik',user_last_name = 'Pansheriya', mobile_number='0',email_id='', event_date = '1999-06-12',entry_date =NOW(),status=1;
+INSERT INTO user SET gratify_user_id ='1',event_type = '1',user_first_name = 'Bhavik',user_last_name = 'Pansheriya', mobile_number='0', email_id='', event_date ='1999-06-12',entry_date =NOW(),status=1;
+INSERT INTO user SET gratify_user_id ='1',event_type = '1',user_first_name = 'Bhavik',user_last_name = 'Pansheriya', mobile_number='0', email_id='', event_date = '1999-06-12',entry_date=NOW(),status=1;
+INSERT INTO user SET gratify_user_id ='1',event_type = '1',user_first_name = 'Bhavik',user_last_name = 'Pansheriya', mobile_number='0', email_id='', event_date = '1999-06-12',entry_date =NOW(),status=1;

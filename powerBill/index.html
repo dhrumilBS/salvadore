@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Torrent Power Bill Calculator (Surat)</title>
+
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f6f9;
+            padding: 40px;
+        }
+
+        .container {
+            max-width: 400px;
+            margin: auto;
+            background: #fff;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        input,
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        .result {
+            margin-top: 20px;
+            background: #eef;
+            padding: 15px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h2>⚡ Torrent Bill Calculator</h2>
+
+        <label>Units Consumed</label>
+        <input type="number" id="units" placeholder="Enter units">
+
+        <button onclick="calculateBill()">Calculate</button>
+
+        <div class="result" id="result"></div>
+    </div>
+
+    <script>
+        function calculateBill() {
+            let units = parseFloat(document.getElementById("units").value);
+
+            if (!units || units <= 0) {
+                alert("Enter valid units");
+                return;
+            }
+
+            let energyCharge = 0;
+
+            // Slab calculation
+            if (units <= 50) {
+                energyCharge = units * 3.20;
+            } else if (units <= 100) {
+                energyCharge = (50 * 3.20) + ((units - 50) * 3.95);
+            } else if (units <= 250) {
+                energyCharge = (50 * 3.20) + (50 * 3.95) + ((units - 100) * 5.00);
+            } else {
+                energyCharge = (50 * 3.20) + (50 * 3.95) + (150 * 5.00) + ((units - 250) * 6.50);
+            }
+
+            // Other charges
+            let fixedCharge = 50;
+            let fca = units * 1;
+            let duty = energyCharge * 0.15;
+
+            let total = energyCharge + fixedCharge + fca + duty;
+
+            document.getElementById("result").innerHTML = `
+        <b>Energy Charge:</b> ₹${energyCharge.toFixed(2)} <br>
+        <b>FCA:</b> ₹${fca.toFixed(2)} <br>
+        <b>Fixed Charge:</b> ₹${fixedCharge} <br>
+        <b>Electricity Duty (15%):</b> ₹${duty.toFixed(2)} <br>
+        <hr>
+        <b>Total Bill:</b> ₹${total.toFixed(2)}
+    `;
+        }
+    </script>
+
+</body>
+
+</html>

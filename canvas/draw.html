@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Canvas Color Draw</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+
+    </style>
+</head>
+
+<body>
+
+    <div class="wrapper">
+        <!-- Color Switcher -->
+        <div class="color-switcher">
+            <span class="switcher-title">Colors</span>
+            <div class="colors">
+                <span data-color="#6E00FF" style="background:#6E00FF"></span>
+                <span data-color="#FF37DF" style="background:#FF37DF"></span>
+                <span data-color="#116DEE" style="background:#116DEE"></span>
+                <span data-color="#00C2A8" style="background:#00C2A8"></span>
+                <span data-color="#FF8A00" style="background:#FF8A00"></span>
+                <span data-color="#EF4444" style="background:#EF4444"></span>
+                <span data-color="#22C55E" style="background:#22C55E"></span>
+                <span data-color="#0EA5E9" style="background:#0EA5E9"></span>
+                <span data-color="#111827" style="background:#111827"></span>
+            </div>
+        </div>
+
+        <!-- Canvas -->
+        <div class="canvas-box">
+            <div class="toolbar" style="display: flex; flex-direction: column; gap: 8px;">
+                <div class="toolbar" style="display: flex; gap: 8px;">
+                    <button onclick="setTool('pen')">✏️ Pen</button>
+                    <button onclick="setTool('eraser')">🧽 Eraser</button>
+
+                    <select onchange="setTool(this.value)">
+                        <option value="pen">Free Draw</option>
+                        <option value="line">Line</option>
+                        <option value="rect">Rectangle</option>
+                        <option value="circle">Circle</option>
+                    </select>
+
+                    <input type="color" id="colorPicker" value="#116DEE">
+                    <button onclick="saveCanvas()">💾 Save</button>
+                </div>
+                <div class="tool-size">
+                    <label>
+                        Size:
+                        <input type="range" id="penSize" min="1" max="30" value="2">
+                    </label>
+                    <span id="sizeValue">2px</span>
+
+                </div>
+            </div>
+
+            <canvas id="canvasElem" width="800" height="500"></canvas>
+
+            <div class="actions">
+                <button onclick="submitCanvas()">Submit</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById("canvasElem");
+        const ctx = canvas.getContext("2d");
+
+        let tool = "pen";
+        let isDrawing = false;
+        let startX = 0, startY = 0;
+        let snapshot = null;
+        let penSize = 2;
+
+        /* Defaults */
+        ctx.lineWidth = penSize;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "#6E00FF";
+
+        const sizeSlider = document.getElementById("penSize");
+        const sizeValue = document.getElementById("sizeValue");
+
+
+        sizeSlider.addEventListener("input", () => {
+            penSize = parseInt(sizeSlider.value);
+            sizeValue.textContent = penSize + "px";
+        });
+
+
+        /* Tool setter */
+        function setTool(t) {
+            tool = t;
+        }
+
+        /* Color Picker */
+        document.querySelectorAll('.colors span').forEach(color => {
+            color.addEventListener('click', () => {
+                ctx.strokeStyle = color.dataset.color;
+            });
+        });
+
+        /* Events */
+        canvas.addEventListener("mousedown", startDraw);
+        canvas.addEventListener("mousemove", draw);
+        canvas.addEventListener("mouseup", stopDraw);
+        canvas.addEventListener("mouseleave", stopDraw);
+
+        canvas.addEventListener("touchstart", startDraw);
+        canvas.addEventListener("touchmove", draw);
+        canvas.addEventListener("touchend", stopDraw);
+
+        /* Position helper */
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            if (e.touches) {
+                return {
+                    x: e.touches[0].clientX - rect.left,
+                    y: e.touches[0].clientY - rect.top
+                };
+            }
+            return { x: e.offsetX, y: e.offsetY };
+        }
+
+        /* Start */
+        function startDraw(e) {
+            e.preventDefault();
+            isDrawing = true;
+
+            const pos = getPos(e);
+            startX = pos.x;
+            startY = pos.y;
+
+            snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+        }
+
+        /* Draw */
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+
+            const { x, y } = getPos(e);
+
+            ctx.putImageData(snapshot, 0, 0);
+            ctx.lineWidth = penSize
+            if (tool === "pen") {
+                ctx.globalCompositeOperation = "source-over";
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+
+            else if (tool === "eraser") {
+                ctx.globalCompositeOperation = "destination-out";
+                ctx.lineWidth = 12;
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+
+            else if (tool === "line") {
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+
+            else if (tool === "rect") {
+                ctx.strokeRect(startX, startY, x - startX, y - startY);
+            }
+
+            else if (tool === "circle") {
+                ctx.beginPath();
+                const r = Math.hypot(x - startX, y - startY);
+                ctx.arc(startX, startY, r, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+        /* Stop */
+        function stopDraw() {
+            isDrawing = false;
+            ctx.closePath();
+            ctx.globalCompositeOperation = "source-over";
+        }
+
+        /* Save */
+        function saveCanvas() {
+            const link = document.createElement("a");
+            link.download = "drawing.png";
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+        }
+    </script>
+
+
+</body>
+
+</html>

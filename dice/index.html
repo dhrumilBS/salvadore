@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turn-Based Dice Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <h1>Turn-Based Dice Game</h1>
+    <div id="turnIndicator">Player 1's Turn</div>
+
+    <div class="dice-container">
+        <div class="player">
+            <h2>Player 1</h2>
+            <div id="dice1" class="dice">1</div>
+        </div>
+        <div class="player">
+            <h2>Player 2</h2>
+            <div id="dice2" class="dice">1</div>
+        </div>
+    </div>
+
+    <button id="rollDiceButton">Roll Dice</button>
+
+    <div class="history">
+        <h2>Roll History</h2>
+        <div id="history"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

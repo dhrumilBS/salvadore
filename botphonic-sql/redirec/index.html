@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redirect Manager</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="logo">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      Redirect <span>Manager</span>
+    </div>
+    <div class="spacer"></div>
+    <span class="tstat">Total <b id="stTotal">0</b></span>
+    <span class="tstat">301 <b id="st301">0</b></span>
+    <span class="tstat">410 <b id="st410">0</b></span>
+    <span class="tstat" style="color:var(--success)">New <b id="stNew">0</b></span>
+  </header>
+
+  <div class="main">
+
+    <!-- LEFT: table -->
+    <div class="left">
+      <div class="toolbar">
+        <div class="search-wrap">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="search" id="q" placeholder="Search source or target…" oninput="render()">
+        </div>
+        <select id="ft" onchange="render()">
+          <option value="">All</option>
+          <option value="301">301</option>
+          <option value="410">410</option>
+        </select>
+      </div>
+
+      <div class="bulk-bar" id="bulkBar">
+        <span id="bulkCount"></span>
+        <button class="btn danger" onclick="bulkDel()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+          Delete selected
+        </button>
+        <button class="btn" onclick="clearSel()">Clear</button>
+      </div>
+
+      <div class="tbl-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-chk"><input type="checkbox" id="selAll" onchange="toggleAll(this)"></th>
+              <th class="col-src">Source</th>
+              <th class="col-tgt">Target</th>
+              <th class="col-type">Type</th>
+              <th class="col-act"></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div id="empty" class="empty" style="display:none">No redirects found</div>
+      </div>
+
+      <div class="tfoot">
+        <span id="footInfo"></span>
+        <span id="footSel" style="color:var(--accent-h)"></span>
+      </div>
+    </div>
+
+    <!-- RIGHT: output + add panels -->
+    <div class="right">
+      <div class="panel-hdr">
+        <span id="panelLabel">Serialized output</span>
+        <div class="panel-tabs">
+          <button class="ptab active" onclick="setPanel('out')">Output</button>
+          <button class="ptab" onclick="setPanel('add')">Bulk add</button>
+        </div>
+      </div>
+
+      <!-- OUTPUT PANEL -->
+      <div class="pbody" id="outPanel">
+        <div class="out-tabs">
+          <button class="otab fmt1 active" id="otab1" onclick="setOutTab(1)">Format 1 — slug map</button>
+          <button class="otab fmt2" id="otab2" onclick="setOutTab(2)">Format 2 — indexed array</button>
+        </div>
+
+        <!-- Format 1 -->
+        <div class="out-wrap" id="wrap1">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <span class="out-label fmt1">a:N:{ s:L:"slug";a:2:{ url, type } }</span>
+            <div class="out-actions">
+              <button class="btn" onclick="copyOut(1)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy
+              </button>
+              <button class="btn ok" onclick="saveTxt(1)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                Save .txt
+              </button>
+              <span class="copy-ok" id="cok1">✓</span>
+            </div>
+          </div>
+          <div class="out-box fmt1" id="outBox1"></div>
+          <div style="font-size:11px;color:var(--text3);" id="cnt1"></div>
+        </div>
+
+        <!-- Format 2 -->
+        <div class="out-wrap" id="wrap2" style="display:none;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <span class="out-label fmt2">a:N:{ i:0;a:4:{ origin, url, type, format } }</span>
+            <div class="out-actions">
+              <button class="btn" onclick="copyOut(2)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy
+              </button>
+              <button class="btn ok" onclick="saveTxt(2)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                Save .txt
+              </button>
+              <span class="copy-ok" id="cok2">✓</span>
+            </div>
+          </div>
+          <div class="out-box fmt2" id="outBox2"></div>
+          <div style="font-size:11px;color:var(--text3);" id="cnt2"></div>
+        </div>
+
+        <!-- Save both -->
+        <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:2px;">
+          <button class="btn ok" style="width:100%;justify-content:center;" onclick="saveBoth()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save both formats as .txt files
+          </button>
+        </div>
+      </div>
+
+      <!-- BULK ADD PANEL -->
+      <div class="pbody" id="addPanel" style="display:none;">
+        <div class="sec">Bulk paste</div>
+        <div>
+          <label class="flabel">Paste entries — source, target, type</label>
+          <textarea id="bulkPaste" placeholder="old-slug-1, new-slug-1, 301
+old-slug-2, , 410
+old-slug-3, new-slug-3, 301"></textarea>
+          <p class="hint">One per line: <code>source, target, type</code><br>Leave target empty for 410 gone entries.</p>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn primary" onclick="saveBulk()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Import
+          </button>
+          <button class="btn" onclick="document.getElementById('bulkPaste').value=''">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit modal -->
+<div class="ov" id="editOv">
+  <div class="modal">
+    <h3>Edit redirect</h3>
+    <div class="frow"><label class="flabel">Source URL</label><input type="text" id="eSrc"></div>
+    <div class="frow"><label class="flabel">Target URL</label><input type="text" id="eTgt"></div>
+    <div class="frow"><label class="flabel">Type</label>
+      <select id="eType">
+        <option value="301">301 – Redirect</option>
+        <option value="410">410 – Gone</option>
+      </select>
+    </div>
+    <div class="mactions">
+      <button class="btn primary" onclick="saveEdit()">Save</button>
+      <button class="btn" onclick="closeEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm delete -->
+<div class="ov" id="confOv">
+  <div class="modal">
+    <h3>Delete redirect</h3>
+    <p class="cmsg" id="confMsg"></p>
+    <div class="mactions">
+      <button class="btn danger" onclick="doDelete()">Delete</button>
+      <button class="btn" onclick="closeConf()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="tw" id="tw"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

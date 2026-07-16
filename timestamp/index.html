@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timestamp Converter</title>
+    <style>
+        @import url(https://fonts.googleapis.com/css?family=Space+Grotesk:300,regular,500,600,700);
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        body {
+            background: #111827;
+            color: white;
+            display: flex;
+            justify-content: center;
+            padding: 40px;
+        }
+
+        .container {
+            width: 700px;
+            background: #1f2937;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, .3);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .input {
+            display: flex;
+            margin-bottom: 15px;
+            gap: 10px;
+        }
+
+        input {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            border: none;
+            border-radius: 8px;
+            background: #374151;
+            color: white;
+        }
+
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: #2563eb;
+            color: white;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        .card {
+            background: #374151;
+            padding: 15px;
+            margin-top: 15px;
+            border-radius: 10px;
+        }
+
+        .label {
+            font-size: 14px;
+            color: #9ca3af;
+        }
+
+        .value {
+            margin-top: 5px;
+            font-size: 18px;
+            word-break: break-all;
+        }
+
+        .live {
+            margin-top: 25px;
+            padding: 15px;
+            background: #0f172a;
+            border-radius: 10px;
+        }
+
+        .copy {
+            float: right;
+            font-size: 13px;
+            padding: 5px 10px;
+        }
+
+        .compare {
+            font-size: 20px;
+            color: #22c55e;
+            margin-top: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Timestamp Converter</h1>
+        <div class="input">
+            <input id="timestamp" placeholder="Enter Unix Timestamp (seconds or milliseconds)">
+            <button onclick="convert()">Convert</button>
+        </div>
+
+        <div class="card">
+            <div class="label">
+                UTC Time
+                <button class="copy" onclick="copy('utc')">Copy</button>
+            </div>
+            <div id="utc" class="value">-</div>
+        </div>
+
+        <div class="card">
+            <div class="label">
+                Local Time
+                <button class="copy" onclick="copy('local')">Copy</button>
+            </div>
+            <div id="local" class="value">-</div>
+        </div>
+
+        <div class="card">
+            <div class="label">
+                ISO 8601
+                <button class="copy" onclick="copy('iso')">Copy</button>
+            </div>
+            <div id="iso" class="value">-</div>
+        </div>
+
+        <div class="compare" id="compare"> - </div>
+
+        <div class="live">
+            <h3>Live Current Time</h3>
+            <br>
+            <div id="liveLocal"></div>
+            <br>
+            <div id="liveUTC"></div>
+        </div>
+
+    </div>
+
+    <script>
+        function convert() {
+            let ts = document.getElementById("timestamp").value.trim();
+            if (!ts) {
+                alert("Enter timestamp");
+                return;
+            }
+
+            if (ts.length == 10) { ts *= 1000; }
+            ts = Number(ts);
+            const date = new Date(ts);
+            if (isNaN(date.getTime())) {
+                alert("Invalid Timestamp");
+                return;
+            }
+
+            document.getElementById("utc").innerText = date.toUTCString();
+            document.getElementById("local").innerText = date.toString();
+            document.getElementById("iso").innerText = date.toISOString();
+            compare(date);
+
+        }
+
+        function compare(date) {
+            const now = new Date();
+            let diff = now - date;
+            const future = diff < 0;
+            diff = Math.abs(diff);
+            const sec = Math.floor(diff / 1000);
+            const min = Math.floor(sec / 60);
+            const hr = Math.floor(min / 60);
+            const day = Math.floor(hr / 24);
+            let text = "";
+            if (day > 0) text = day + " day" + (day > 1 ? "s" : "");
+            else if (hr > 0) text = hr + " hour" + (hr > 1 ? "s" : "");
+            else if (min > 0) text = min + " minute" + (min > 1 ? "s" : "");
+            else text = sec + " second" + (sec > 1 ? "s" : "");
+            document.getElementById("compare").innerHTML = future ? "⏳ In " + text : "✅ " + text + " ago";
+        }
+
+        function updateLive() {
+            const now = new Date();
+            document.getElementById("liveLocal").innerHTML = "<b>Local:</b> " + now.toString();
+            document.getElementById("liveUTC").innerHTML = "<b>UTC:</b> " + now.toUTCString();
+        }
+
+        setInterval(updateLive, 1000);
+        updateLive();
+        function copy(id) {
+            navigator.clipboard.writeText(document.getElementById(id).innerText);
+        }
+    </script>
+
+</body>
+
+</html>

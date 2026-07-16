@@ -1,0 +1,156 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>State wice city</title>
+    <link rel="stylesheet" href="../../bootstrap/dist/css/bootstrap.css">
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <div class="page-shell">
+        <div class="card-shell">
+            <div class="card-header">
+                <div>
+                    <h1 id="pageTitle">All Templates</h1>
+                    <p>Select one of the template groups below to view matching state/city records. Data is loaded dynamically from the backend.</p>
+                </div>
+                <form class="form-row" id="templateForm">
+                    <div>
+                        <label for="template">Template</label>
+                        <select id="template" name="template" class="form-select">
+                            <option value="All">All</option>
+                            <option value="HIMS">HIMS</option>
+                            <option value="EMR">EMR</option>
+                            <option value="EHR">EHR</option>
+                            <option value="PMS">PMS</option>
+                            <option value="Lab">Lab</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button type="button" id="loadButton" class="btn btn-primary">Load</button>
+                    </div>
+                </form>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-hover align-middle data-table">
+                    <thead>
+                        <tr>
+                            <th>Row</th>
+                            <th>Index</th>
+                            <th>id</th>
+                            <th>post_title</th>
+                            <th>post_Status</th>
+                            <th>post_name</th>
+                            <th>menu_order</th>
+                            <th>SQL</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr>
+                            <td colspan="8" class="text-center text-muted py-5">Select a template and click Load to fetch data.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="statusBox" class="status-box">Ready to load data.</div>
+        </div>
+    </div>
+
+    <script>
+        const apiUrl = './api/list_templates.php';
+        const templateSelect = document.getElementById('template');
+        const loadButton = document.getElementById('loadButton');
+        const tableBody = document.getElementById('tableBody');
+        const statusBox = document.getElementById('statusBox');
+        const pageTitle = document.getElementById('pageTitle');
+
+        async function fetchTemplateData(template = 'All') {
+            statusBox.textContent = 'Loading records…';
+            tableBody.innerHTML = '<tr><td colspan="8" class="text-center py-5 text-muted">Loading data…</td></tr>';
+
+            try {
+                const response = await fetch(`${apiUrl}?template=${encodeURIComponent(template)}`);
+                if (!response.ok) throw new Error('Unable to fetch data from backend');
+
+                const result = await response.json();
+                if (!result.success) throw new Error(result.error || 'Backend returned an error');
+
+                pageTitle.textContent = result.headerText;
+                renderRows(result.data);
+                statusBox.textContent = `${result.data.length} top-level rows loaded for ${result.template === 'All' ? 'all templates' : result.template}.`;
+            } catch (error) {
+                tableBody.innerHTML = '<tr><td colspan="8" class="text-center py-5 text-danger">Failed to load data.</td></tr>';
+                statusBox.textContent = error.message;
+            }
+        }
+
+        function renderRows(items) {
+            if (!items || !items.length) {
+                tableBody.innerHTML = '<tr><td colspan="8" class="text-center py-5 text-muted">No records found.</td></tr>';
+                return;
+            }
+
+            let html = '';
+            let rowNumber = 0;
+            let orderNumber = 2;
+
+            items.forEach((item, index) => {
+                rowNumber++;
+                html += `<tr>` +
+                    `<td>${rowNumber}</td>` +
+                    `<td>${index + 1}</td>` +
+                    `<td>${escapeHtml(item.id)}</td>` +
+                    `<td>${escapeHtml(item.post_title)}</td>` +
+                    `<td>${escapeHtml(item.post_status)}</td>` +
+                    `<td>${escapeHtml(item.post_name)}</td>` +
+                    `<td>${escapeHtml(item.menu_order)}</td>` +
+                    `<td><code>UPDATE wp_posts SET menu_order='${orderNumber}' WHERE id = ${escapeHtml(item.id)};</code></td>` +
+                    `</tr>`;
+                orderNumber++;
+
+                if (Array.isArray(item.textdata)) {
+                    item.textdata.forEach((child, childIndex) => {
+                        rowNumber++;
+                        html += `<tr class="child-row">` +
+                            `<td>${rowNumber}</td>` +
+                            `<td>${childIndex + 1}</td>` +
+                            `<td>${escapeHtml(child.id)}</td>` +
+                            `<td>${escapeHtml(child.post_title)}</td>` +
+                            `<td>${escapeHtml(child.post_status)}</td>` +
+                            `<td>${escapeHtml(child.post_name)}</td>` +
+                            `<td>${escapeHtml(child.menu_order)}</td>` +
+                            `<td><code>UPDATE wp_posts SET menu_order='${orderNumber}' WHERE id = ${escapeHtml(child.id)};</code></td>` +
+                            `</tr>`;
+                        orderNumber++;
+                    });
+                }
+            });
+
+            tableBody.innerHTML = html;
+        }
+
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        loadButton.addEventListener('click', () => fetchTemplateData(templateSelect.value));
+        templateSelect.addEventListener('change', () => fetchTemplateData(templateSelect.value));
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const selected = params.get('template');
+            if (selected) {
+                templateSelect.value = selected;
+            }
+            fetchTemplateData(templateSelect.value);
+        });
+    </script>
+</body>
+</html>

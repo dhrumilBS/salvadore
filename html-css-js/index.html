@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+
+
+    <input type="text" name="coytext" id="copyText" >
+
+
+    <script src="https://code.jquery.com/jquery-3.6.4.js"></script>
+    <script>
+        function copyCode(Text) {
+            var textToCopy = Text;
+            var tempInput = document.createElement('input');
+            tempInput.value = textToCopy;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+        }
+        $(document).ready(function () {
+            $('#copyText').on('dblclick', function () {
+                var s = $(this).val()
+                copyCode(s) 
+            })
+
+
+        })
+    </script>
+
+</body>
+
+</html>

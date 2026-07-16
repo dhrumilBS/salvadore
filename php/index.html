@@ -1,0 +1,586 @@
+<?php
+// ide.php — A self-contained code editor (HTML / CSS / JS / PHP)
+// Features: syntax highlighting, autocomplete/suggestions, live preview,
+// PHP execution, multiple language modes, themes, local autosave.
+?>
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Editor — HTML / CSS / JS / PHP</title>
+
+    <!-- CodeMirror core -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/eclipse.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldgutter.min.css">
+
+    <style>
+        :root {
+            --bg: #1e1f29;
+            --panel: #282a36;
+            --border: #3a3d4d;
+            --text: #f8f8f2;
+            --muted: #9ca0b0;
+            --accent: #bd93f9;
+            --accent2: #50fa7b;
+            --danger: #ff5555;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 8px 14px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+        }
+
+        header h1 {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: .3px;
+        }
+
+        header h1 span {
+            color: var(--accent);
+        }
+
+        .group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        select,
+        button {
+            font: inherit;
+            font-size: 13px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: #1b1c24;
+            color: var(--text);
+            padding: 6px 10px;
+            cursor: pointer;
+            transition: background .15s, border-color .15s;
+        }
+
+        select:hover,
+        button:hover {
+            border-color: var(--accent);
+        }
+
+        button.primary {
+            background: var(--accent);
+            color: #1b1c24;
+            border-color: var(--accent);
+            font-weight: 600;
+        }
+
+        button.primary:hover {
+            background: #a87cf0;
+        }
+
+        button.ok {
+            background: var(--accent2);
+            color: #1b1c24;
+            border-color: var(--accent2);
+            font-weight: 600;
+        }
+
+        .spacer {
+            flex: 1;
+        }
+
+        .status {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            min-height: 0;
+        }
+
+        .editor-pane,
+        .preview-pane {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .editor-pane {
+            border-right: 1px solid var(--border);
+        }
+
+        .pane-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 12px;
+            font-size: 12px;
+            color: var(--muted);
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .CodeMirror {
+            height: 100%;
+            font-size: 14px;
+            font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+            line-height: 1.55;
+        }
+
+        .preview-pane {
+            background: #fff;
+        }
+
+        #preview {
+            flex: 1;
+            border: 0;
+            width: 100%;
+            background: #fff;
+        }
+
+        .preview-pane.dark {
+            background: var(--bg);
+        }
+
+        .resizer {
+            width: 5px;
+            cursor: col-resize;
+            background: var(--border);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        footer {
+            padding: 4px 14px;
+            font-size: 11px;
+            color: var(--muted);
+            background: var(--panel);
+            border-top: 1px solid var(--border);
+        }
+
+        kbd {
+            background: #1b1c24;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-size: 11px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>Code<span>Editor</span></h1>
+
+        <div class="group">
+            <label for="lang">Language</label>
+            <select id="lang">
+                <option value="application/x-httpd-php">PHP (mixed)</option>
+                <option value="htmlmixed">HTML</option>
+                <option value="css">CSS</option>
+                <option value="javascript">JavaScript</option>
+            </select>
+        </div>
+
+        <div class="group">
+            <label for="theme">Theme</label>
+            <select id="theme">
+                <option value="dracula">Dracula</option>
+                <option value="material-darker">Material</option>
+                <option value="eclipse">Light</option>
+            </select>
+        </div>
+
+        <button id="btnRun" class="primary" title="Ctrl+Enter">▶ Run</button>
+        <button id="btnFormat" title="Tidy indentation">⟲ Format</button>
+        <button id="btnDownload">⬇ Download</button>
+
+        <div class="spacer"></div>
+        <span class="status" id="status">Ready</span>
+    </header>
+
+    <main>
+        <section class="editor-pane">
+            <div class="pane-head">
+                <span>editor</span>
+                <span id="cursorPos">Ln 1, Col 1</span>
+            </div>
+            <textarea id="code">
+        <?php
+        echo htmlspecialchars(<<<'PHP'
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Hello</title>
+  <style>
+    body { font-family: system-ui; padding: 2rem; }
+    h1   { color: #6b3fb3; }
+  </style>
+</head>
+<body>
+  <h1>Hello from the editor 👋</h1>
+  <?php
+    for ($i = 1; $i <= 3; $i++) {
+        echo "<p>Line number $i</p>";
+    }
+  ?>
+  <script>
+    console.log('JS runs too');
+</script>
+</body>
+</html>
+PHP);
+        ?></textarea>
+        </section>
+
+        <div class="resizer" id="resizer"></div>
+
+        <section class="preview-pane" id="previewPane">
+            <div class="pane-head">
+                <span>output / preview</span>
+                <button id="btnReload" style="padding:2px 8px;font-size:11px;">↻</button>
+            </div>
+            <iframe id="preview" sandbox="allow-scripts allow-forms allow-modals"></iframe>
+        </section>
+    </main>
+
+    <footer>
+        <kbd>Ctrl</kbd>+<kbd>Space</kbd> suggestions &nbsp;·&nbsp;
+        <kbd>Ctrl</kbd>+<kbd>Enter</kbd> run &nbsp;·&nbsp;
+        <kbd>Ctrl</kbd>+<kbd>/</kbd> comment &nbsp;·&nbsp;
+        autosaves locally
+    </footer>
+
+    <!-- CodeMirror scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <!-- modes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/php/php.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+    <!-- autocomplete addons -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/html-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/xml-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/css-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/javascript-hint.min.js"></script>
+    <!-- editing helpers -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closetag.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchtags.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/comment/comment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+    <!-- code folding -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldgutter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/brace-fold.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/xml-fold.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/comment-fold.min.js"></script>
+    <!-- search -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/searchcursor.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/search.min.js"></script>
+
+    <script>
+        (function () {
+            "use strict";
+
+            var SAVE_KEY = "ide_code_v1";
+            var statusEl = document.getElementById("status");
+
+            function setStatus(msg, color) {
+                statusEl.textContent = msg;
+                statusEl.style.color = color || "var(--muted)";
+            }
+
+            // ---- Smart hint: combine language-specific hints with words already typed ----
+            function smartHint(cm) {
+                var mode = cm.getModeAt(cm.getCursor()).name;
+                var helper;
+                if (mode === "xml" || mode === "html") helper = CodeMirror.hint.html;
+                else if (mode === "css") helper = CodeMirror.hint.css;
+                else if (mode === "javascript") helper = CodeMirror.hint.javascript;
+                else helper = CodeMirror.hint.anyword;
+
+                var inner = helper ? helper(cm) : null;
+                var anyword = CodeMirror.hint.anyword(cm);
+
+                if (!inner || !inner.list.length) return anyword;
+                if (!anyword || !anyword.list.length) return inner;
+
+                // merge, de-duplicate, keep language hints first
+                var seen = {},
+                    list = [];
+
+                function add(items) {
+                    items.forEach(function (it) {
+                        var text = (typeof it === "string") ? it : it.text;
+                        if (!seen[text]) {
+                            seen[text] = 1;
+                            list.push(it);
+                        }
+                    });
+                }
+                add(inner.list);
+                add(anyword.list);
+                return {
+                    list: list,
+                    from: inner.from,
+                    to: inner.to
+                };
+            }
+
+            var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
+                mode: "application/x-httpd-php",
+                theme: "dracula",
+                lineNumbers: true,
+                lineWrapping: false,
+                indentUnit: 2,
+                tabSize: 2,
+                indentWithTabs: false,
+                smartIndent: true,
+                autoCloseBrackets: true,
+                autoCloseTags: true,
+                matchBrackets: true,
+                matchTags: {
+                    bothTags: true
+                },
+                styleActiveLine: true,
+                foldGutter: true,
+                gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+                hintOptions: {
+                    hint: smartHint,
+                    completeSingle: false
+                },
+                extraKeys: {
+                    "Ctrl-Space": "autocomplete",
+                    "Cmd-Space": "autocomplete",
+                    "Ctrl-Enter": function () {
+                        run();
+                    },
+                    "Cmd-Enter": function () {
+                        run();
+                    },
+                    "Ctrl-/": "toggleComment",
+                    "Cmd-/": "toggleComment",
+                    "Ctrl-S": function () {
+                        save();
+                        setStatus("Saved locally ✓", "var(--accent2)");
+                    },
+                    "Cmd-S": function () {
+                        save();
+                        setStatus("Saved locally ✓", "var(--accent2)");
+                    },
+                    "Tab": function (cm) {
+                        if (cm.somethingSelected()) cm.indentSelection("add");
+                        else cm.replaceSelection(Array(cm.getOption("indentUnit") + 1).join(" "));
+                    }
+                }
+            });
+
+            // Trigger autocomplete automatically as you type (live suggestions)
+            editor.on("inputRead", function (cm, change) {
+                if (cm.state.completionActive) return;
+                var text = change.text[0];
+                // letters, '<' (tags), '.', ':' (css/js members)
+                if (/[a-zA-Z<.:]/.test(text)) {
+                    cm.showHint({
+                        hint: smartHint,
+                        completeSingle: false
+                    });
+                }
+            });
+
+            editor.on("cursorActivity", function (cm) {
+                var c = cm.getCursor();
+                document.getElementById("cursorPos").textContent =
+                    "Ln " + (c.line + 1) + ", Col " + (c.ch + 1);
+            });
+
+            // ---- Autosave ----
+            var saved = localStorage.getItem(SAVE_KEY);
+            if (saved !== null) editor.setValue(saved);
+
+            function save() {
+                localStorage.setItem(SAVE_KEY, editor.getValue());
+            }
+            var saveTimer;
+            editor.on("change", function () {
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(save, 600);
+            });
+
+            // ---- Language switch ----
+            var langSel = document.getElementById("lang");
+            langSel.addEventListener("change", function () {
+                editor.setOption("mode", this.value);
+                setStatus("Mode: " + this.options[this.selectedIndex].text);
+            });
+
+            // ---- Theme switch ----
+            document.getElementById("theme").addEventListener("change", function () {
+                editor.setOption("theme", this.value);
+            });
+
+            // ---- Format (re-indent all) ----
+            document.getElementById("btnFormat").addEventListener("click", function () {
+                editor.operation(function () {
+                    for (var i = 0; i < editor.lineCount(); i++) editor.indentLine(i);
+                });
+                setStatus("Formatted ✓", "var(--accent2)");
+            });
+
+            // ---- Download current buffer ----
+            document.getElementById("btnDownload").addEventListener("click", function () {
+                var ext = {
+                    "application/x-httpd-php": "php",
+                    "htmlmixed": "html",
+                    "css": "css",
+                    "javascript": "js"
+                }[langSel.value] || "txt";
+                var blob = new Blob([editor.getValue()], {
+                    type: "text/plain"
+                });
+                var a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = "code." + ext;
+                a.click();
+                URL.revokeObjectURL(a.href);
+            });
+
+            // ---- Run / preview ----
+            var preview = document.getElementById("preview");
+
+            function previewClientSide() {
+                var code = editor.getValue();
+                var html;
+                switch (langSel.value) {
+                    case "css":
+                        html = "<style>" + code + "</style>" +
+                            "<h1>CSS preview</h1><p>Paragraph</p>" +
+                            "<button>Button</button> <a href='#'>link</a>";
+                        break;
+                    case "javascript":
+                        html = "<pre id='out' style='font-family:monospace;padding:10px'></pre>" +
+                            "<script>(function(){var o=document.getElementById('out');" +
+                            "var log=console.log;console.log=function(){o.textContent+=" +
+                            "[].slice.call(arguments).join(' ')+'\\n';log.apply(console,arguments);};" +
+                            "try{" + code + "}catch(e){o.textContent+='Error: '+e.message;}})();<\/script>";
+                        break;
+                    default: // htmlmixed
+                        html = code;
+                }
+                preview.removeAttribute("srcdoc");
+                preview.srcdoc = html;
+                setStatus("Rendered ✓", "var(--accent2)");
+            }
+
+            function run() {
+                save();
+                if (langSel.value === "application/x-httpd-php") {
+                    // Send to PHP backend for real execution
+                    setStatus("Running PHP…");
+                    fetch("run.php", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/x-www-form-urlencoded"
+                        },
+                        body: "code=" + encodeURIComponent(editor.getValue())
+                    })
+                        .then(function (r) {
+                            return r.text();
+                        })
+                        .then(function (out) {
+                            preview.removeAttribute("srcdoc");
+                            preview.srcdoc = out;
+                            setStatus("Executed ✓", "var(--accent2)");
+                        })
+                        .catch(function (e) {
+                            preview.srcdoc = "<pre style='color:#c00;padding:10px'>Request failed: " +
+                                e.message + "</pre>";
+                            setStatus("Error", "var(--danger)");
+                        });
+                } else {
+                    previewClientSide();
+                }
+            }
+
+            document.getElementById("btnRun").addEventListener("click", run);
+            document.getElementById("btnReload").addEventListener("click", run);
+
+            // ---- Draggable splitter ----
+            var resizer = document.getElementById("resizer");
+            var editorPane = document.querySelector(".editor-pane");
+            var dragging = false;
+            resizer.addEventListener("mousedown", function () {
+                dragging = true;
+                document.body.style.userSelect = "none";
+            });
+            window.addEventListener("mouseup", function () {
+                dragging = false;
+                document.body.style.userSelect = "";
+            });
+            window.addEventListener("mousemove", function (e) {
+                if (!dragging) return;
+                var total = document.querySelector("main").clientWidth;
+                var pct = (e.clientX / total) * 100;
+                if (pct < 15) pct = 15;
+                if (pct > 85) pct = 85;
+                editorPane.style.flex = "0 0 " + pct + "%";
+            });
+
+            // initial render
+            setTimeout(run, 200);
+            setTimeout(function () {
+                editor.refresh();
+            }, 50);
+        })();
+    </script>
+</body>
+
+</html>

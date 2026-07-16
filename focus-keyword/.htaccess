@@ -1,0 +1,9 @@
+# Never serve the environment / config files as plain text.
+<FilesMatch "^\.env">
+    Require all denied
+</FilesMatch>
+
+# Hide internal PHP includes that are not meant to be hit directly.
+<FilesMatch "^(env|auth)\.php$">
+    Require all denied
+</FilesMatch>

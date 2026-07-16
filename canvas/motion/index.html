@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Botphonic AI Canvas</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #fff;
+            overflow: hidden;
+        }
+
+        canvas {
+            position: fixed;
+            inset: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="botphonic-canvas"></canvas>
+
+    <script>
+        /* =======================
+           Canvas Setup
+        ======================= */
+        const canvas = document.getElementById("botphonic-canvas");
+        const ctx = canvas.getContext("2d");
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener("resize", resize);
+
+        /* =======================
+           Mouse + Scroll Control
+        ======================= */
+        let targetX = canvas.width / 2;
+        let targetY = canvas.height * 0.55;
+        let centerX = targetX;
+        let centerY = targetY;
+        let scrollOffset = 0;
+
+        window.addEventListener("mousemove", e => {
+            targetX = e.clientX;
+            targetY = e.clientY;
+        });
+
+        window.addEventListener("scroll", () => {
+            scrollOffset = window.scrollY * 0.15;
+        });
+
+        /* =======================
+           Smooth Follow
+        ======================= */
+        function smoothFollow() {
+            const ease = 0.035;
+            centerX += (targetX - centerX) * ease;
+            centerY += (targetY - centerY) * ease;
+        }
+
+        /* =======================
+           Neural Nodes
+        ======================= */
+        const nodes = Array.from({ length: 70 }, () => ({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            vx: (Math.random() - 0.5) * 0.35,
+            vy: (Math.random() - 0.5) * 0.35
+        }));
+
+        /* =======================
+           Gradient Orbs
+        ======================= */
+        const orbs = Array.from({ length: 4 }, (_, i) => ({
+            radius: 140 + i * 60,
+            speed: 0.2 + i * 0.15
+        }));
+
+        /* =======================
+           Voice Pulse
+        ======================= */
+        function drawVoicePulse() {
+            const pulse = 22 + Math.sin(t * 2.2) * 10;
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, pulse, 0, Math.PI * 2);
+            ctx.strokeStyle = "rgba(99,102,241,0.25)";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        /* =======================
+           Gradient Orbs
+        ======================= */
+        function drawOrbs() {
+            orbs.forEach((o, i) => {
+                const r = o.radius + Math.sin(t * o.speed + i) * 10;
+                const g = ctx.createRadialGradient(
+                    centerX, centerY, r * 0.2,
+                    centerX, centerY, r
+                );
+                g.addColorStop(0, `rgba(139,92,246,${0.08 - i * 0.01})`);
+                g.addColorStop(1, "rgba(139,92,246,0)");
+
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        /* =======================
+           Neural Paths
+        ======================= */
+        function drawNeural() {
+            nodes.forEach((n, i) => {
+                n.x += n.vx;
+                n.y += n.vy;
+
+                if (n.x < 0 || n.x > canvas.width) n.vx *= -1;
+                if (n.y < 0 || n.y > canvas.height) n.vy *= -1;
+
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, 2, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(59,130,246,0.45)";
+                ctx.fill();
+
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const m = nodes[j];
+                    const d = Math.hypot(n.x - m.x, n.y - m.y);
+                    if (d < 120) {
+                        ctx.strokeStyle = `rgba(99,102,241,${0.12 - d / 900})`;
+                        ctx.lineWidth = 0.8;
+                        ctx.beginPath();
+                        ctx.moveTo(n.x, n.y);
+                        ctx.lineTo(m.x, m.y);
+                        ctx.stroke();
+                    }
+                }
+            });
+        }
+
+        /* =======================
+           Signal Rings
+        ======================= */
+        function drawSignalRings() {
+            smoothFollow();
+            for (let i = 0; i < 3; i++) {
+                const r = 180 + i * 90 + Math.sin(t * 0.6 + i) * 8;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY + scrollOffset * 0.2, r, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(99,102,241,${0.10 - i * 0.02})`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+        }
+
+        /* =======================
+           Animation Loop
+        ======================= */
+        let t = 0;
+        ctx.shadowBlur = 14;
+        ctx.shadowColor = "rgba(139,92,246,0.25)";
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawOrbs();          // depth layer
+            drawSignalRings();   // AI signal
+            drawVoicePulse();    // voice breathing
+            drawNeural();        // intelligence network
+
+            t += 0.012;
+            requestAnimationFrame(animate);
+        }
+        animate();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Redirecting...</title>
+</head>
+
+<body>
+
+    <h2>
+        Redirecting...
+    </h2>
+
+    <script>
+        (async () => {
+            try {
+                await fetch('save-history.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        url: window.location.href,
+                        timestamp: new Date().toISOString(),
+                        userAgent: navigator.userAgent,
+                        referrer: document.referrer
+                    })
+                });
+            } catch (err) {
+                console.error(err);
+            }
+
+            // Redirect after logging attempt
+            window.location.href = "http://192.168.0.223/salvadore/healthray-sql/lead/";
+        })();
+    </script>
+
+</body>
+
+</html>

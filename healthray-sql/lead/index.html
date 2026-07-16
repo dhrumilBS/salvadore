@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Report Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="css/report.css">
+</head>
+
+<body>
+
+    <!-- ═══════ TOPBAR ═══════ -->
+    <div class="topbar">
+        <div class="topbar-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <rect x="3" y="3" width="18" height="18" rx="3" />
+                <path d="M9 9h6M9 12h6M9 15h4" />
+            </svg>
+        </div>
+        <h1>Form Submission Report</h1>
+        <div class="topbar-badge" id="statusBadge">Loading…</div>
+    </div>
+
+    <div class="page">
+
+        <!-- ═══════ DATE FILTER + EXPORT ═══════ -->
+        <form id="filterForm">
+            <div class="controls">
+                <div class="field-group">
+                    <label>Database</label>
+                    <select id="dbSelect">
+                        <option value="landing">Landing — Live</option>
+                        <option value="old">Old — Local</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>From</label>
+                    <input type="date" id="from">
+                </div>
+                <div class="field-group">
+                    <label>To</label>
+                    <input type="date" id="to">
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <circle cx="11" cy="11" r="7" />
+                        <path d="M21 21l-4-4" />
+                    </svg>
+                    Apply Filter
+                </button>
+
+                <button type="button" id="resetBtn" class="btn btn-ghost">Reset</button>
+
+                <!-- Export dropdown -->
+                <div class="export-wrap">
+                    <button type="button" id="exportBtn" class="btn btn-success">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        Export ▾
+                    </button>
+                    <div class="export-menu" id="exportMenu">
+                        <button id="exportCSV">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                                <polyline points="14 2 14 8 20 8" />
+                            </svg>
+                            Export CSV
+                        </button>
+                        <button id="exportJSON">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                                <polyline points="14 2 14 8 20 8" />
+                            </svg>
+                            Export JSON
+                        </button>
+                        <hr>
+                        <button id="exportDupCSV">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M12 8v4M12 16h.01" />
+                            </svg>
+                            Duplicates Only (CSV)
+                        </button>
+                    </div>
+                </div>
+
+                <div class="search-wrap">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <circle cx="11" cy="11" r="7" />
+                        <path d="M21 21l-4-4" />
+                    </svg>
+                    <input type="search" id="tableSearch" placeholder="Search anything…">
+                </div>
+            </div>
+        </form>
+
+        <!-- ═══════ STAT BAR — Summary ═══════ -->
+        <div class="stat-bar">
+            <div class="stat-card">
+                <div class="stat-label">Total Rows</div>
+                <div class="stat-value accent" id="statTotal">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Showing</div>
+                <div class="stat-value" id="statShowing">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Date Range</div>
+                <div class="stat-value" id="statRange" style="font-size:13px;letter-spacing:0;font-weight:600">—</div>
+            </div>
+            <div class="stat-card dup-email clickable" id="cardDupEmail" title="Click to filter duplicate emails">
+                <div class="stat-label">Dup. Email</div>
+                <div class="stat-value c-email" id="statDupEmail">0</div>
+                <div class="stat-hint">Click to filter</div>
+            </div>
+            <div class="stat-card dup-phone clickable" id="cardDupPhone" title="Click to filter duplicate phones">
+                <div class="stat-label">Dup. Phone</div>
+                <div class="stat-value c-phone" id="statDupPhone">0</div>
+                <div class="stat-hint">Click to filter</div>
+            </div>
+            <div class="stat-card dup-time clickable" id="cardDupTime" title="Click to filter same submit time">
+                <div class="stat-label">Same Time</div>
+                <div class="stat-value c-time" id="statDupTime">0</div>
+                <div class="stat-hint">Click to filter</div>
+            </div>
+        </div>
+
+        <!-- ═══════ BREAKDOWN BAR — Campaign / Source / Date ═══════ -->
+        <div class="breakdown-bar">
+
+            <!-- UTM Campaign -->
+            <div class="breakdown-card bc-campaign" id="bc-campaign">
+                <div class="breakdown-hdr">
+                    <div class="breakdown-hdr-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                        </svg>
+                    </div>
+                    <div class="breakdown-hdr-text">
+                        <strong>UTM Campaign</strong>
+                        <span class="breakdown-unique"></span>
+                    </div>
+                    <span class="breakdown-total">—</span>
+                </div>
+                <div class="breakdown-list"></div>
+            </div>
+
+            <!-- UTM Source -->
+            <div class="breakdown-card bc-source" id="bc-source">
+                <div class="breakdown-hdr">
+                    <div class="breakdown-hdr-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="2" y1="12" x2="22" y2="12" />
+                            <path d="M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
+                        </svg>
+                    </div>
+                    <div class="breakdown-hdr-text">
+                        <strong>UTM Source</strong>
+                        <span class="breakdown-unique"></span>
+                    </div>
+                    <span class="breakdown-total">—</span>
+                </div>
+                <div class="breakdown-list"></div>
+            </div>
+
+            <!-- Date wise -->
+            <div class="breakdown-card bc-date" id="bc-date">
+                <div class="breakdown-hdr">
+                    <div class="breakdown-hdr-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" />
+                            <line x1="16" y1="2" x2="16" y2="6" />
+                            <line x1="8" y1="2" x2="8" y2="6" />
+                            <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                    </div>
+                    <div class="breakdown-hdr-text">
+                        <strong>Date Wise</strong>
+                        <span class="breakdown-unique"></span>
+                    </div>
+                    <span class="breakdown-total">—</span>
+                </div>
+                <div class="breakdown-list"></div>
+            </div>
+
+        </div><!-- /.breakdown-bar -->
+
+        <!-- ═══════ DUPLICATE LEGEND ═══════ -->
+        <div class="legend">
+            <span class="legend-title">Highlights:</span>
+            <span class="legend-item"><span class="legend-dot email"></span>Duplicate Email</span>
+            <span class="legend-sep">|</span>
+            <span class="legend-item"><span class="legend-dot phone"></span>Duplicate Phone</span>
+            <span class="legend-sep">|</span>
+            <span class="legend-item"><span class="legend-dot time"></span>Same Submit Time</span>
+            <span style="margin-left:auto;font-size:11px;color:var(--muted)">
+                Click any stat card or breakdown row to filter the table
+            </span>
+        </div>
+
+        <!-- ═══════ ACTIVE FILTER STRIP ═══════ -->
+        <div class="filter-strip" id="filterStrip">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M3 4h18M7 9h10M11 14h2" />
+            </svg>
+            <span id="filterStripLabel">Showing filtered rows</span>
+            <button id="clearDupFilter">✕ Clear All</button>
+        </div>
+
+        <!-- ═══════ COLUMN SELECTOR ═══════ -->
+        <div class="col-selector">
+            <div class="col-selector-hdr" id="colSelectorHdr">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1" />
+                    <rect x="14" y="3" width="7" height="7" rx="1" />
+                    <rect x="3" y="14" width="7" height="7" rx="1" />
+                    <rect x="14" y="14" width="7" height="7" rx="1" />
+                </svg>
+                Column Visibility
+                <div class="col-selector-actions" id="colSelectorActions">
+                    <button id="btnShowAll" type="button">Show All</button>
+                    <button id="btnHideAll" type="button">Hide All</button>
+                    <button id="btnReset" type="button">Reset Default</button>
+                </div>
+                <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M6 9l6 6 6-6" />
+                </svg>
+            </div>
+            <div class="col-pills" id="colPills"></div>
+        </div>
+
+
+        <!-- ═══════ TABLE ═══════ -->
+        <div class="table-card">
+            <!-- ═══════ LOADER ═══════ -->
+            <div class="loader-wrap" id="loaderWrap">
+                <div class="spinner"></div>
+                Fetching data…
+            </div>
+
+            <div class="table-card-hdr">
+                <span id="tableHdrLabel">Submissions</span>
+                <span id="tableHdrMeta" style="color:var(--muted);font-weight:400"></span>
+            </div>
+            <div class="table-wrap">
+                <div class="empty-state" id="emptyState">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                        <path d="M4 7h16M4 12h8M4 17h5" />
+                        <circle cx="17" cy="17" r="4" />
+                        <path d="M21 21l-2-2" />
+                    </svg>
+                    <p>No results found</p>
+                    <span>Try adjusting the date range or clearing the filters</span>
+                </div>
+                <table id="mainTable">
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+            <div class="pagination-bar">
+                <span id="paginationInfo"></span>
+            </div>
+        </div>
+
+    </div><!-- /.page -->
+
+    <!-- ═══════ LEAD DETAIL MODAL ═══════ -->
+    <div class="modal-overlay" id="leadModal">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="leadModalTitle">
+            <div class="modal-hdr">
+                <div class="modal-hdr-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <circle cx="12" cy="8" r="4" />
+                        <path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1" />
+                    </svg>
+                </div>
+                <div class="modal-hdr-text">
+                    <strong id="leadModalTitle">Lead Details</strong>
+                    <span id="leadModalSub"></span>
+                </div>
+                <button type="button" class="modal-close" id="leadModalClose" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <path d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body" id="leadModalBody"></div>
+        </div>
+    </div>
+
+    <!-- ═══════ TOAST ═══════ -->
+    <div class="toast" id="toast">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 8v4M12 16h.01" />
+        </svg>
+        <span id="toastMsg"></span>
+    </div>
+
+
+
+
+
+
+    <script src="js/report.js"></script>
+</body>
+
+</html>

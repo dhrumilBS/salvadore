@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>wp_posts › revision</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="app">
+
+        <header class="topbar">
+            <div class="topbar-id">
+                <span class="dot" aria-hidden="true"></span>
+                <span class="path"><span class="path-dim">wp_posts</span> <span class="path-sep">›</span> revision</span>
+            </div>
+            <div class="topbar-stats" id="summary">connecting&hellip;</div>
+        </header>
+
+        <div id="alertContainer" class="alert-slot"></div>
+
+        <div class="toolbar">
+            <div class="pill-group" id="ptPills" role="tablist" aria-label="Filter by parent post type">
+                <button class="pill active" data-pt="all" type="button">All</button>
+                <button class="pill" data-pt="post" type="button">Post</button>
+                <button class="pill" data-pt="page" type="button">Page</button>
+                <button class="pill" data-pt="whitepaper" type="button">Whitepaper</button>
+                <button class="pill" data-pt="case-studies" type="button">case-studies</button>
+            </div>
+
+            <label class="command-input">
+                <span class="prompt" aria-hidden="true">&rsaquo;</span>
+                <input type="text" id="parentIdInput" placeholder="filter by parent post id&hellip;" inputmode="numeric" autocomplete="off">
+                <span class="key-hint" aria-hidden="true"><kbd>/</kbd></span>
+                <button class="icon-btn" id="resetBtn" title="Clear filters" aria-label="Clear filters">&times;</button>
+            </label>
+
+            <div class="toolbar-actions">
+                <button class="btn-ghost" id="expandAllBtn" type="button">Expand all</button>
+                <button class="btn-ghost" id="collapseAllBtn" type="button">Collapse all</button>
+                <button class="btn-ghost btn-icon-only" id="shortcutsBtn" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+                    <i class="bi bi-keyboard" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="list-head" aria-hidden="true">
+            <span></span>
+            <span>post</span>
+            <span class="col-tags">type</span>
+            <span class="col-ticks">revision history</span>
+            <span class="col-count">revs</span>
+            <span class="col-meta">meta</span>
+            <span class="col-date">last touched</span>
+        </div>
+
+        <main class="list" id="groupsContainer">
+            <div class="loading-state">
+                <span class="spinner" aria-hidden="true"></span> scanning wp_posts for revisions&hellip;
+            </div>
+        </main>
+
+        <div class="pagination" id="pagination"></div>
+
+    </div>
+
+    <div class="selection-bar" id="selectionBar">
+        <span id="selectionText" class="mono"></span>
+        <div class="selection-actions">
+            <button class="btn-ghost" id="clearSelectionBtn" type="button">Cancel</button>
+            <button class="btn-danger" id="deleteSelectedBtn" type="button">Delete selected</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="confirmModal" aria-hidden="true">
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+            <div class="modal-header">
+                <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                <h3 id="modalTitle">Confirm deletion</h3>
+                <button class="icon-btn" id="modalCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body" id="confirmModalBody"></div>
+            <div class="modal-footer">
+                <button class="btn-ghost" id="modalCancelBtn" type="button">Cancel</button>
+                <button class="btn-danger" id="confirmDeleteBtn" type="button">Delete permanently</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="helpModal" aria-hidden="true">
+        <div class="modal-panel help-panel" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+            <div class="modal-header">
+                <i class="bi bi-keyboard-fill" aria-hidden="true"></i>
+                <h3 id="helpTitle">Keyboard shortcuts</h3>
+                <button class="icon-btn" id="helpCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="shortcut-list">
+                    <div class="shortcut"><span class="keys"><kbd>/</kbd> <em>or</em> <kbd>Ctrl</kbd><kbd>K</kbd></span><span>Focus the parent-id filter</span></div>
+                    <div class="shortcut"><span class="keys"><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd><kbd>4</kbd> <kbd>5</kbd></span><span>Filter: All &middot; Post &middot; Page &middot; Whitepaper &middot; Case Studies</span></div>
+                    <div class="shortcut"><span class="keys"><kbd>E</kbd> / <kbd>C</kbd></span><span>Expand / collapse all groups</span></div>
+                    <div class="shortcut"><span class="keys"><kbd>A</kbd></span><span>Select / deselect every deletable revision on the page</span></div>
+                    <div class="shortcut"><span class="keys"><kbd>Del</kbd></span><span>Delete the selected revisions</span></div>
+                    <div class="shortcut"><span class="keys"><kbd>R</kbd></span><span>Reload the list</span></div>
+                    <div class="shortcut"><span class="keys"><kbd>&larr;</kbd> / <kbd>&rarr;</kbd></span><span>Previous / next page</span></div>
+                    <div class="shortcut"><span class="keys"><kbd>Esc</kbd></span><span>Close dialogs, clear selection, leave the input</span></div>
+                    <div class="shortcut"><span class="keys"><kbd>?</kbd></span><span>Show this help</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

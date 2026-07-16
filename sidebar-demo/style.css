@@ -1,0 +1,133 @@
+@import url(https://fonts.googleapis.com/css?family=DM+Sans:100,200,300,regular,500,600,700,800,900,100italic,200italic,300italic,italic,500italic,600italic,700italic,800italic,900italic);
+
+body {
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'DM Sans', serif;
+    color: #0008;
+}
+
+a {
+    text-decoration: none;
+    color: #002
+}
+
+a:visited {
+    color: inherit;
+}
+
+a:hover {
+    color: #000
+}
+
+ul {
+    margin: 0;
+    padding: 0;
+    list-style-type: none;
+}
+
+.img-lock {
+    width: auto;
+    object-fit: contain;
+    position: absolute;
+    top: 0;
+    left: 0;
+    opacity: 0.5;
+    z-index: -1;
+}
+
+.btn {
+    box-shadow: 0 2px 5px #0002;
+    transition: 200ms ease-in-out all;
+}
+
+.btn:hover {
+    box-shadow: 0 0 5px -2px #0002;
+}
+
+
+
+#main-wrapper {
+    display: flex;
+    height: 100%;
+}
+
+#main-wrapper .sidemenu {
+    width: 365px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+    border-right: 1px solid black;
+}
+
+
+#main-wrapper .sidemenu .top {
+    padding: 30px 0;
+}
+
+.top-padding {
+    padding: 0 21px;
+
+}
+
+#main-wrapper .sidemenu .profile {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.top .profile-box {
+    align-items: center;
+    gap: 12px;
+}
+
+.top .profile-box .avtar:not(.img) {
+    display: flex;
+    text-align: center;
+    justify-content: center;
+    align-items: center;
+    width: 75px;
+    height: 75px;
+    border-radius: 50px;
+    font-weight: 800;
+    background: linear-gradient(135deg, rgb(250, 175, 175), rgb(243, 221, 210));
+    font-size: 30px;
+    color: #fff;
+}
+
+.top .profile-box .gretting {
+    font-size: 17px;
+}
+
+.top .profile-box .name {
+    font-size: 23px;
+    font-weight: bold;
+}
+
+.top .setting-btn .btn {
+    font-size: 26px;
+    padding: 1px 18px;
+    background-color: #fff;
+    border: 1px solid #dcdcdc;
+    border-radius: 8px;
+}
+
+.top .menu-wrap {
+    margin-top: 30px;
+}
+
+.top .menu-wrap .menu-item a {
+    padding: 18px 20px;
+    display: block;
+}
+
+.top .menu-wrap .menu-item a svg {
+    width: 21px;
+}
+
+.top .menu-wrap .menu-item a span {
+    margin-left: 10px;
+    display: inline-block;
+    font-size: 18px;
+}

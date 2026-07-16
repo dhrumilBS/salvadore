@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en" class="responsive">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Box Generator</title>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"> </script>
+	<link rel="stylesheet" href="https://bigscal.com/wp-content/themes/enfold/css/custom.css">
+	<link rel="stylesheet" href="https://www.bigscal.com/wp-content/themes/enfold/css/home-v1.css">
+	<link rel="stylesheet" href="./style.css">
+</head>
+
+<body id="top" class="karla">
+	<div id="wrap_all">
+		<div class="wrap">
+			<div class="container-fluid py-4">
+
+				<div class="app-header mb-4">
+					<h1 class="app-title">Blog Content Builder</h1>
+					<p class="app-subtitle">Paste once from Google Docs — generate clean, WordPress-ready HTML.</p>
+				</div>
+
+				<div class="row">
+					<div class="col-auto" style="max-width: 450px; width: 100%;">
+						<div class="tab-bar d-flex gap-2 mb-3">
+							<button class="w-100 option-btn active" data-target="ctaForm">CTA</button>
+							<button class="w-100 option-btn" data-target="boxForm">Box</button>
+							<button class="w-100 option-btn" data-target="blogSectionForm">Blog Content</button>
+						</div>
+
+						<div class="form-wrapper d-flex flex-column gap-3">
+							<form class="form" id="ctaForm">
+								<div class="text-center fw-bold mb-3">Blog CTA Generator</div>
+
+								<div class="mb-3">
+									<label for="heading" class="form-label fw-semibold">Heading:</label>
+									<input type="text" id="heading" class="form-control" placeholder="e.g. Ready to take your blog to the next level?" required>
+								</div>
+
+								<div class="mb-3">
+									<label for="bullets" class="form-label fw-semibold">Enter Content:</label>
+									<textarea id="bullets" class="form-control" rows="5" placeholder="Write your formatted content here..."></textarea>
+								</div>
+
+								<div class="d-flex gap-3">
+									<div class="col-md mb-3">
+										<label for="btnText" class="form-label fw-semibold">Button Text:</label>
+										<input type="text" id="btnText" class="form-control" placeholder="e.g. Outsource .NET Developers Now!" required>
+									</div>
+									<div class="col-md mb-3">
+										<label for="btnLink" class="form-label fw-semibold">Button Link:</label>
+										<input type="url" id="btnLink" class="form-control" placeholder="e.g. #subscribe or https://yourlink.com">
+									</div>
+								</div>
+
+								<div class="text-end">
+									<button type="submit" class="generate-btn"> Generate HTML </button>
+								</div>
+							</form>
+
+							<form class="form d-none" id="boxForm">
+								<div class="text-center fw-bold mb-3"> Dynamic Box Generator</div>
+								<div class="d-flex align-items-center gap-2 mb-3">
+									<div class="col-4">
+										<div class="form-label fw-semibold m-0">Choose Type:</div>
+									</div>
+									<div class="col d-flex flex-wrap gap-2">
+										<label class="check-label d-flex align-items-center gap-2">
+											<input class="form-check-input input-check" type="radio" name="type" value="pro-tip" required>
+											<span>Pro Tip</span>
+										</label>
+
+										<label class="check-label d-flex align-items-center gap-2">
+											<input class="form-check-input input-check" type="radio" name="type" value="learnMore">
+											<span>Learn More</span>
+										</label>
+
+										<label class="check-label d-flex align-items-center gap-2">
+											<input class="form-check-input input-check" type="radio" name="type" value="note">
+											<span>Note</span>
+										</label>
+									</div>
+								</div>
+								<div class="mb-3">
+									<label for="title" class="col-3 form-label fw-semibold">Enter Title:</label>
+									<input type="text" id="title" class="form-control" placeholder="e.g., Pro Tip, Learn More, Did You Know...">
+								</div>
+								<div class="mb-3">
+									<label for="editor" class="form-label fw-semibold">Enter Content:</label>
+									<textarea id="editor" class="form-control" rows="5" placeholder="Write your formatted content here..."></textarea>
+								</div>
+								<div class="text-end">
+									<button type="submit" class="generate-btn"> Generate HTML </button>
+								</div>
+							</form>
+
+						 
+								<form class="form" id="blogSectionForm">
+									<div class="text-center fw-bold mb-3"> Blog Content Builder</div>
+
+									<div class="mb-3">
+										<label for="heading" class="form-label fw-semibold">Google Doc link:</label>
+										<input class="form-control" type="text" id="docLink" placeholder="Paste your Google Doc link here...">
+									</div>
+									<div class="text-end">
+										<button type="button" class="generate-btn btn-secondary-fill" onclick="fetchDocument()"><i class="bi bi-cloud-download me-1"></i>Load Content</button>
+									</div>
+
+
+									<label for="blogPaste" class="form-label fw-semibold">Paste your blog from Google
+										Docs (or load it from the link above):</label>
+									<div id="blogPaste" class="paste-area" contenteditable="true" data-placeholder="Paste your whole blog here (Ctrl+V) straight from Google Docs…">
+									</div>
+
+									<div class="form-check my-3">
+										<input class="form-check-input" type="checkbox" id="faqSchema" checked>
+										<label class="form-check-label fw-normal" for="faqSchema">Include FAQ schema
+											(JSON-LD)</label>
+									</div>
+
+									<div class="text-end">
+										<button type="submit" class="generate-btn"> Generate HTML </button>
+									</div>
+
+								</form>
+						 
+						</div>
+					</div>
+					<div class="col">
+						<div class="output-wrapper">
+
+							<div class="output p-4 mb-3">
+								<h3 class="mb-3 fw-semibold">Preview:</h3>
+								<div id="preview" class="border rounded-3 p-3 bg-light"></div>
+							</div>
+
+							<div class="output p-4 position-relative">
+								<h3 class="mb-3 fw-semibold">Generated HTML:</h3>
+								<pre id="htmlOutput" class="bg-dark text-white rounded-3 p-3 mb-0"></pre>
+								<button class="copy-btn " id="copyBtn">Copy</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<script src="./script.js"></script>
+
+
+
+</body>
+
+</html>
+<template id="blog-cta">
+	<div class="blog-cta">
+		<div class="cta-content">
+			<h2>${heading}</h2>
+			<ul>${bulletHTML}
+			</ul>
+			<div class="cta-buttons"> <a href="${btnLink}" class="btn-primary">${btnText}</a> </div>
+		</div>
+	</div>
+</template>

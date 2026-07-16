@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Sign in — WP Options Panel</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+
+<body class="auth-body">
+
+    <main class="auth-wrap">
+        <div class="auth-card">
+
+            <div class="brand brand-lg">
+                <span class="brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                    </svg>
+                </span>
+                <span class="brand-text">WP Options <strong>Panel</strong></span>
+            </div>
+
+            <h1>Welcome back</h1>
+            <p class="auth-sub">Sign in to manage the <code>wp_options</code> tables.</p>
+
+            <div id="alert" class="alert" hidden role="alert"></div>
+
+            <form id="login-form" novalidate>
+                <div class="field">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" autocomplete="username"
+                        required autofocus spellcheck="false">
+                </div>
+
+                <div class="field">
+                    <label for="password">Password</label>
+                    <div class="password-wrap">
+                        <input type="password" id="password" name="password"
+                            autocomplete="current-password" required>
+                        <button type="button" id="toggle-password" class="ghost-btn"
+                            aria-label="Show password">Show</button>
+                    </div>
+                </div>
+
+                <button type="submit" id="submit-btn" class="btn btn-primary btn-block">
+                    <span class="btn-label">Sign in</span>
+                    <span class="btn-spinner" aria-hidden="true"></span>
+                </button>
+            </form>
+
+            <p class="auth-foot">Protected area &middot; sessions expire after 30&nbsp;minutes of inactivity.</p>
+        </div>
+    </main>
+
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/login.js"></script>
+</body>
+
+</html>

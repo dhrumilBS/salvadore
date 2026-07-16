@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WP Internal Link Checker</title>
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+
+<body>
+
+    <!-- ── Header ──────────────────────────────────── -->
+    <header class="app-header">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+        </svg>
+        <h1>Internal Link Checker</h1>
+        <span class="hbadge">WordPress</span>
+        <span class="site-url" id="site-url-label"></span>
+    </header>
+
+    <div class="container">
+
+        <!-- ── Controls ─────────────────────────────── -->
+        <div class="controls-bar">
+            <div class="ctrl-group">
+                <label>Page</label>
+                <input type="number" id="inp-page" value="1" min="1">
+            </div>
+            <div class="ctrl-group">
+                <label>Per Page</label>
+                <input type="number" id="inp-perpage" value="50" min="1" max="500">
+            </div>
+            <button class="btn btn-primary" onclick="loadLinks()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="23 4 23 10 17 10" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+                Load Posts
+            </button>
+            <button class="btn btn-success" id="btn-check-all" onclick="checkAllLinks()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Check All Links
+            </button>
+            <div class="ctrl-group" style="margin-left:auto">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="inp-search" placeholder="Search URL, anchor, title…">
+            </div>
+            <button class="btn btn-ghost" onclick="exportCsv()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                CSV
+            </button>
+        </div>
+
+        <!-- ── Stats ─────────────────────────────────── -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="sv" id="stat-total">—</div>
+                <div class="sl">Total Links</div>
+            </div>
+            <div class="stat-card s-ok">
+                <div class="sv" id="stat-ok">—</div>
+                <div class="sl">OK (2xx)</div>
+            </div>
+            <div class="stat-card s-rd">
+                <div class="sv" id="stat-rd">—</div>
+                <div class="sl">Redirects (3xx)</div>
+            </div>
+            <div class="stat-card s-err">
+                <div class="sv" id="stat-err">—</div>
+                <div class="sl">Errors (4xx/5xx)</div>
+            </div>
+            <div class="stat-card s-pend">
+                <div class="sv" id="stat-pend">—</div>
+                <div class="sl">Unchecked</div>
+            </div>
+        </div>
+
+        <!-- ── Progress ──────────────────────────────── -->
+        <div class="progress-wrap" id="progress-wrap">
+            <div class="progress-label"><span id="progress-text">Checking…</span></div>
+            <div class="progress-bar-bg">
+                <div class="progress-bar-fill" id="progress-fill"></div>
+            </div>
+        </div>
+
+        <!-- ── Filter Tabs ───────────────────────────── -->
+        <div class="filter-tabs">
+            <button class="ftab active" data-filter="all">All <span class="fc">0</span></button>
+            <button class="ftab" data-filter="ok">OK <span class="fc">0</span></button>
+            <button class="ftab" data-filter="redirect">Redirects <span class="fc">0</span></button>
+            <button class="ftab" data-filter="error">Errors <span class="fc">0</span></button>
+            <button class="ftab" data-filter="pending">Unchecked <span class="fc">0</span></button>
+        </div>
+
+        <!-- ── Bulk Action Bar ───────────────────────── -->
+        <div class="bulk-bar" id="bulk-bar">
+            <span class="bulk-info" id="bulk-count">0 links selected</span>
+            <button class="btn btn-warning" id="btn-bulk-redir" onclick="bulkFixRedirects()" disabled>⇒ Fix Redirects</button>
+            <input type="text" id="bulk-new-url" placeholder="Or type new URL to apply…">
+            <button class="btn btn-success" id="btn-bulk-custom" onclick="bulkApplyCustom()">Apply</button>
+            <button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.3)" onclick="state.selected.clear();renderTable();updateBulkBar();document.getElementById('select-all').checked=false;">
+                Clear
+            </button>
+        </div>
+
+        <!-- ── Table ─────────────────────────────────── -->
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:36px"><input type="checkbox" id="select-all"></th>
+                        <th class="hide-mob" style="width:120px">Anchor Text</th>
+                        <th>URL / Redirect Target</th>
+                        <th style="width:110px">Status</th>
+                        <th style="width:175px">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody">
+                    <tr>
+                        <td colspan="5">
+                            <div class="empty-state">
+                                <div class="icon">🔗</div>
+                                <p>Click <strong>Load Posts</strong> to fetch internal links.</p>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ── Pagination ────────────────────────────── -->
+        <div class="pagination" id="pagination"></div>
+
+    </div><!-- /container -->
+
+    <!-- ── Edit Modal ──────────────────────────────── -->
+    <div class="modal-overlay" id="edit-modal">
+        <div class="modal-box">
+            <h3>Edit Link URL</h3>
+            <input type="hidden" id="modal-post-id">
+            <div class="modal-field">
+                <label>Current URL</label>
+                <input type="text" id="modal-old-url" readonly>
+            </div>
+            <div class="modal-field">
+                <label>New URL</label>
+                <input type="text" id="modal-new-url" placeholder="https://…">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" id="modal-save-btn" onclick="saveModal()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Toasts ──────────────────────────────────── -->
+    <div id="toast"></div>
+
+    <script src="./js/main.js"></script>
+</body>
+
+</html>

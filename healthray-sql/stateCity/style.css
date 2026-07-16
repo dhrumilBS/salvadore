@@ -1,0 +1,32 @@
+﻿@import url(https://fonts.googleapis.com/css?family=Inter:400,500,600,700,800&display=swap);
+body { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #0f2c4e; margin: 0; min-height: 100vh; }
+.page-shell { margin: 0 auto; padding: 30px 20px 42px; }
+.card-shell { border-radius: 28px; background: #ffffff; box-shadow: 0 28px 90px rgba(16, 45, 85, 0.1); border: 1px solid rgba(22, 91, 152, 0.12); overflow: hidden; }
+.card-header { padding: 30px 32px; display: grid; gap: 18px; background: linear-gradient(135deg, rgba(5, 95, 215, 0.16), rgba(9, 148, 207, 0.06)); }
+.card-header h1 { margin: 0; font-size: clamp(2rem, 2.4vw, 2.8rem); color: #13355e; }
+.card-header p { margin: 0; color: #344a6b; font-size: 1rem; line-height: 1.7; }
+.form-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-top: 10px; }
+.form-row label { font-weight: 600; color: #2d4768; margin-bottom: 8px; display: block; }
+.form-row input,
+.form-row select,
+.form-row button { min-width: 220px; }
+.btn-primary { background-color: #1865c9; border-color: #1654a8; }
+.btn-primary:hover,
+.btn-primary:focus { background-color: #0f4fa4; border-color: #0d458f; }
+.table-responsive { overflow: auto; }
+.data-table { margin-bottom: 0; border-radius: 20px; min-width: 900px; }
+.data-table thead th { background: #36a1ff; color: #ffffff; border-bottom: 0; position: sticky; top: 0; z-index: 2; }
+.data-table tbody tr { transition: background 0.2s ease, transform 0.2s ease; }
+.data-table tbody tr:hover { background: rgba(32, 92, 190, 0.08); }
+.data-table td,
+.data-table th { vertical-align: middle; border-top: 1px solid rgba(22, 64, 110, 0.08); padding: 12px 12px; white-space: pre-wrap; }
+.data-table td:first-child { width: 64px; }
+.data-table .child-row { background: rgba(230, 245, 255, 0.8); }
+.data-table .child-row td { padding-left: 28px; }
+.status-box { padding: 18px 24px; margin: 26px; border-radius: 18px; background: rgba(232, 243, 255, 0.9); color: #1a3b5a; border: 1px solid rgba(28, 99, 195, 0.18); }
+@media (max-width: 900px) {
+    .form-row { flex-direction: column; align-items: stretch; }
+    .form-row input,
+    .form-row select,
+    .form-row button { width: 100%; }
+}

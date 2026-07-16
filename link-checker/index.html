@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Link & UTM Inspector</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+    <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+
+
+
+    <!-- DB SETTINGS MODAL -->
+    <div id="dbModal" class="modal-backdrop">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round">
+                        <ellipse cx="12" cy="5" rx="9" ry="3" />
+                        <path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5" />
+                        <path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3" />
+                    </svg>
+                    Database Settings
+                </div>
+                <button class="modal-close" id="closeModal">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round">
+                        <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-section-label">Saved Sites</div>
+                <div id="savedSitesList" class="saved-sites"></div>
+
+                <div class="modal-actions">
+                    <button class="btn" id="clearDbForm">Clear</button>
+                    <button class="btn btn-primary" id="saveDbConfig">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.2" stroke-linecap="round">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                            <polyline points="17 21 17 13 7 13 7 21" />
+                            <polyline points="7 3 7 8 15 8" />
+                        </svg>
+                        Save & Connect
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOPBAR -->
+    <div class="topbar">
+        <div class="topbar-brand">
+            <div class="brand-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+            </div>
+            <div>
+                <h1>Link &amp; UTM Inspector <span class="brand-sub">/ WordPress</span></h1>
+            </div>
+        </div>
+        <div class="topbar-right">
+            <div class="active-site-pill" id="activeSitePill">
+                <span class="site-dot"></span>
+                <span id="activeSiteLabel">Default DB</span>
+            </div>
+            <button class="btn btn-icon" id="openDbModal" title="Database Settings">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round">
+                    <ellipse cx="12" cy="5" rx="9" ry="3" />
+                    <path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5" />
+                    <path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3" />
+                </svg>
+            </button>
+            <div class="legend" id="legendRow">
+                <span class="legend-item">
+                    <span class="legend-dot" style="background:var(--warn)"></span>
+                    UTM Links
+                </span>
+                <span class="legend-item">
+                    <span class="legend-dot" style="background:var(--accent2)"></span>
+                    Clean Links
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTROLS -->
+    <div class="controls">
+        <div class="ctrl-group">
+            <span class="ctrl-label">Post Status</span>
+            <select id="poststatus" class="styled">
+                <option value="">Loading…</option>
+            </select>
+        </div>
+        
+        <div class="ctrl-group">
+            <span class="ctrl-label">Post Type</span>
+            <select id="posttype" class="styled">
+                <option value="">Loading…</option>
+            </select>
+        </div>
+
+        <div class="ctrl-group">
+            <span class="ctrl-label">Filter</span>
+            <select id="filterUtm" class="styled" style="min-width:140px">
+                <option value="all">All Posts</option>
+                <option value="utm">Has UTM Links</option>
+                <option value="clean">No UTM Links</option>
+                <option value="nolinks">No Links</option>
+            </select>
+        </div>
+
+        <button class="btn btn-refresh" id="refreshTable" title="Reload data">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                stroke-linecap="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+            </svg>
+            Refresh
+        </button>
+
+        <div class="controls-spacer"></div>
+
+        <div class="export-wrap">
+            <button class="btn" id="exportBtn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Export
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round">
+                    <path d="m6 9 6 6 6-6" />
+                </svg>
+            </button>
+            <div class="export-menu" id="exportMenu">
+                <div class="export-menu-header">Export Options</div>
+                <div class="export-item" id="exportAllCSV">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.8">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <path d="M3 9h18M3 15h18M9 3v18" />
+                    </svg>
+                    All visible posts
+                    <span class="ei-badge">CSV</span>
+                </div>
+                <div class="export-item" id="exportUtmCSV">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.8">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 8v4l3 3" />
+                    </svg>
+                    UTM links only
+                    <span class="ei-badge warn">CSV</span>
+                </div>
+                <div class="export-item" id="exportLinksFlat">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.8">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                    </svg>
+                    All links (flat)
+                    <span class="ei-badge">CSV</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="position" >
+        <!-- LOADING OVERLAY -->
+        <div id="loadingOverlay">
+            <div class="spinner"></div>
+            <div class="loading-text" id="loadingText">Loading posts…</div>
+        </div>
+
+        <!-- STATS -->
+        <div class="stats-row" id="statsRow">
+            <div class="stat-card">
+                <div class="stat-label">Total Posts</div>
+                <div class="stat-val blue" id="statTotal">—</div>
+                <div class="stat-sub">in selected type</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Links</div>
+                <div class="stat-val" id="statLinks">—</div>
+                <div class="stat-sub">across all posts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">UTM Links</div>
+                <div class="stat-val orange" id="statUtm">—</div>
+                <div class="stat-sub">links with UTM params</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Posts w/ UTM</div>
+                <div class="stat-val red" id="statPostsUtm">—</div>
+                <div class="stat-sub">posts containing UTM</div>
+            </div>
+        </div>
+
+        <!-- TABLE -->
+        <div class="table-wrap">
+            <table id="postTable" style="width:100%">
+                <thead>
+                    <tr>
+                        <th style="width:46px">#</th>
+                        <th style="width:66px">ID</th>
+                        <th>Slug</th>
+                        <th>Post Title</th>
+                        <th style="width:110px">Status</th>
+                        <th style="width:110px">Published</th>
+                        <th>Links Found</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div id="toast-container"></div>
+
+    <script src="./script.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Card Game</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <div id="game">
+
+        <form id="players-form">
+            <input type="number" name="numPlayers" id="numPlayers">
+            <button type="submit" id="submit">Start Game</button>
+        </form>
+
+
+        <div id="table">
+            <div id="players">
+                <!-- Player 1 -->
+                <div class="player" id="player1">
+                    <h2>Player 1</h2>
+                    <div class="hand" id="hand1"></div>
+                </div>
+                <!-- Player 2 -->
+                <div class="player" id="player2">
+                    <h2>Player 2</h2>
+                    <div class="hand" id="hand2"></div>
+                </div>
+                <!-- Player 3 -->
+                <div class="player" id="player3">
+                    <h2>Player 3</h2>
+                    <div class="hand" id="hand3"></div>
+                </div>
+                <!-- Player 4 -->
+                <div class="player" id="player4">
+                    <h2>Player 4</h2>
+                    <div class="hand" id="hand4"></div>
+                </div>
+            </div>
+        </div>
+
+
+
+        <button id="start-game">Start Game</button>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        const socket = io('http://localhost:3000');
+
+        // Join
+        socket.emit('joinGame');
+
+        // Send move
+        function sendCard(card) {
+            socket.emit('playCard', card);
+        }
+
+        // Receive move
+        socket.on('cardPlayed', data => {
+            playCard(data.player, data.card);
+        });
+    </script>
+    <script src="js/script.js"></script>
+</body>
+
+</html>

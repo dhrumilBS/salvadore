@@ -1,0 +1,37 @@
+# ── WP Options Panel — clean URLs + hardening ────────────────────────
+Options -Indexes -MultiViews
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 1) Redirect direct .html / .php GET requests to the clean, extensionless URL
+    RewriteCond %{REQUEST_METHOD} =GET
+    RewriteCond %{THE_REQUEST} \s/([^?\s]+)\.(?:html|php)[?\s]
+    RewriteRule ^ /%1 [R=301,L,NE]
+
+    # 2) /page  → page.html (frontend pages)
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME}.html -f
+    RewriteRule ^(.+?)/?$ $1.html [L]
+
+    # 3) /api/endpoint → api/endpoint.php (backend)
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME}.php -f
+    RewriteRule ^(.+?)/?$ $1.php [L]
+</IfModule>
+
+# Block internal files (underscore-prefixed) and dotfiles from the web
+<FilesMatch "^(_|\.)">
+    Require all denied
+</FilesMatch>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set Referrer-Policy "same-origin"
+    Header always set Content-Security-Policy "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Bingo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game">
+        <h1>Multiplayer Bingo</h1>
+        
+        <div id="bingo-boards">
+            <div>
+                <h2>Player 1</h2>
+                <table id="player1-board"></table>
+            </div>
+            <div>
+                <h2>Player 2</h2>
+                <table id="player2-board"></table>
+            </div>
+        </div>
+        
+        <div id="bingo-ball">
+            <h3>Current Ball: <span id="current-ball">-</span></h3>
+        </div>
+        
+        <button id="draw-ball">Draw Bingo Ball</button>
+        
+        <div id="result">
+            <h3 id="winner-message"></h3>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

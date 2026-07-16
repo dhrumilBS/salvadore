@@ -1,0 +1,17 @@
+.d-none { display: none; } 
+.create-folder-div .create-folder { display: flex; } 
+.create-folder-div .create-folder .input-field { margin-bottom: 0; } 
+.deleteFolder {}
+
+.deleteFolder .folder { display: flex; gap: 12px; } 
+.deleteFolder .inputCheckbox[type="checkbox"] { margin: 0; } 
+.hero .dir_list ul { /* display: flex; */ width: 100%; list-style: none; margin: 0; flex-wrap: wrap; } 
+.accordion:before,
+.accordion:after { content: unset; } 
+.hero .dir_list ul li { /* width: 24%; */ flex-grow: 1; } 
+.hero .dir_list ul ul { padding-left: 20px; width: 100%; column-count: 1; display: flex; flex-direction: column; } 
+.hero .dir_list ul ul li { width: 100%; } 
+.hero .dir_list ul ul .file { order: 99; } 
+.hero .dir_list .index { background-color: #dcdcdc; padding: 0 4px;  }
+
+.hero .columns #searchInput { height: 60px; } 

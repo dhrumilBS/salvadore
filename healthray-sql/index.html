@@ -1,0 +1,47 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Browser</title>
+    <link rel="stylesheet" href="./css/index.css">
+</head>
+
+<body>
+    <div class="container">
+
+        <div class="hero">
+            <h1>📂 File Browser</h1>
+            <p>Browse folders and open PHP / HTML files</p>
+
+            <div class="controls">
+                <input type="text" id="search" class="search" placeholder="Search files...">
+
+                <button id="reload" class="reload">
+                    Reload
+                </button>
+            </div>
+        </div>
+
+        <div class="breadcrumbs" id="breadcrumbs"></div>
+
+        <div class="browser">
+
+            <div class="header">
+                <div id="folderLabel">Loading...</div>
+                <div id="count"></div>
+            </div>
+
+            <div id="list">
+                <div class="message">Loading...</div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script src="./js/index.js" async> </script>
+</body>
+
+</html>

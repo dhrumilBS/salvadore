@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>WP Options Panel</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+
+<body class="app-body is-loading">
+
+    <!-- Full-page loader shown until the session check passes -->
+    <div id="page-loader" class="page-loader" aria-hidden="true">
+        <span class="spinner"></span>
+    </div>
+
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="brand">
+                <span class="brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                    </svg>
+                </span>
+                <span class="brand-text">WP Options <strong>Panel</strong></span>
+            </div>
+
+            <div class="topbar-actions">
+                <label class="db-select-wrap" for="db-select">
+                    <span class="db-dot" aria-hidden="true"></span>
+                    <select id="db-select" aria-label="Database"></select>
+                </label>
+                <span class="user-chip" id="user-chip" title="Signed in as"></span>
+                <button type="button" id="logout-btn" class="btn btn-ghost">Logout</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <!-- Search toolbar -->
+        <section class="card toolbar" aria-label="Search options">
+            <form id="search-form" class="toolbar-form" novalidate>
+                <div class="field">
+                    <label for="search-column">Column</label>
+                    <select id="search-column">
+                        <option value="option_name" selected>option_name</option>
+                        <option value="option_value">option_value</option>
+                        <option value="option_id">option_id</option>
+                        <option value="autoload">autoload</option>
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label for="search-match">Match</label>
+                    <select id="search-match">
+                        <option value="contains" selected>Contains</option>
+                        <option value="starts">Starts with</option>
+                        <option value="ends">Ends with</option>
+                        <option value="exact">Exact</option>
+                    </select>
+                </div>
+
+                <div class="field field-grow">
+                    <label for="search-value">Value</label>
+                    <input type="text" id="search-value" placeholder="Search… (leave empty to list everything)" spellcheck="false">
+                </div>
+
+                <div class="toolbar-buttons">
+                    <button type="submit" class="btn btn-primary">Search</button>
+                    <button type="button" id="reset-btn" class="btn btn-ghost">Reset</button>
+                    <button type="button" id="delete-matched-btn" class="btn btn-danger-ghost" disabled title="Delete every row matching the current search">Delete matched</button>
+                    <button type="button" id="new-btn" class="btn btn-success">+ New option</button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Results -->
+        <section class="card results" aria-label="Results">
+            <div class="results-head">
+                <div class="results-meta" id="results-meta">Loading…</div>
+                <div class="bulk-bar" id="bulk-bar" hidden>
+                    <span id="bulk-count"></span>
+                    <button type="button" id="bulk-delete-btn" class="btn btn-danger btn-sm">Delete selected</button>
+                    <button type="button" id="bulk-clear-btn" class="btn btn-ghost btn-sm">Clear</button>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table id="results-table">
+                    <thead>
+                        <tr>
+                            <th class="col-check">
+                                <input type="checkbox" id="check-all" aria-label="Select all rows on this page">
+                            </th>
+                            <th class="sortable" data-sort="option_id">ID <span class="sort-arrow"></span></th>
+                            <th class="sortable" data-sort="option_name">Option name <span class="sort-arrow"></span></th>
+                            <th class="sortable col-value" data-sort="option_value">Value <span class="sort-arrow"></span></th>
+                            <th class="sortable" data-sort="autoload">Autoload <span class="sort-arrow"></span></th>
+                            <th class="col-actions">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body"></tbody>
+                </table>
+
+                <div id="empty-state" class="empty-state" hidden>
+                    <p class="empty-title">No records found</p>
+                    <p class="empty-sub">Try a different column, match mode, or search value.</p>
+                </div>
+
+                <div id="table-loader" class="table-loader" hidden>
+                    <span class="spinner"></span>
+                </div>
+            </div>
+
+            <div class="results-foot">
+                <label class="per-page">
+                    Rows per page
+                    <select id="per-select">
+                        <option value="10">10</option>
+                        <option value="25" selected>25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                    </select>
+                </label>
+                <nav class="pagination" id="pagination" aria-label="Pagination"></nav>
+            </div>
+        </section>
+    </main>
+
+    <!-- View modal -->
+    <div class="modal-backdrop" id="modal-view" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="view-title">
+            <div class="modal-head">
+                <h2 id="view-title">Option</h2>
+                <button type="button" class="modal-close" data-close aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <dl class="detail-grid">
+                    <dt>ID</dt>
+                    <dd id="view-id"></dd>
+                    <dt>Name</dt>
+                    <dd id="view-name" class="mono"></dd>
+                    <dt>Autoload</dt>
+                    <dd id="view-autoload"></dd>
+                    <dt>Length</dt>
+                    <dd id="view-length"></dd>
+                </dl>
+                <div class="value-head">
+                    <span>option_value</span>
+                    <button type="button" id="copy-value-btn" class="btn btn-ghost btn-sm">Copy</button>
+                </div>
+                <pre id="view-value" class="value-view" tabindex="0"></pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit / Create modal -->
+    <div class="modal-backdrop" id="modal-edit" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-title">
+            <div class="modal-head">
+                <h2 id="edit-title">Edit option</h2>
+                <button type="button" class="modal-close" data-close aria-label="Close">&times;</button>
+            </div>
+            <form id="edit-form" novalidate>
+                <div class="modal-body">
+                    <div class="field">
+                        <label for="edit-name">Option name</label>
+                        <input type="text" id="edit-name" maxlength="191" required spellcheck="false">
+                    </div>
+                    <div class="field">
+                        <label for="edit-autoload">Autoload</label>
+                        <select id="edit-autoload">
+                            <option value="yes">yes</option>
+                            <option value="no">no</option>
+                            <option value="on">on</option>
+                            <option value="off">off</option>
+                            <option value="auto">auto</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="edit-value">Option value</label>
+                        <div id="serialized-hint" class="hint hint-warn" hidden>
+                            This looks like serialized PHP data — changing string lengths without fixing the
+                            <code>s:N</code> markers will corrupt it.
+                        </div>
+                        <textarea id="edit-value" rows="10" spellcheck="false"></textarea>
+                    </div>
+                </div>
+                <div class="modal-foot">
+                    <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="edit-save-btn">
+                        <span class="btn-label">Save</span>
+                        <span class="btn-spinner" aria-hidden="true"></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Confirm modal -->
+    <div class="modal-backdrop" id="modal-confirm" hidden>
+        <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <div class="modal-head">
+                <h2 id="confirm-title">Confirm</h2>
+                <button type="button" class="modal-close" data-close aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-text"></p>
+                <div class="field" id="confirm-type-wrap" hidden>
+                    <label for="confirm-type">Type <strong>DELETE</strong> to confirm</label>
+                    <input type="text" id="confirm-type" autocomplete="off" spellcheck="false">
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirm-btn">
+                    <span class="btn-label">Delete</span>
+                    <span class="btn-spinner" aria-hidden="true"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/app.js"></script>
+</body>
+
+</html>
