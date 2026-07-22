@@ -11,14 +11,18 @@ io.on('connection', socket => {
 
     socket.on('joinGame', () => {
         socket.join('room1');
+        console.log("Joined");
+        
     });
-
+    
     socket.on('playCard', data => {
         // Broadcast to all players
         io.to('room1').emit('cardPlayed', data);
+        console.log("playCard");
     });
-
+    
     socket.on('dealCards', data => {
         io.to('room1').emit('cardsDealt', data);
+        console.log("Deal");
     });
 });

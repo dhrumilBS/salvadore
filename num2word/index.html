@@ -50,7 +50,7 @@
         e.preventDefault();
         const formData = new FormData(form);
 
-        fetch("./convert.php/", {
+        fetch("./convert.php", {
           method: 'POST',
           body: formData
         })

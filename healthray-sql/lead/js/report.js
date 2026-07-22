@@ -10,13 +10,13 @@ document.addEventListener("DOMContentLoaded", () => {
     let dupMeta = {};
     let visibleCols = new Set();
 
-    /* Active filters — all stack together */
+    /* Active filters - all stack together */
     let activeDupFilter = null;  // null | 'email' | 'phone' | 'time'
     let activeCampaignFilter = null;  // exact string | null
     let activeSourceFilter = null;  // exact string | null
     let activeDateFilter = null;  // exact string | null
 
-    /* Accordion open state — persisted across re-renders */
+    /* Accordion open state - persisted across re-renders */
     const breakdownOpen = { campaign: false, source: false, date: false };
 
     /* ══════════════════════════════════════
@@ -133,12 +133,12 @@ document.addEventListener("DOMContentLoaded", () => {
                     to: document.getElementById("to").value,
                 })
             });
-            if (!res.ok) throw new Error(`Server error — HTTP ${res.status}`);
+            if (!res.ok) throw new Error(`Server error - HTTP ${res.status}`);
             const data = await res.json();
             if (data.status !== "success") throw new Error(data.error || "API returned an error");
             renderAll(data);
             if (data.truncated) {
-                showToast(`Showing first ${data.limit.toLocaleString()} rows — narrow the date range to see all`, "error");
+                showToast(`Showing first ${data.limit.toLocaleString()} rows - narrow the date range to see all`, "error");
                 statusBadge.textContent = "Truncated";
             } else {
                 showToast(`Loaded ${(data.rows || []).length} rows`, "success");
@@ -178,8 +178,8 @@ document.addEventListener("DOMContentLoaded", () => {
     function norm(v) { return (v == null || v === "") ? null : String(v).trim().toLowerCase(); }
 
     /* BREAKDOWN HELPERS
-       extractUtmVal  — resolve UTM param from raw column value
-       getRowDate     — extract YYYY-MM-DD from a row's time fields
+       extractUtmVal  - resolve UTM param from raw column value
+       getRowDate     - extract YYYY-MM-DD from a row's time fields
      */
     function extractUtmVal(raw, colName) {
         if (raw == null || raw === "") return "";
@@ -265,7 +265,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("statDupPhone").textContent = dupPhoneCount;
         document.getElementById("statDupTime").textContent = dupTimeCount;
 
-        /* Breakdown cards — ALWAYS computed from filteredRows so counts
+        /* Breakdown cards - ALWAYS computed from filteredRows so counts
            update reactively when other filters are active.
            e.g. source=google selected → campaign card shows only google rows */
         refreshBreakdownCard("bc-campaign", "utm_campaign", "campaign", activeCampaignFilter);
@@ -546,7 +546,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function openLeadModal(row) {
         const name = row["your-name"];
         const email = row["your-email"];
-        leadModalSub.textContent = [name, email].filter(Boolean).join("  ·  ") || "—";
+        leadModalSub.textContent = [name, email].filter(Boolean).join("  ·  ") || "-";
 
         leadModalBody.innerHTML = allColumns.map(col => `
             <div class="lead-field">
@@ -638,7 +638,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function formatValue(col, value) {
 
         if (value === null || value === undefined || value === "")
-            return '<span style="color:var(--muted)">—</span>';
+            return '<span style="color:var(--muted)">-</span>';
         if (col.startsWith("utm_")) {
             const resolved = extractUtmVal(value, col);
             return `<span class="badge">${esc(resolved || value)}</span>`;

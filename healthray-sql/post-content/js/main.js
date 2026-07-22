@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────
-   Link Checker — main.js  (v2)
+   Link Checker - main.js  (v2)
    ───────────────────────────────────────────── */
 
 const API = 'api.php';
@@ -347,7 +347,7 @@ async function fixGroupRedirects(postId) {
 
 /* ── Fix single redirect inline (no page reload) */
 async function fixSingleRedirect(postId, oldUrl, newUrl, btn) {
-    if (!newUrl) { showToast('No redirect target found — check link first', 'error'); return; }
+    if (!newUrl) { showToast('No redirect target found - check link first', 'error'); return; }
     if (!confirm(`Replace:\n${oldUrl}\n\nWith:\n${newUrl}`)) return;
 
     btn.disabled = true;
@@ -557,7 +557,7 @@ async function saveModal() {
             closeModal();
             updateLinkInState(postId, oldUrl, newUrl);
             showToast('Saved! Re-checking new URL…', 'success');
-            // Re-check only the new URL — no full page reload
+            // Re-check only the new URL - no full page reload
             await checkSingleUrl(newUrl);
             buildGroups();
             updateStats();

@@ -12,7 +12,7 @@ $dotenv->load();
  */
 $DATABASES = [
     'landing' => [
-        'label' => 'Landing — Live',
+        'label' => 'Landing - Live',
         'host'  => $_ENV['DB_HOST'],
         'user'  => $_ENV['DB_USER'],
         'pass'  => $_ENV['DB_PASS'],
@@ -28,7 +28,7 @@ $DATABASES = [
         'port'  => (int) ($_ENV['DB_BP_PORT']),
     ],
     'old' => [
-        'label' => 'Old — Local',
+        'label' => 'Old - Local',
         'host'  => $_ENV['DB_OLD_HOST'] ?? '127.0.0.1',
         'user'  => $_ENV['DB_OLD_USER'] ?? 'root',
         'pass'  => $_ENV['DB_OLD_PASS'] ?? '',
@@ -43,7 +43,7 @@ $DEFAULT_DB = 'landing';
 /**
  * Open a mysqli connection for the given database key.
  * Unknown keys fall back to the default database, so callers can pass
- * untrusted input safely — only databases declared above are reachable.
+ * untrusted input safely - only databases declared above are reachable.
  */
 function db_connect($key = null)
 {
@@ -82,7 +82,7 @@ function db_resolve_key()
 }
 
 /*
- * Backward-compatible default connection — every page that does
+ * Backward-compatible default connection - every page that does
  * `require conn.php` automatically honours the resolved database above.
  * To force a specific DB regardless of request, set $ACTIVE_DB = 'old';
  * before requiring this file.

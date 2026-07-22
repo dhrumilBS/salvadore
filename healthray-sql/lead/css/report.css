@@ -92,7 +92,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); min-
 .search-wrap input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
 
 /* ═══════════════════════════════════════════
-   STAT BAR  (row 1 — summary cards)
+   STAT BAR  (row 1 - summary cards)
 ═══════════════════════════════════════════ */
 .stat-bar { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 

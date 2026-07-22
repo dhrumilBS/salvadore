@@ -26,5 +26,12 @@
         "url": "http://192.168.0.223/salvadore/healthray-sql/lead/lead-report.html",
         "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
         "referrer": "http://192.168.0.223/salvadore/healthray-sql/lead/"
+    },
+    {
+        "time": "2026-07-21 08:33:54",
+        "ip": "192.168.0.223",
+        "url": "http://192.168.0.223/salvadore/healthray-sql/lead/lead-report.html",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "referrer": ""
     }
 ]

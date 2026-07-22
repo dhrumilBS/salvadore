@@ -1,6 +1,6 @@
 <?php
 /**
- * POST api/logout — ends the session (CSRF-protected).
+ * POST api/logout - ends the session (CSRF-protected).
  */
 require_once __DIR__ . '/_bootstrap.php';
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * GET api/session — auth status + CSRF token.
+ * GET api/session - auth status + CSRF token.
  * Called by every page on load; also hands the login page its CSRF token.
  */
 require_once __DIR__ . '/_bootstrap.php';

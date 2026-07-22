@@ -1,6 +1,6 @@
 <?php
 /**
- * GET api/options — paginated, sortable search over wp_options.
+ * GET api/options - paginated, sortable search over wp_options.
  *
  * Params: db, column, match (contains|exact|starts|ends), value,
  *         page, per (10–200), sort, dir (asc|desc)
@@ -34,7 +34,7 @@ $dir = strtolower((string) ($_GET['dir'] ?? 'asc')) === 'desc' ? 'DESC' : 'ASC';
 $page = max(1, (int) ($_GET['page'] ?? 1));
 $per  = min(200, max(10, (int) ($_GET['per'] ?? 25)));
 
-/* WHERE clause — column name comes from the whitelist above, never from raw input */
+/* WHERE clause - column name comes from the whitelist above, never from raw input */
 $where  = '';
 $params = [];
 if ($value !== '') {

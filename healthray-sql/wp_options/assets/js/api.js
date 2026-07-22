@@ -38,7 +38,7 @@ const Api = (() => {
         try {
             res = await fetch(url(path, params), options);
         } catch (e) {
-            throw new ApiError('Network error — is Apache running?', 0);
+            throw new ApiError('Network error - is Apache running?', 0);
         }
 
         let data = null;

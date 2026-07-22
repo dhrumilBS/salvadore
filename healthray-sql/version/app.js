@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------
-// wp_posts › revision — front-end logic
+// wp_posts › revision - front-end logic
 // Talks to api.php (?action=list for GET, action=delete_revisions for POST)
 // Fully custom UI: no framework dependency for modal / collapse / pills.
 // ---------------------------------------------------------------------
@@ -305,7 +305,7 @@ function revHtml(rev, idx) {
     const protectedRev = idx < PROTECTED_COUNT;
 
     const checkboxCell = protectedRev
-        ? `<span class="protected-slot" title="Kept — one of the ${PROTECTED_COUNT} most recent revisions"><i class="bi bi-shield-lock"></i></span>`
+        ? `<span class="protected-slot" title="Kept - one of the ${PROTECTED_COUNT} most recent revisions"><i class="bi bi-shield-lock"></i></span>`
         : `<input type="checkbox" class="row-checkbox" value="${rev.revision_id}">`;
 
     const deleteCell = protectedRev
@@ -440,7 +440,7 @@ function doDelete() {
 }
 
 // Remove exactly the rows that were deleted, update each affected group's
-// counters and tick-strip in place, and drop groups that are now empty —
+// counters and tick-strip in place, and drop groups that are now empty -
 // all without refetching or reloading the page.
 function removeDeletedRows(deletedIds) {
     let deltaMeta = 0;

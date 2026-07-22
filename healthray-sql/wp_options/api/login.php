@@ -1,6 +1,6 @@
 <?php
 /**
- * POST api/login — {username, password} (+ CSRF header).
+ * POST api/login - {username, password} (+ CSRF header).
  * Rate-limited per IP; regenerates session id and CSRF token on success.
  */
 require_once __DIR__ . '/_bootstrap.php';

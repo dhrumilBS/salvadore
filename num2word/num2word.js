@@ -3,22 +3,27 @@ function numberToWords(num) {
     let belowTwenty = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
         "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
     let tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
-    let thousands = ["", "Thousand", "Lack", "Crore", "Arab", "Kharab", "Niyut", "Padma", "Shankh", "Vardhaman"];
+    let scales = ["Thousand", "Lakh", "Crore", "Arab", "Kharab", "Neel", "Padma", "Shankh"];
+
     function helper(n) {
-        log.n = n;
         if (n === 0) return "";
         else if (n < 20) return belowTwenty[n] + " ";
         else if (n < 100) return tens[Math.floor(n / 10)] + " " + helper(n % 10);
-        else if (n < 1000) return belowTwenty[Math.floor(n / 100)] + " hundred " + helper(n % 100);
+        else return belowTwenty[Math.floor(n / 100)] + " hundred " + helper(n % 100);
     }
 
-    let word = "";
+    // Indian system: first group is 3 digits (hundreds),
+    // every group after that is 2 digits (thousand, lakh, crore, ...)
+    let word = helper(num % 1000);
+    num = Math.floor(num / 1000);
+
     let i = 0;
-    while (num > 0) {
-        if (num % 1000 !== 0) {
-            word = helper(num % 1000) + thousands[i] + " " + word;
+    while (num > 0 && i < scales.length) {
+        let group = num % 100;
+        if (group !== 0) {
+            word = helper(group) + scales[i] + " " + word;
         }
-        num = Math.floor(num / 1000);
+        num = Math.floor(num / 100);
         i++;
     }
     return word.trim();
@@ -26,7 +31,7 @@ function numberToWords(num) {
 
 
 document.getElementById('numberInput').addEventListener('input', function () {
-    const number = this.value;
+    const number = this.value.replace(/,/g, '');
     if (number === '' || isNaN(number)) {
         document.getElementById('wordResult').style.display = 'none';
         document.getElementById('logBox').style.display = 'none';

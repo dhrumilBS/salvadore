@@ -1,6 +1,6 @@
 <?php
 /**
- * Panel configuration — never served directly (blocked by .htaccess "_" rule).
+ * Panel configuration - never served directly (blocked by .htaccess "_" rule).
  *
  * To change the admin password, run from a terminal:
  *   php api/_hash.php "your-new-password"

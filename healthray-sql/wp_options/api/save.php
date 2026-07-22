@@ -1,6 +1,6 @@
 <?php
 /**
- * POST api/save — create or update an option (CSRF-protected).
+ * POST api/save - create or update an option (CSRF-protected).
  *
  * action=create: {option_name, option_value, autoload}
  * action=update: {option_id, option_value?, option_name?, autoload?}

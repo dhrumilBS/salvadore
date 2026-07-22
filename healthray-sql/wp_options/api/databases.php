@@ -1,6 +1,6 @@
 <?php
 /**
- * GET api/databases — the databases the panel can work against,
+ * GET api/databases - the databases the panel can work against,
  * plus which one the current request resolved to.
  */
 require_once __DIR__ . '/_bootstrap.php';

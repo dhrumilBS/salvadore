@@ -61,7 +61,7 @@ $result = $stmt->get_result();
 
 /* ── Decode rows ── */
 $rows      = [];
-$allColSet = [];          // ordered array — preserves first-seen order
+$allColSet = [];          // ordered array - preserves first-seen order
 $allColMap = [];          // hash for O(1) duplicate check (replaces in_array loop)
 
 while ($r = $result->fetch_assoc()) {

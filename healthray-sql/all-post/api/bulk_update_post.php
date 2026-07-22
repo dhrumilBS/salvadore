@@ -12,7 +12,7 @@ require $_SERVER['DOCUMENT_ROOT'] . '/salvadore/healthray-sql/conn.php';
 /*
  * Accepts a "posts" field containing a JSON array of objects:
  *   [{ id, post_title, post_name, post_status, menu_order, post_date }, ...]
- * Every row is updated inside a single transaction — if any row fails the
+ * Every row is updated inside a single transaction - if any row fails the
  * whole batch is rolled back so the table is never left half-saved.
  */
 $raw   = $_POST['posts'] ?? '';
@@ -71,7 +71,7 @@ if (count($errors) > 0) {
     $conn->rollback();
     echo json_encode([
         'success' => false,
-        'msg'     => "Batch rolled back — " . implode('; ', $errors),
+        'msg'     => "Batch rolled back - " . implode('; ', $errors),
         'updated' => 0,
     ]);
     exit;

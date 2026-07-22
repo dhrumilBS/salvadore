@@ -1,4 +1,4 @@
-# API directory — internal (underscore-prefixed) files are never served
+# API directory - internal (underscore-prefixed) files are never served
 <FilesMatch "^(_|\.)">
     Require all denied
 </FilesMatch>

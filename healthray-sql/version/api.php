@@ -2,7 +2,7 @@
 require_once $_SERVER['DOCUMENT_ROOT'] . '/salvadore/healthray-sql/conn.php';
 
 /**
- * api.php — backend for the Post Revisions manager.
+ * api.php - backend for the Post Revisions manager.
  *
  * GET  ?action=list        -> returns revisions grouped by parent post, as JSON
  * POST  action=delete_revisions, ids[]=...  -> deletes revisions + their postmeta
@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 
     // Re-verify server-side that every ID is really a revision row before touching anything.
     // We also need each row's post_parent so we can protect the 5 most recent
-    // revisions of each post from deletion — enforced here, not just in the UI.
+    // revisions of each post from deletion - enforced here, not just in the UI.
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
     $types = str_repeat('i', count($ids));
 
@@ -117,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 }
 
 // =====================================================================
-// LIST (default GET action) — grouped by parent post
+// LIST (default GET action) - grouped by parent post
 // =====================================================================
 $allowedParentTypes = ['all', 'post', 'page'];
 $post_type = $_GET['pt'] ?? 'all';

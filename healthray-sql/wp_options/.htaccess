@@ -1,4 +1,4 @@
-# ── WP Options Panel — clean URLs + hardening ────────────────────────
+# ── WP Options Panel - clean URLs + hardening ────────────────────────
 Options -Indexes -MultiViews
 
 <IfModule mod_rewrite.c>

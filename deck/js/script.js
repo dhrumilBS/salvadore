@@ -8,7 +8,7 @@ $(document).ready(function () {
 
         $.ajax({
             type: 'POST',
-            url: 'players.php',
+            url: './api/players.php',
             data: formData,
             dataType: 'json',
             success: function (response) {

@@ -9,14 +9,14 @@ WordPress `wp_options` table, across every database declared in
 ```
 wp_options/
 ├── .htaccess            Clean URLs (/login → login.html, /api/x → api/x.php) + security headers
-├── index.html           Dashboard (frontend only — no PHP in pages)
+├── index.html           Dashboard (frontend only - no PHP in pages)
 ├── login.html           Sign-in page
 ├── assets/
 │   ├── css/style.css
 │   └── js/api.js        Fetch wrapper: CSRF header, JSON, 401 → redirect to /login
 │       ├── login.js
 │       └── app.js       Dashboard logic (search, sort, paginate, CRUD, modals, toasts)
-└── api/                 PHP backend — JSON only
+└── api/                 PHP backend - JSON only
     ├── .htaccess        Blocks _internal files
     ├── _config.php      Admin credentials + session/lockout settings
     ├── _bootstrap.php   Session hardening, CSRF, auth, rate limiting
@@ -34,8 +34,8 @@ wp_options/
 
 ## URLs (no file extensions)
 
-- `http://localhost/salvadore/healthray-sql/wp_options/` — dashboard
-- `http://localhost/salvadore/healthray-sql/wp_options/login` — sign in
+- `http://localhost/salvadore/healthray-sql/wp_options/` - dashboard
+- `http://localhost/salvadore/healthray-sql/wp_options/login` - sign in
 - Direct `.html`/`.php` GET requests are 301-redirected to the clean URL.
 
 ## Security

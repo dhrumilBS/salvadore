@@ -1,4 +1,4 @@
-/* WP Options Panel — dashboard */
+/* WP Options Panel - dashboard */
 (() => {
     'use strict';
 
@@ -194,7 +194,7 @@
                 <td class="cell-name">${escapeHtml(row.option_name)}</td>
                 <td>
                     <div class="cell-value">${escapeHtml(row.option_value) || '<em>(empty)</em>'}</div>
-                    ${truncated ? `<span class="len-badge">${row.value_length.toLocaleString()} chars — truncated</span>` : ''}
+                    ${truncated ? `<span class="len-badge">${row.value_length.toLocaleString()} chars - truncated</span>` : ''}
                 </td>
                 <td><span class="badge ${autoloadOn ? 'badge-yes' : 'badge-no'}">${escapeHtml(row.autoload)}</span></td>
                 <td class="col-actions">
@@ -432,7 +432,7 @@
         if (state.value === '') return;
         const ok = await confirmDialog({
             title: 'Delete all matching rows',
-            text: `Delete ALL ${state.total.toLocaleString()} record(s) where ${state.column} ${state.match} “${state.value}” — across every page, not just this one. This cannot be undone.`,
+            text: `Delete ALL ${state.total.toLocaleString()} record(s) where ${state.column} ${state.match} “${state.value}” - across every page, not just this one. This cannot be undone.`,
             typed: true,
             button: `Delete ${state.total.toLocaleString()} rows`,
         });
@@ -497,7 +497,7 @@
             await navigator.clipboard.writeText($('view-value').textContent);
             toast('Value copied to clipboard.', 'success');
         } catch (e) {
-            toast('Copy failed — select the text manually.', 'error');
+            toast('Copy failed - select the text manually.', 'error');
         }
     });
 

@@ -119,7 +119,7 @@ if ($action === 'check_status') {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => false,   // Don't follow — we want the raw 3xx
+        CURLOPT_FOLLOWLOCATION => false,   // Don't follow - we want the raw 3xx
         CURLOPT_NOBODY         => true,    // HEAD request
         CURLOPT_TIMEOUT        => 10,
         CURLOPT_USERAGENT      => 'Mozilla/5.0 (compatible; LinkChecker/1.0)',

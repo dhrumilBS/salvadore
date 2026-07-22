@@ -1,9 +1,9 @@
 <?php
 /**
- * POST api/delete — delete options (CSRF-protected).
+ * POST api/delete - delete options (CSRF-protected).
  *
- * mode=ids:   {ids: [1,2,3]}                       — selected rows
- * mode=match: {column, match, value, confirm:true} — everything matching a search
+ * mode=ids:   {ids: [1,2,3]}                       - selected rows
+ * mode=match: {column, match, value, confirm:true} - everything matching a search
  */
 require_once __DIR__ . '/_bootstrap.php';
 
@@ -63,7 +63,7 @@ if ($mode === 'match') {
 
     $value = (string) ($_POST['value'] ?? '');
     if ($value === '') {
-        json_error('A search value is required — refusing to delete the whole table.', 422);
+        json_error('A search value is required - refusing to delete the whole table.', 422);
     }
 
     if ($match === 'exact') {

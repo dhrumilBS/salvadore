@@ -1,6 +1,6 @@
 <?php
 /**
- * GET api/option — full single row (untruncated option_value).
+ * GET api/option - full single row (untruncated option_value).
  * Params: id, db
  */
 require_once __DIR__ . '/_bootstrap.php';
