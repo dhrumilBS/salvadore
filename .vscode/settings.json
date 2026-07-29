@@ -1,6 +1,6 @@
 {
     //  "workbench.colorTheme": "Ayu Dark Bordered",
-    "workbench.iconTheme": "vs-minimal",
+    // "workbench.iconTheme": "vs-minimal",
     // "editor.fontFamily": "Courier New",
     "git.ignoreLimitWarning": true
 }

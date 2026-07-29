@@ -1,29 +1,24 @@
 <?php
-require $_SERVER['DOCUMENT_ROOT'] . '/salvadore/healthray-sql/conn.php';
+require __DIR__ . '/bootstrap.php';
 
-$query = "SELECT id, post_name, post_title, menu_order, post_status, post_date
-FROM wp_posts
-WHERE post_type = 'page' AND post_status = 'publish' OR post_status = 'trash'
-ORDER BY menu_order ASC;";
+$postType = link_sanitize_post_type($_POST['post_type'] ?? $_GET['post_type'] ?? 'page');
+$status   = link_sanitize_status($_POST['status'] ?? $_GET['status'] ?? 'all');
+$where    = link_build_where($postType, $status);
 
-$res = $conn->query($query);
+$query = "SELECT
+    p.ID AS id, p.post_type, p.post_name, p.post_title, p.menu_order,
+    p.post_status, p.post_date, p.guid,
+    MAX(CASE WHEN pm.meta_key = '_yoast_wpseo_title' THEN pm.meta_value END) AS meta_title,
+    MAX(CASE WHEN pm.meta_key = '_yoast_wpseo_metadesc' THEN pm.meta_value END) AS meta_description
+FROM wp_posts p
+LEFT JOIN wp_postmeta pm ON p.ID = pm.post_id
+WHERE {$where}
+GROUP BY p.ID
+ORDER BY p.menu_order ASC, p.post_title ASC";
 
-$state = [];
-if ($res && mysqli_num_rows($res) > 0) {
+$res  = $conn->query($query);
+$data = $res ? $res->fetch_all(MYSQLI_ASSOC) : [];
 
-    while ($row = $res->fetch_assoc()) {
-        $card = [
-            'id' => $row['id'],
-            'post_name' => $row['post_name'],
-            'post_title' => $row['post_title'],
-            'post_status' => $row['post_status'],
-            'menu_order' => $row['menu_order'],
-            'post_date' => $row['post_date'],
-        ];
-        $state[] = $card;
-    }
-    $result = ['success' => true, "msg" => "List Successful", "data" => $state];
-} else {
-    $result = ['success' => false, "msg" => "No data found"];
-}
-echo json_encode($result);
+$data
+    ? json_out(true, 'List Successful', ['data' => $data])
+    : json_out(false, 'No data found');

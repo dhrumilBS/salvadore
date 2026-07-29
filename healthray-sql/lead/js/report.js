@@ -15,9 +15,11 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeCampaignFilter = null;  // exact string | null
     let activeSourceFilter = null;  // exact string | null
     let activeDateFilter = null;  // exact string | null
+    let activePageFilter = null;  // exact string | null
+    let activeAdtypeFilter = null;  // 'Organic' | 'Ads' | null
 
     /* Accordion open state - persisted across re-renders */
-    const breakdownOpen = { campaign: false, source: false, date: false };
+    const breakdownOpen = { campaign: false, source: false, date: false, page: false, adtype: false };
 
     /* ══════════════════════════════════════
        DATE DEFAULTS
@@ -197,6 +199,22 @@ document.addEventListener("DOMContentLoaded", () => {
         return m ? m[0] : String(t).slice(0, 10) || "(unknown)";
     }
 
+    /* Page the form was submitted from - shown as the URL path (e.g. "/emr-software/") */
+    function getPageName(row) {
+        const raw = row["page-name"] || row["handl_url_cf7-264"] || "";
+        if (!raw) return "(unknown)";
+        try {
+            const path = new URL(String(raw)).pathname;
+            return path === "" || path === "/" ? "(home)" : path;
+        } catch { return String(raw); }
+    }
+
+    /* Organic (no ad platform) vs Ads (utm_medium=cpc from Google/Facebook Ads etc.) */
+    function getAdType(row) {
+        const medium = extractUtmVal(row["utm_medium"], "utm_medium").trim().toLowerCase();
+        return medium === "cpc" ? "Ads" : "Organic";
+    }
+
     /* Build [{ value, count }] from a set of rows for a given dimension */
     function buildBreakdown(rows, dimension) {
         const map = {};
@@ -204,6 +222,10 @@ document.addEventListener("DOMContentLoaded", () => {
             let key;
             if (dimension === "date") {
                 key = getRowDate(row);
+            } else if (dimension === "page") {
+                key = getPageName(row);
+            } else if (dimension === "adtype") {
+                key = getAdType(row);
             } else {
                 /* utm_campaign or utm_source */
                 const raw = row[dimension];
@@ -271,6 +293,8 @@ document.addEventListener("DOMContentLoaded", () => {
         refreshBreakdownCard("bc-campaign", "utm_campaign", "campaign", activeCampaignFilter);
         refreshBreakdownCard("bc-source", "utm_source", "source", activeSourceFilter);
         refreshBreakdownCard("bc-date", "date", "date", activeDateFilter);
+        refreshBreakdownCard("bc-page", "page", "page", activePageFilter);
+        refreshBreakdownCard("bc-adtype", "adtype", "adtype", activeAdtypeFilter);
     }
 
     /* ════════════════════════════════════════════════════════
@@ -326,6 +350,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (filterKey === "campaign") activeCampaignFilter = activeCampaignFilter === val ? null : val;
         if (filterKey === "source") activeSourceFilter = activeSourceFilter === val ? null : val;
         if (filterKey === "date") activeDateFilter = activeDateFilter === val ? null : val;
+        if (filterKey === "page") activePageFilter = activePageFilter === val ? null : val;
+        if (filterKey === "adtype") activeAdtypeFilter = activeAdtypeFilter === val ? null : val;
 
         updateFilterStrip();
 
@@ -350,6 +376,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (activeCampaignFilter) parts.push(`Campaign: ${activeCampaignFilter}`);
         if (activeSourceFilter) parts.push(`Source: ${activeSourceFilter}`);
         if (activeDateFilter) parts.push(`Date: ${activeDateFilter}`);
+        if (activePageFilter) parts.push(`Page: ${activePageFilter}`);
+        if (activeAdtypeFilter) parts.push(`Type: ${activeAdtypeFilter}`);
 
         if (parts.length === 0) {
             filterStrip.classList.remove("visible");
@@ -376,6 +404,8 @@ document.addEventListener("DOMContentLoaded", () => {
         activeCampaignFilter = null;
         activeSourceFilter = null;
         activeDateFilter = null;
+        activePageFilter = null;
+        activeAdtypeFilter = null;
         ["email", "phone", "time"].forEach(t =>
             document.getElementById(`cardDup${cap(t)}`).classList.remove("active-filter")
         );
@@ -386,7 +416,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* ════════════════════════════════════════════════════════
        APPLY ALL FILTERS
-       Order: text search → dup → source → campaign → date
+       Order: text search → dup → source → campaign → date → page → adtype
        All filters are AND-combined (each narrows the set).
        After filtering, breakdown cards re-render from the
        resulting filteredRows so counts are always in sync.
@@ -429,6 +459,16 @@ document.addEventListener("DOMContentLoaded", () => {
         /* 5. Date */
         if (activeDateFilter) {
             rows = rows.filter(row => getRowDate(row) === activeDateFilter);
+        }
+
+        /* 6. Page Name */
+        if (activePageFilter) {
+            rows = rows.filter(row => getPageName(row) === activePageFilter);
+        }
+
+        /* 7. Organic / Ads */
+        if (activeAdtypeFilter) {
+            rows = rows.filter(row => getAdType(row) === activeAdtypeFilter);
         }
 
         filteredRows = rows;

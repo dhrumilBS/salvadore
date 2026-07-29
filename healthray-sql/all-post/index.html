@@ -4,8 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Menu Order Manager</title>
-    <link rel="stylesheet" href="./../../bootstrap/dist/css/bootstrap.css">
+    <title>Post Manager</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="./css/style.css">
 </head>
 
@@ -16,8 +16,8 @@
             <div class="app-title">
                 <span class="app-title__icon">☰</span>
                 <div>
-                    <h1>Menu Order Manager</h1>
-                    <p>Reorder, rename and publish your pages</p>
+                    <h1>Post Manager</h1>
+                    <p>Reorder, rename, publish and export your content</p>
                 </div>
             </div>
             <div class="app-header__actions">
@@ -30,26 +30,53 @@
         </div>
     </header>
 
-    <!-- ===== Bulk action bar ===== -->
-    <div class="bulk-bar" id="bulkBar">
-        <div class="bulk-bar__left">
-            <span class="bulk-bar__count"><strong id="selCount">0</strong> selected</span>
-        </div>
-        <div class="bulk-bar__right">
-            <label class="bulk-field">
-                Set status
-                <select id="bulkStatus" class="form-select form-select-sm">
-                    <option value="">- keep -</option>
-                    <option value="publish">publish</option>
-                    <option value="draft">draft</option>
-                    <option value="pending">pending</option>
-                    <option value="private">private</option>
-                    <option value="future">future</option>
-                    <option value="trash">trash</option>
+    <!-- ===== Post type + status filter bar ===== -->
+    <div class="sticky-bar">
+        <div class="filter-bar">
+            <ul class="nav nav-pills" id="typeTabs">
+                <li class="nav-item"><a href="#" class="nav-link" data-type="all">All</a></li>
+                <li class="nav-item"><a href="#" class="nav-link active" data-type="page">Page</a></li>
+                <li class="nav-item"><a href="#" class="nav-link" data-type="post">Post</a></li>
+                <li class="nav-item"><a href="#" class="nav-link" data-type="whitepaper">Whitepaper</a></li>
+                <li class="nav-item"><a href="#" class="nav-link" data-type="events">Event</a></li>
+                <li class="nav-item"><a href="#" class="nav-link" data-type="case-studies">Case Studies</a></li>
+            </ul>
+            <div class="filter-bar__right">
+                <label for="statusFilter" class="mb-0 fw-semibold">Status</label>
+                <select id="statusFilter" class="form-select form-select-sm" style="width: auto;">
+                    <option value="all">All</option>
+                    <option value="publish">Publish</option>
+                    <option value="draft">Draft</option>
+                    <option value="pending">Pending</option>
+                    <option value="private">Private</option>
+                    <option value="future">Future</option>
+                    <option value="trash">Trash</option>
                 </select>
-            </label>
-            <button class="btn btn-light btn-sm" id="clearSelBtn">Clear</button>
-            <button class="btn btn-warning btn-sm" id="bulkSaveBtn">💾 Save selected</button>
+                <a class="btn btn-success btn-sm" id="exportBtn" href="api/export_link.php">⬇ Export CSV</a>
+            </div>
+        </div>
+
+        <!-- ===== Bulk action bar ===== -->
+        <div class="bulk-bar" id="bulkBar">
+            <div class="bulk-bar__left">
+                <span class="bulk-bar__count"><strong id="selCount">0</strong> selected</span>
+            </div>
+            <div class="bulk-bar__right">
+                <label class="bulk-field">
+                    Set status
+                    <select id="bulkStatus" class="form-select form-select-sm">
+                        <option value="">- keep -</option>
+                        <option value="publish">publish</option>
+                        <option value="draft">draft</option>
+                        <option value="pending">pending</option>
+                        <option value="private">private</option>
+                        <option value="future">future</option>
+                        <option value="trash">trash</option>
+                    </select>
+                </label>
+                <button class="btn btn-light btn-sm" id="clearSelBtn">Clear</button>
+                <button class="btn btn-warning btn-sm" id="bulkSaveBtn">💾 Save selected</button>
+            </div>
         </div>
     </div>
 
@@ -66,6 +93,8 @@
                         <th class="col-id">ID</th>
                         <th>Post Title</th>
                         <th>Post Name (slug)</th>
+                        <th class="col-meta">Meta Title</th>
+                        <th class="col-meta">Meta Description</th>
                         <th class="col-status">Status</th>
                         <th class="col-date">Post Date</th>
                         <th class="col-order">Menu Order</th>
@@ -77,7 +106,10 @@
                 </tbody>
             </table>
             <div id="emptyState" class="empty-state d-none">No posts match your search.</div>
-            <div id="loadingState" class="empty-state">Loading…</div>
+            <div id="loadingState" class="loading-overlay">
+                <div class="spinner" aria-hidden="true"></div>
+                <div class="loading-overlay__text">Loading…</div>
+            </div>
         </div>
     </main>
 
@@ -90,238 +122,10 @@
             </div>
         </div>
     </div>
-
-    <script src="./../../bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"> </script>
 
-    <script>
-        const STATUSES = ["publish", "draft", "pending", "private", "future", "trash"];
-        let POSTS = [];                 // cached list from the server
-        const dirty = new Set();        // ids the user edited but hasn't saved
-
-        // ---- helpers -----------------------------------------------------
-        // Escape a value so it is safe inside an HTML attribute.
-        function esc(v) {
-            return String(v ?? "")
-                .replaceAll("&", "&amp;")
-                .replaceAll('"', "&quot;")
-                .replaceAll("<", "&lt;")
-                .replaceAll(">", "&gt;");
-        }
-
-        function statusOptions(current) {
-            return STATUSES.map(s =>
-                `<option value="${s}" ${s === current ? "selected" : ""}>${s}</option>`
-            ).join("");
-        }
-
-        function showToast(message, success = true) {
-            const toastEl = document.getElementById("toastMsg");
-            document.getElementById("toastText").textContent = message;
-            toastEl.classList.remove("bg-success", "bg-danger");
-            toastEl.classList.add(success ? "bg-success" : "bg-danger");
-            new bootstrap.Toast(toastEl).show();
-        }
-
-        // ---- render ------------------------------------------------------
-        function renderRows(list) {
-            const rows = list.map((post, i) => `
-                <tr id="row-${post.id}" data-id="${post.id}">
-                    <td class="col-check">
-                        <input type="checkbox" class="form-check-input row-check" value="${post.id}">
-                    </td>
-                    <td class="col-no text-muted">${i + 1}</td>
-                    <td class="col-id"><span class="id-badge">#${post.id}</span></td>
-                    <td><input class="form-control field" data-f="post_title" id="title-${post.id}" value="${esc(post.post_title)}"></td>
-                    <td><input class="form-control field" data-f="post_name" id="name-${post.id}" value="${esc(post.post_name)}"></td>
-                    <td class="col-status">
-                        <select class="form-select field status-select status--${esc(post.post_status)}" data-f="post_status" id="status-${post.id}">
-                            ${statusOptions(post.post_status)}
-                        </select>
-                    </td>
-                    <td class="col-date"><input class="form-control field" data-f="post_date" id="date-${post.id}" value="${esc(post.post_date)}"></td>
-                    <td class="col-order"><input class="form-control field text-center" type="number" data-f="menu_order" id="order-${post.id}" value="${esc(post.menu_order)}"></td>
-                    <td class="col-save">
-                        <button class="btn btn-primary btn-sm save-btn" onclick="updatePost(${post.id})">Save</button>
-                    </td>
-                </tr>
-            `).join("");
-
-            $("#postRows").html(rows);
-            $("#loadingState").addClass("d-none");
-            $("#emptyState").toggleClass("d-none", list.length > 0);
-            updateSelectionUI();
-        }
-
-        function applyFilter() {
-            const q = $("#searchInput").val().trim().toLowerCase();
-            if (!q) return renderRows(POSTS);
-            const filtered = POSTS.filter(p =>
-                String(p.post_title).toLowerCase().includes(q) ||
-                String(p.post_name).toLowerCase().includes(q) ||
-                String(p.post_status).toLowerCase().includes(q) ||
-                String(p.id).includes(q)
-            );
-            renderRows(filtered);
-        }
-
-        // ---- load --------------------------------------------------------
-        function loadPosts() {
-            $("#loadingState").removeClass("d-none").text("Loading…");
-            $.post("./api/get_post.php", {}, function (response) {
-                let res;
-                try { res = JSON.parse(response); }
-                catch (e) { showToast("Bad server response", false); return; }
-
-                if (!res.success) {
-                    $("#loadingState").text(res.msg || "No data found");
-                    POSTS = [];
-                    renderRows([]);
-                    return;
-                }
-                POSTS = res.data;
-                dirty.clear();
-                $("#searchInput").val("");
-                renderRows(POSTS);
-            }).fail(() => showToast("Failed to load posts", false));
-        }
-
-        // ---- read a row's current values from the inputs -----------------
-        function readRow(id) {
-            return {
-                id: id,
-                post_title: $("#title-" + id).val(),
-                post_name: $("#name-" + id).val(),
-                post_status: $("#status-" + id).val(),
-                menu_order: $("#order-" + id).val(),
-                post_date: $("#date-" + id).val()
-            };
-        }
-
-        // ---- single update ----------------------------------------------
-        function updatePost(id) {
-            const data = readRow(id);
-            const btn = $(`#row-${id} .save-btn`);
-            btn.text("Saving…").prop("disabled", true);
-
-            $.post("./api/update_post.php", data, function (response) {
-                let res;
-                try { res = JSON.parse(response); }
-                catch (e) { showToast("Bad server response", false); btn.text("Save").prop("disabled", false); return; }
-
-                if (res.success) {
-                    showToast(res.msg, true);
-                    syncCache(data);
-                    dirty.delete(String(id));
-                    $(`#row-${id}`).removeClass("row--dirty");
-                    btn.removeClass("btn-warning").addClass("btn-primary").text("Save");
-                } else {
-                    showToast(res.msg, false);
-                    btn.text("Save");
-                }
-                btn.prop("disabled", false);
-            }).fail(() => { showToast("Request failed", false); btn.text("Save").prop("disabled", false); });
-        }
-
-        // ---- bulk update -------------------------------------------------
-        function bulkSave() {
-            const ids = $(".row-check:checked").map((_, el) => el.value).get();
-            if (ids.length === 0) { showToast("Select at least one row", false); return; }
-
-            const overrideStatus = $("#bulkStatus").val();
-            const payload = ids.map(id => {
-                const row = readRow(id);
-                if (overrideStatus) row.post_status = overrideStatus;
-                return row;
-            });
-
-            const btn = $("#bulkSaveBtn");
-            btn.text("Saving…").prop("disabled", true);
-
-            $.post("./api/bulk_update_post.php", { posts: JSON.stringify(payload) }, function (response) {
-                let res;
-                try { res = JSON.parse(response); }
-                catch (e) { showToast("Bad server response", false); btn.prop("disabled", false).text("💾 Save selected"); return; }
-
-                showToast(res.msg, res.success);
-                if (res.success) {
-                    payload.forEach(syncCache);
-                    payload.forEach(p => dirty.delete(String(p.id)));
-                    $("#bulkStatus").val("");
-                    // refresh display while preserving search & order
-                    applyFilter();
-                    $("#selectAll").prop("checked", false);
-                }
-                btn.prop("disabled", false).text("💾 Save selected");
-            }).fail(() => { showToast("Request failed", false); btn.prop("disabled", false).text("💾 Save selected"); });
-        }
-
-        // keep the in-memory cache in sync after a successful save
-        function syncCache(data) {
-            const p = POSTS.find(x => String(x.id) === String(data.id));
-            if (!p) return;
-            p.post_title = data.post_title;
-            p.post_name = data.post_name;
-            p.post_status = data.post_status;
-            p.menu_order = data.menu_order;
-            p.post_date = data.post_date;
-        }
-
-        // ---- selection UI ------------------------------------------------
-        function updateSelectionUI() {
-            const checks = $(".row-check");
-            const checked = $(".row-check:checked");
-            $("#selCount").text(checked.length);
-            $("#bulkBar").toggleClass("bulk-bar--active", checked.length > 0);
-            $("#selectAll").prop("checked", checks.length > 0 && checked.length === checks.length);
-        }
-
-        // ---- events ------------------------------------------------------
-        $(document).on("change", "#selectAll", function () {
-            $(".row-check").prop("checked", this.checked);
-            updateSelectionUI();
-        });
-
-        $(document).on("change", ".row-check", updateSelectionUI);
-
-        $("#clearSelBtn").on("click", function () {
-            $(".row-check, #selectAll").prop("checked", false);
-            updateSelectionUI();
-        });
-
-        $("#bulkSaveBtn").on("click", bulkSave);
-        $("#reloadBtn").on("click", loadPosts);
-
-        // mark a row dirty when any field changes
-        $(document).on("input change", ".field", function () {
-            const id = $(this).closest("tr").data("id");
-            dirty.add(String(id));
-            $(`#row-${id}`).addClass("row--dirty");
-            $(`#row-${id} .save-btn`).removeClass("btn-primary").addClass("btn-warning");
-            // re-colour status select live
-            if ($(this).hasClass("status-select")) {
-                this.className = this.className.replace(/status--\S+/g, "") + " status--" + this.value;
-            }
-        });
-
-        // search
-        $("#searchInput").on("input", applyFilter);
-
-        // Enter = save row, Esc = blur
-        $(document).on("keydown", ".field", function (e) {
-            const id = $(this).closest("tr").data("id");
-            if (e.key === "Enter") { e.preventDefault(); updatePost(id); }
-            if (e.key === "Escape") { e.target.blur(); }
-        });
-
-        // warn before leaving with unsaved edits
-        window.addEventListener("beforeunload", function (e) {
-            if (dirty.size > 0) { e.preventDefault(); e.returnValue = ""; }
-        });
-
-        // ---- init --------------------------------------------------------
-        loadPosts();
-    </script>
+    <script src="./js/app.js"></script>
 </body>
 
 </html>
