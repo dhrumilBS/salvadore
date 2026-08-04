@@ -11,7 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let visibleCols = new Set();
 
     /* Active filters - all stack together */
-    let activeDupFilter = null;  // null | 'email' | 'phone' | 'time'
+    let activeDupFilters = new Set();  // subset of 'email' | 'phone' | 'time' - OR combined
     let activeCampaignFilter = null;  // exact string | null
     let activeSourceFilter = null;  // exact string | null
     let activeDateFilter = null;  // exact string | null
@@ -20,6 +20,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* Accordion open state - persisted across re-renders */
     const breakdownOpen = { campaign: false, source: false, date: false, page: false, adtype: false };
+
+    /* Period-over-period comparison state (previous equivalent date range) */
+    let compareRows = null;            // rows from the previous period, or null if not yet loaded/unavailable
+    let compareCampaignMap = null;     // { utm_campaign value -> count } for the previous period
+    let compareSourceMap = null;       // { utm_source value -> count } for the previous period
+    let compareRequestId = 0;          // guards against stale async responses
+    let lastPrevRange = null;          // { from, to } of the last loaded comparison period
+
+    /* Table sort state - persists across filter changes */
+    let sortState = { col: null, dir: 1 };  // dir: 1 = asc, -1 = desc
 
     /* ══════════════════════════════════════
        DATE DEFAULTS
@@ -44,7 +54,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const colPills = document.getElementById("colPills");
     const colSelectorHdr = document.getElementById("colSelectorHdr");
     const filterStrip = document.getElementById("filterStrip");
-    const filterStripLbl = document.getElementById("filterStripLabel");
+    const filterChips = document.getElementById("filterChips");
+    const presetBtns = document.querySelectorAll(".preset-btn");
 
     /* ══════════════════════════════════════
        COLUMN SELECTOR
@@ -69,6 +80,31 @@ document.addEventListener("DOMContentLoaded", () => {
         visibleCols = new Set(defaultShowCols);
         applyVisibility();
     });
+    document.getElementById("btnCompact").addEventListener("click", e => {
+        e.stopPropagation();
+        const compactCols = ["your-name", "your-email", "your-number", "submit_time"].filter(c => allColumns.includes(c));
+        visibleCols = new Set(compactCols.length ? compactCols : defaultShowCols);
+        applyVisibility();
+    });
+
+    /* ══════════════════════════════════════
+       THEME TOGGLE (light/dark, persisted)
+    ══════════════════════════════════════ */
+    const THEME_KEY = "reportTheme";
+    document.getElementById("themeToggle").addEventListener("click", () => {
+        const current = document.documentElement.getAttribute("data-theme");
+        const isDark = current === "dark" || (!current && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        const next = isDark ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+    });
+
+    /* ══════════════════════════════════════
+       MOBILE FILTERS TOGGLE
+    ══════════════════════════════════════ */
+    document.getElementById("mobileFiltersToggle").addEventListener("click", () => {
+        document.getElementById("controlsBar").classList.toggle("mobile-open");
+    });
 
     /* ══════════════════════════════════════
        FORM / SEARCH
@@ -82,13 +118,38 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("to").value = fmt(today);
         tableSearch.value = "";
         clearAllFilters();
+        setActivePreset(null);
         loadData();
+    });
+    document.getElementById("showAllBtn").addEventListener("click", () => {
+        tableSearch.value = "";
+        clearAllFilters();
+        applyFilters();
     });
     tableSearch.addEventListener("input", applyFilters);
-    document.getElementById("dbSelect").addEventListener("change", () => {
-        clearAllFilters();
-        loadData();
+
+    /* ══════════════════════════════════════
+       DATE RANGE PRESETS
+    ══════════════════════════════════════ */
+    presetBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            const days = parseInt(btn.dataset.days, 10);
+            const toD = new Date();
+            const fromD = new Date();
+            fromD.setDate(toD.getDate() - (days - 1));
+            document.getElementById("from").value = fmt(fromD);
+            document.getElementById("to").value = fmt(toD);
+            setActivePreset(btn);
+            loadData();
+        });
     });
+    /* Manually editing From/To no longer matches any preset */
+    ["from", "to"].forEach(id =>
+        document.getElementById(id).addEventListener("input", () => setActivePreset(null))
+    );
+    function setActivePreset(activeBtn) {
+        presetBtns.forEach(b => b.classList.toggle("active", b === activeBtn));
+    }
 
     /* ══════════════════════════════════════
        DUP FILTER CARDS
@@ -96,6 +157,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("cardDupEmail").addEventListener("click", () => toggleDupFilter("email"));
     document.getElementById("cardDupPhone").addEventListener("click", () => toggleDupFilter("phone"));
     document.getElementById("cardDupTime").addEventListener("click", () => toggleDupFilter("time"));
+    document.getElementById("cardDupPk92").addEventListener("click", () => toggleDupFilter("pk92"));
     document.getElementById("clearDupFilter").addEventListener("click", () => { clearAllFilters(); applyFilters(); });
 
     /* ══════════════════════════════════════
@@ -113,7 +175,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     document.getElementById("exportDupCSV").addEventListener("click", () => {
         exportMenu.classList.remove("open");
-        const dupRows = originalRows.filter((_, i) => dupMeta[i]?.email || dupMeta[i]?.phone || dupMeta[i]?.time);
+        const dupRows = originalRows.filter((_, i) => dupMeta[i]?.email || dupMeta[i]?.phone || dupMeta[i]?.time || dupMeta[i]?.pk92);
         if (!dupRows.length) { showToast("No duplicate rows found", "error"); return; }
         doExportCSV(dupRows, true);
     });
@@ -130,7 +192,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    db: document.getElementById("dbSelect").value,
+                    db: 'landing',
                     from: document.getElementById("from").value,
                     to: document.getElementById("to").value,
                 })
@@ -139,6 +201,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
             if (data.status !== "success") throw new Error(data.error || "API returned an error");
             renderAll(data);
+            loadComparison();
             if (data.truncated) {
                 showToast(`Showing first ${data.limit.toLocaleString()} rows - narrow the date range to see all`, "error");
                 statusBadge.textContent = "Truncated";
@@ -155,20 +218,169 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    /* ════════════════════════════════════════════════════════
+       PERIOD-OVER-PERIOD COMPARISON
+       Fetches the immediately preceding period of equal length
+       (e.g. this week vs last week) and derives delta indicators
+       for Total Rows / Showing plus per UTM Campaign/Source.
+    ════════════════════════════════════════════════════════ */
+    function getPreviousRange(fromStr, toStr) {
+        const from = new Date(fromStr + "T00:00:00");
+        const to = new Date(toStr + "T00:00:00");
+        const rangeDays = Math.round((to - from) / 86400000) + 1;
+        const prevTo = new Date(from);
+        prevTo.setDate(prevTo.getDate() - 1);
+        const prevFrom = new Date(prevTo);
+        prevFrom.setDate(prevFrom.getDate() - (rangeDays - 1));
+        return { from: fmt(prevFrom), to: fmt(prevTo) };
+    }
+
+    async function fetchRows(from, to) {
+        const res = await fetch("./../api/get_report.php", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ db: "landing", from, to })
+        });
+        if (!res.ok) throw new Error(`Server error - HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.status !== "success") throw new Error(data.error || "API returned an error");
+        return data.rows || [];
+    }
+
+    async function loadComparison() {
+        const fromVal = document.getElementById("from").value;
+        const toVal = document.getElementById("to").value;
+        if (!fromVal || !toVal) return;
+
+        const myRequestId = ++compareRequestId;
+        const prevRange = getPreviousRange(fromVal, toVal);
+        setDeltaLoading();
+
+        try {
+            const rows = await fetchRows(prevRange.from, prevRange.to);
+            if (myRequestId !== compareRequestId) return; // a newer request superseded this one
+            compareRows = rows;
+        } catch (err) {
+            console.error("Comparison fetch failed", err);
+            if (myRequestId !== compareRequestId) return;
+            compareRows = null;
+        }
+        renderComparison(prevRange);
+    }
+
+    function buildFreqValueMap(rows, dimension) {
+        const map = {};
+        rows.forEach(row => {
+            const val = extractUtmVal(row[dimension], dimension).trim() || "(none)";
+            map[val] = (map[val] || 0) + 1;
+        });
+        return map;
+    }
+
+    function renderComparison(prevRange) {
+        const totalDeltaEl = document.getElementById("statTotalDelta");
+        const showingDeltaEl = document.getElementById("statShowingDelta");
+
+        if (compareRows == null) {
+            compareCampaignMap = null;
+            compareSourceMap = null;
+            totalDeltaEl.textContent = "";
+            totalDeltaEl.className = "stat-delta";
+            showingDeltaEl.textContent = "";
+            showingDeltaEl.className = "stat-delta";
+            return;
+        }
+
+        lastPrevRange = prevRange;
+        setDeltaText(totalDeltaEl, originalRows.length, compareRows.length, prevRange);
+        updateShowingDelta();
+
+        compareCampaignMap = buildFreqValueMap(compareRows, "utm_campaign");
+        compareSourceMap = buildFreqValueMap(compareRows, "utm_source");
+        refreshBreakdownCard("bc-campaign", "utm_campaign", "campaign", activeCampaignFilter);
+        refreshBreakdownCard("bc-source", "utm_source", "source", activeSourceFilter);
+    }
+
+    /* Re-derived on every filter change (not just on load) so it never goes
+       stale relative to the currently applied filters. */
+    function updateShowingDelta() {
+        const showingDeltaEl = document.getElementById("statShowingDelta");
+        if (compareRows == null || !lastPrevRange) return;
+        if (anyFilterActive()) {
+            showingDeltaEl.textContent = "clear filters to compare";
+            showingDeltaEl.className = "stat-delta flat";
+        } else {
+            setDeltaText(showingDeltaEl, filteredRows.length, compareRows.length, lastPrevRange);
+        }
+    }
+
+    function setDeltaText(el, cur, prev, prevRange) {
+        if (prev === 0 && cur === 0) {
+            el.textContent = `No change · prev 0 (${prevRange.from} → ${prevRange.to})`;
+            el.className = "stat-delta flat";
+            return;
+        }
+        if (prev === 0) {
+            el.textContent = `▲ New · prev 0 (${prevRange.from} → ${prevRange.to})`;
+            el.className = "stat-delta up";
+            return;
+        }
+        const pct = Math.round(((cur - prev) / prev) * 100);
+        const arrow = pct > 0 ? "▲" : pct < 0 ? "▼" : "▬";
+        const cls = pct > 0 ? "up" : pct < 0 ? "down" : "flat";
+        el.className = "stat-delta " + cls;
+        el.textContent = `${arrow} ${pct > 0 ? "+" : ""}${pct}% vs prev ${prevRange.from} → ${prevRange.to} (${prev})`;
+    }
+
+    function setDeltaLoading() {
+        ["statTotalDelta", "statShowingDelta"].forEach(id => {
+            const el = document.getElementById(id);
+            el.textContent = "comparing…";
+            el.className = "stat-delta flat";
+        });
+    }
+
+    /* Small "vs previous period" badge for UTM Campaign/Source breakdown rows.
+       Only meaningful when comparing like-for-like, so it's hidden while any
+       other filter narrows the current set (search/dup/other breakdowns). */
+    function buildDeltaBadge(filterKey, value, count) {
+        let prevMap = null;
+        if (filterKey === "campaign") prevMap = compareCampaignMap;
+        else if (filterKey === "source") prevMap = compareSourceMap;
+        if (!prevMap || anyFilterActive()) return "";
+
+        const prev = prevMap[value] || 0;
+        if (prev === 0) return `<span class="bi-delta up" title="No submissions in the previous period">new</span>`;
+
+        const pct = Math.round(((count - prev) / prev) * 100);
+        const cls = pct > 0 ? "up" : pct < 0 ? "down" : "flat";
+        const arrow = pct > 0 ? "▲" : pct < 0 ? "▼" : "▬";
+        return `<span class="bi-delta ${cls}" title="Previous period: ${prev}">${arrow}${pct > 0 ? "+" : ""}${pct}%</span>`;
+    }
+
+    function anyFilterActive() {
+        return activeDupFilters.size > 0 || !!activeCampaignFilter || !!activeSourceFilter ||
+            !!activeDateFilter || !!activePageFilter || !!activeAdtypeFilter || !!tableSearch.value.trim();
+    }
+
     /* DUPLICATE ANALYSIS */
     function analyseDuplicates(rows) {
         const meta = {};
-        rows.forEach((_, i) => (meta[i] = { email: false, phone: false, time: false }));
+        rows.forEach((_, i) => (meta[i] = { email: false, phone: false, time: false, pk92: false }));
         const emailMap = buildFreqMap(rows, r => norm(r["your-email"]));
-        const phoneMap = buildFreqMap(rows, r => norm(r["your-number"]));
         const timeMap = buildFreqMap(rows, r => norm(r["submit_time"]));
+        /* +92 (Pakistan) numbers are their own group - excluded entirely from
+           Dup. Phone detection so they never inflate or trigger that count */
+        const phoneMap = buildFreqMap(rows, r => isPk92Number(r["your-number"]) ? null : norm(r["your-number"]));
         rows.forEach((row, i) => {
             const e = norm(row["your-email"]);
             const p = norm(row["your-number"]);
             const t = norm(row["submit_time"]);
+            const isPk92 = isPk92Number(row["your-number"]);
             if (e && emailMap[e] > 1) meta[i].email = true;
-            if (p && phoneMap[p] > 1) meta[i].phone = true;
+            if (!isPk92 && p && phoneMap[p] > 1) meta[i].phone = true;
             if (t && timeMap[t] > 1) meta[i].time = true;
+            meta[i].pk92 = isPk92;
         });
         return meta;
     }
@@ -178,6 +390,13 @@ document.addEventListener("DOMContentLoaded", () => {
         return m;
     }
     function norm(v) { return (v == null || v === "") ? null : String(v).trim().toLowerCase(); }
+
+    /* +92 / 0092 (Pakistan) country code, after stripping spaces/dashes/parens */
+    function isPk92Number(v) {
+        if (v == null || v === "") return false;
+        const cleaned = String(v).trim().replace(/[\s\-().]/g, "");
+        return /^(\+92|0092)/.test(cleaned);
+    }
 
     /* BREAKDOWN HELPERS
        extractUtmVal  - resolve UTM param from raw column value
@@ -259,7 +478,7 @@ document.addEventListener("DOMContentLoaded", () => {
         
         buildPills();
         renderHead();
-        filteredRows = [...originalRows];
+        filteredRows = sortRows([...originalRows]);
         renderBody();
         refreshStats();          // stat cards + breakdown cards
         updatePagination();
@@ -277,15 +496,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
         document.getElementById("statTotal").textContent = originalRows.length;
         document.getElementById("statShowing").textContent = filteredRows.length;
-        document.getElementById("statRange").textContent = `${fromVal} → ${toVal}`;
         document.getElementById("tableHdrMeta").textContent = `${fromVal} to ${toVal}`;
 
         const dupEmailCount = originalRows.filter((_, i) => dupMeta[i]?.email).length;
         const dupPhoneCount = originalRows.filter((_, i) => dupMeta[i]?.phone).length;
         const dupTimeCount = originalRows.filter((_, i) => dupMeta[i]?.time).length;
+        const pk92Count = originalRows.filter((_, i) => dupMeta[i]?.pk92).length;
         document.getElementById("statDupEmail").textContent = dupEmailCount;
         document.getElementById("statDupPhone").textContent = dupPhoneCount;
         document.getElementById("statDupTime").textContent = dupTimeCount;
+        document.getElementById("statDupPk92").textContent = pk92Count;
+
+        updateShowingDelta();
 
         /* Breakdown cards - ALWAYS computed from filteredRows so counts
            update reactively when other filters are active.
@@ -320,15 +542,15 @@ document.addEventListener("DOMContentLoaded", () => {
         /* Render list rows */
         list.innerHTML = items.map(({ value, count }) => {
             /* Bar width = share of the largest bucket (visual comparison within card) */
-            const pct = Math.round((count / sumCount) * 100);
             const isNone = value === "(none)" || value === "(unknown)";
             const isAct = value === activeVal;
+            const deltaHtml = buildDeltaBadge(filterKey, value, count);
 
             return `<div class="breakdown-item${isAct ? " active" : ""}"
                          data-filter-key="${filterKey}"
                          data-value="${esc(value)}">
-                        <span class="bi-label">${isNone ? `<em>${value}</em>` : esc(value)}</span>
-                        <div class="bi-bar-wrap"><div class="bi-bar" style="width:${pct}%"></div></div>
+                        <span class="bi-label">${isNone ? `<em>${value}</em>` : esc(value)}</span> 
+                        ${deltaHtml}
                         <span class="bi-count">${count}</span>
                     </div>`;
         }).join("");
@@ -368,45 +590,57 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ════════════════════════════════════════════════════════
        FILTER STRIP
     ════════════════════════════════════════════════════════ */
-    const dupLabels = { email: "Dup Email", phone: "Dup Phone", time: "Same Time" };
+    const dupLabels = { email: "Dup Email", phone: "Dup Phone", time: "Same Time", pk92: "+92 Number" };
 
     function updateFilterStrip() {
-        const parts = [];
-        if (activeDupFilter) parts.push(dupLabels[activeDupFilter]);
-        if (activeCampaignFilter) parts.push(`Campaign: ${activeCampaignFilter}`);
-        if (activeSourceFilter) parts.push(`Source: ${activeSourceFilter}`);
-        if (activeDateFilter) parts.push(`Date: ${activeDateFilter}`);
-        if (activePageFilter) parts.push(`Page: ${activePageFilter}`);
-        if (activeAdtypeFilter) parts.push(`Type: ${activeAdtypeFilter}`);
+        /* Each chip carries its own removal handler so filters can be
+           cleared individually without disturbing the others or the date range. */
+        const chips = [];
+        activeDupFilters.forEach(t => chips.push({ label: dupLabels[t], onRemove: () => toggleDupFilter(t) }));
+        if (activeCampaignFilter) chips.push({ label: `Campaign: ${activeCampaignFilter}`, onRemove: () => { activeCampaignFilter = null; updateFilterStrip(); applyFilters(); } });
+        if (activeSourceFilter) chips.push({ label: `Source: ${activeSourceFilter}`, onRemove: () => { activeSourceFilter = null; updateFilterStrip(); applyFilters(); } });
+        if (activeDateFilter) chips.push({ label: `Date: ${activeDateFilter}`, onRemove: () => { activeDateFilter = null; updateFilterStrip(); applyFilters(); } });
+        if (activePageFilter) chips.push({ label: `Page: ${activePageFilter}`, onRemove: () => { activePageFilter = null; updateFilterStrip(); applyFilters(); } });
+        if (activeAdtypeFilter) chips.push({ label: `Type: ${activeAdtypeFilter}`, onRemove: () => { activeAdtypeFilter = null; updateFilterStrip(); applyFilters(); } });
 
-        if (parts.length === 0) {
+        if (chips.length === 0) {
             filterStrip.classList.remove("visible");
-        } else {
-            filterStripLbl.textContent = "Active filters: " + parts.join("  ·  ");
-            filterStrip.classList.add("visible");
+            filterChips.innerHTML = "";
+            return;
         }
+
+        filterStrip.classList.add("visible");
+        filterChips.innerHTML = chips.map((c, i) =>
+            `<span class="filter-chip" data-idx="${i}">${esc(c.label)}<button type="button" aria-label="Remove filter">✕</button></span>`
+        ).join("");
+        filterChips.querySelectorAll(".filter-chip").forEach((el, i) => {
+            el.querySelector("button").addEventListener("click", () => chips[i].onRemove());
+        });
     }
 
     /* ════════════════════════════════════════════════════════
        DUP FILTER TOGGLE
+       Email / Phone / Same-Time can all be active together -
+       a row matching ANY active condition is shown (OR logic).
     ════════════════════════════════════════════════════════ */
     function toggleDupFilter(type) {
-        activeDupFilter = activeDupFilter === type ? null : type;
-        ["email", "phone", "time"].forEach(t =>
-            document.getElementById(`cardDup${cap(t)}`).classList.toggle("active-filter", t === activeDupFilter)
+        if (activeDupFilters.has(type)) activeDupFilters.delete(type);
+        else activeDupFilters.add(type);
+        ["email", "phone", "time", "pk92"].forEach(t =>
+            document.getElementById(`cardDup${cap(t)}`).classList.toggle("active-filter", activeDupFilters.has(t))
         );
         updateFilterStrip();
         applyFilters();
     }
 
     function clearAllFilters() {
-        activeDupFilter = null;
+        activeDupFilters.clear();
         activeCampaignFilter = null;
         activeSourceFilter = null;
         activeDateFilter = null;
         activePageFilter = null;
         activeAdtypeFilter = null;
-        ["email", "phone", "time"].forEach(t =>
+        ["email", "phone", "time", "pk92"].forEach(t =>
             document.getElementById(`cardDup${cap(t)}`).classList.remove("active-filter")
         );
         updateFilterStrip();
@@ -417,7 +651,8 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ════════════════════════════════════════════════════════
        APPLY ALL FILTERS
        Order: text search → dup → source → campaign → date → page → adtype
-       All filters are AND-combined (each narrows the set).
+       Dup filters (email/phone/time) are OR-combined among themselves;
+       everything else AND-combines with that result (each narrows the set).
        After filtering, breakdown cards re-render from the
        resulting filteredRows so counts are always in sync.
     ════════════════════════════════════════════════════════ */
@@ -432,11 +667,15 @@ document.addEventListener("DOMContentLoaded", () => {
             );
         }
 
-        /* 2. Duplicate flag */
-        if (activeDupFilter) {
+        /* 2. Duplicate flags - OR combined: a row matching ANY active
+              dup condition (email / phone / same-time) is kept */
+        if (activeDupFilters.size > 0) {
             rows = rows.filter(row => {
                 const idx = originalRows.indexOf(row);
-                return dupMeta[idx]?.[activeDupFilter];
+                const meta = dupMeta[idx];
+                if (!meta) return false;
+                for (const t of activeDupFilters) if (meta[t]) return true;
+                return false;
             });
         }
 
@@ -471,7 +710,7 @@ document.addEventListener("DOMContentLoaded", () => {
             rows = rows.filter(row => getAdType(row) === activeAdtypeFilter);
         }
 
-        filteredRows = rows;
+        filteredRows = sortRows(rows);
         renderBody();
 
         /* CRITICAL: refresh breakdown cards from the new filteredRows
@@ -515,13 +754,44 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     /* ════════════════════════════════════════════════════════
-       RENDER HEAD
+       RENDER HEAD  (all columns sortable - click cycles asc/desc)
     ════════════════════════════════════════════════════════ */
     function renderHead() {
         tableHead.innerHTML = "<tr>" +
-            allColumns.map(col =>
-                `<th data-col="${esc(col)}" style="${visibleCols.has(col) ? "" : "display:none"}">${formatCol(col)}</th>`
-            ).join("") + "</tr>";
+            allColumns.map(col => {
+                const isSortCol = sortState.col === col;
+                const dirCls = isSortCol ? (sortState.dir === 1 ? " sort-asc" : " sort-desc") : "";
+                const ind = isSortCol ? (sortState.dir === 1 ? "▲" : "▼") : "⇅";
+                return `<th data-col="${esc(col)}" class="sortable${dirCls}" style="${visibleCols.has(col) ? "" : "display:none"}">${formatCol(col)}<span class="sort-ind">${ind}</span></th>`;
+            }).join("") + "</tr>";
+
+        tableHead.querySelectorAll("th[data-col]").forEach(th => {
+            th.addEventListener("click", () => onSortClick(th.dataset.col));
+        });
+    }
+
+    function onSortClick(col) {
+        if (sortState.col === col) sortState.dir = -sortState.dir;
+        else { sortState.col = col; sortState.dir = 1; }
+        filteredRows = sortRows(filteredRows);
+        renderHead();
+        renderBody();
+    }
+
+    /* Generic sort: numeric compare when both sides parse as numbers,
+       otherwise a case-insensitive string compare (works fine for the
+       ISO-like submit_time format too). */
+    function sortRows(rows) {
+        if (!sortState.col) return rows;
+        const col = sortState.col, dir = sortState.dir;
+        return [...rows].sort((a, b) => {
+            const av = a[col] == null ? "" : a[col];
+            const bv = b[col] == null ? "" : b[col];
+            const an = Number(av), bn = Number(bv);
+            const bothNumeric = av !== "" && bv !== "" && !isNaN(an) && !isNaN(bn);
+            const cmp = bothNumeric ? (an - bn) : String(av).localeCompare(String(bv), undefined, { sensitivity: "base" });
+            return cmp * dir;
+        });
     }
 
     /* ════════════════════════════════════════════════════════
@@ -539,7 +809,7 @@ document.addEventListener("DOMContentLoaded", () => {
         tableBody.innerHTML = filteredRows.map(row => {
             const origIdx = originalRows.indexOf(row);
             const dup = dupMeta[origIdx] || {};
-            const rowCls = dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
+            const rowCls = dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : dup.pk92 ? "dup-pk92" : "";
 
             const cells = allColumns.map(col => {
                 const hidden = !visibleCols.has(col);
@@ -551,6 +821,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 let cellDupCls = "", dupTag = "", ISTtime = "";
                 if (isEmailCol && dup.email) { cellDupCls = "dup-cell-email"; dupTag = `<span class="dup-tag email">dup</span>`; }
                 if (isPhoneCol && dup.phone) { cellDupCls = "dup-cell-phone"; dupTag = `<span class="dup-tag phone">dup</span>`; }
+                else if (isPhoneCol && dup.pk92) { cellDupCls = "dup-cell-pk92"; dupTag = `<span class="dup-tag pk92">+92</span>`; }
                 if (isTimeCol && dup.time) { cellDupCls = "dup-cell-time"; dupTag = `<span class="dup-tag time">same</span>`; }
 
                 const cls = [tdClass(col), cellDupCls, isName ? "lead-name-link" : ""].filter(Boolean).join(" ");
@@ -560,7 +831,53 @@ document.addEventListener("DOMContentLoaded", () => {
 
             return `<tr class="${rowCls}">${cells}</tr>`;
         }).join("");
+
+        renderMobileCards();
     }
+
+    /* ════════════════════════════════════════════════════════
+       MOBILE CARD-PER-ROW VIEW (<768px)
+       Same filteredRows/dupMeta as the table - CSS decides which
+       of the two is visible at the current viewport width.
+    ════════════════════════════════════════════════════════ */
+    const mobileCardFields = ["your-email", "your-number", "utm_source", "utm_medium", "utm_campaign", "your-city", "your-country", "submit_time"];
+
+    function renderMobileCards() {
+        const mobileCards = document.getElementById("mobileCards");
+        if (filteredRows.length === 0) { mobileCards.innerHTML = ""; return; }
+
+        mobileCards.innerHTML = filteredRows.map(row => {
+            const origIdx = originalRows.indexOf(row);
+            const dup = dupMeta[origIdx] || {};
+            const rowCls = dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : dup.pk92 ? "dup-pk92" : "";
+            const tags = [
+                dup.email ? `<span class="dup-tag email">dup</span>` : "",
+                dup.phone ? `<span class="dup-tag phone">dup</span>` : "",
+                dup.pk92 ? `<span class="dup-tag pk92">+92</span>` : "",
+                dup.time ? `<span class="dup-tag time">same</span>` : "",
+            ].join("");
+            const rowsHtml = mobileCardFields.filter(c => allColumns.includes(c)).map(c =>
+                `<div class="m-card-row"><span class="k">${formatCol(c)}</span><span class="v">${formatValue(c, row[c])}</span></div>`
+            ).join("");
+
+            return `<div class="m-card ${rowCls}">
+                <div class="m-card-hdr">
+                    <span class="m-card-name" data-row="${origIdx}">${esc(row["your-name"] || "(no name)")}</span>
+                    <div class="m-card-tags">${tags}</div>
+                </div>
+                ${rowsHtml}
+            </div>`;
+        }).join("");
+    }
+
+    document.getElementById("mobileCards").addEventListener("click", e => {
+        const el = e.target.closest(".m-card-name");
+        if (!el) return;
+        const idx = Number(el.dataset.row);
+        const row = originalRows[idx];
+        if (row) openLeadModal(row);
+    });
+
     /* ════════════════════════════════════════════════════════
        LEAD DETAIL MODAL
        Click a lead's name → show ALL fields for that lead.
@@ -618,7 +935,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const label = isDupOnly ? "_duplicates" : "";
         if (!rows.length) { showToast("No rows to export", "error"); return; }
 
-        const extraCols = isDupOnly ? ["_dup_email", "_dup_phone", "_dup_time"] : [];
+        const extraCols = isDupOnly ? ["_dup_email", "_dup_phone", "_dup_time", "_pk92"] : [];
         const header = [...cols, ...extraCols].map(csvEsc).join(",");
         const lines = rows.map(row => {
             const origIdx = originalRows.indexOf(row);
@@ -628,6 +945,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 cells.push(dup.email ? "YES" : "");
                 cells.push(dup.phone ? "YES" : "");
                 cells.push(dup.time ? "YES" : "");
+                cells.push(dup.pk92 ? "YES" : "");
             }
             return cells.join(",");
         });

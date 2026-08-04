@@ -7,6 +7,14 @@
     <title>Report Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="css/report.css">
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('reportTheme');
+                if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+            } catch (e) {}
+        })();
+    </script>
 </head>
 
 <body>
@@ -21,72 +29,104 @@
         </div>
         <h1>Form Submission Report</h1>
         <div class="topbar-badge" id="statusBadge">Loading…</div>
+        <div class="topbar-spacer"></div>
+        <button type="button" class="icon-btn mobile-filters-toggle" id="mobileFiltersToggle" title="Filters" aria-label="Toggle filters">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M3 4h18M7 9h10M11 14h2" />
+            </svg>
+        </button>
+        <button type="button" class="icon-btn" id="themeToggle" title="Toggle dark mode" aria-label="Toggle dark mode">
+            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+            </svg>
+            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z" />
+            </svg>
+        </button>
     </div>
 
     <div class="page">
 
-        <!-- ═══════ DATE FILTER + EXPORT ═══════ -->
+        <!-- ═══════ DATE FILTER + EXPORT (sticky) ═══════ -->
+        <div class="controls-bar" id="controlsBar">
+        <div class="controls-bar-inner">
         <form id="filterForm">
             <div class="controls">
-                <div class="field-group">
-                    <label>Database</label>
-                    <select id="dbSelect">
-                        <option value="landing">Landing - Live</option>
-                        <option value="old">Old - Local</option>
-                    </select>
-                </div>
-                <div class="field-group">
-                    <label>From</label>
-                    <input type="date" id="from">
-                </div>
-                <div class="field-group">
-                    <label>To</label>
-                    <input type="date" id="to">
+                <div class="control-group">
+                    <div class="field-group">
+                        <label>From</label>
+                        <input type="date" id="from">
+                    </div>
+                    <div class="field-group">
+                        <label>To</label>
+                        <input type="date" id="to">
+                    </div>
                 </div>
 
-                <button type="submit" class="btn btn-primary">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                        <circle cx="11" cy="11" r="7" />
-                        <path d="M21 21l-4-4" />
-                    </svg>
-                    Apply Filter
-                </button>
+                <div class="control-divider"></div>
 
-                <button type="button" id="resetBtn" class="btn btn-ghost">Reset</button>
+                <div class="control-group">
+                    <div class="field-group">
+                        <label>Quick Range</label>
+                        <div class="preset-btns" id="presetBtns">
+                            <button type="button" class="preset-btn" data-days="7">Last 7 Days</button>
+                            <button type="button" class="preset-btn" data-days="14">Last 2 Weeks</button>
+                            <button type="button" class="preset-btn" data-days="30">Last 1 Month</button>
+                            <button type="button" class="preset-btn" data-days="90">Last 3 Months</button>
+                            <button type="button" class="preset-btn" data-days="180">Last 6 Months</button>
+                        </div>
+                    </div>
+                </div>
 
-                <!-- Export dropdown -->
-                <div class="export-wrap">
-                    <button type="button" id="exportBtn" class="btn btn-success">
+                <div class="control-divider"></div>
+
+                <div class="control-group">
+                    <button type="submit" class="btn btn-primary">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                            <polyline points="7 10 12 15 17 10" />
-                            <line x1="12" y1="15" x2="12" y2="3" />
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="M21 21l-4-4" />
                         </svg>
-                        Export ▾
+                        Apply Filter
                     </button>
-                    <div class="export-menu" id="exportMenu">
-                        <button id="exportCSV">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                                <polyline points="14 2 14 8 20 8" />
+
+                    <button type="button" id="resetBtn" class="btn btn-ghost">Reset</button>
+                    <button type="button" id="showAllBtn" class="btn btn-ghost" title="Clear all active filters but keep the date range">Show All</button>
+
+                    <!-- Export dropdown -->
+                    <div class="export-wrap">
+                        <button type="button" id="exportBtn" class="btn btn-success">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                                <polyline points="7 10 12 15 17 10" />
+                                <line x1="12" y1="15" x2="12" y2="3" />
                             </svg>
-                            Export CSV
+                            Export ▾
                         </button>
-                        <button id="exportJSON">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                                <polyline points="14 2 14 8 20 8" />
-                            </svg>
-                            Export JSON
-                        </button>
-                        <hr>
-                        <button id="exportDupCSV">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                                <circle cx="12" cy="12" r="10" />
-                                <path d="M12 8v4M12 16h.01" />
-                            </svg>
-                            Duplicates Only (CSV)
-                        </button>
+                        <div class="export-menu" id="exportMenu">
+                            <button id="exportCSV">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                </svg>
+                                Export CSV
+                            </button>
+                            <button id="exportJSON">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                </svg>
+                                Export JSON
+                            </button>
+                            <hr>
+                            <button id="exportDupCSV">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <path d="M12 8v4M12 16h.01" />
+                                </svg>
+                                Duplicates Only (CSV)
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -99,20 +139,20 @@
                 </div>
             </div>
         </form>
+        </div>
+        </div>
 
         <!-- ═══════ STAT BAR - Summary ═══════ -->
         <div class="stat-bar">
             <div class="stat-card">
                 <div class="stat-label">Total Rows</div>
                 <div class="stat-value accent" id="statTotal">-</div>
+                <div class="stat-delta" id="statTotalDelta"></div>
             </div>
             <div class="stat-card">
                 <div class="stat-label">Showing</div>
                 <div class="stat-value" id="statShowing">-</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Date Range</div>
-                <div class="stat-value" id="statRange" style="font-size:13px;letter-spacing:0;font-weight:600">-</div>
+                <div class="stat-delta" id="statShowingDelta"></div>
             </div>
             <div class="stat-card dup-email clickable" id="cardDupEmail" title="Click to filter duplicate emails">
                 <div class="stat-label">Dup. Email</div>
@@ -128,6 +168,11 @@
                 <div class="stat-label">Same Time</div>
                 <div class="stat-value c-time" id="statDupTime">0</div>
                 <div class="stat-hint">Click to filter</div>
+            </div>
+            <div class="stat-card dup-pk92 clickable" id="cardDupPk92" title="Click to filter +92 (Pakistan) numbers">
+                <div class="stat-label">+92 Numbers</div>
+                <div class="stat-value c-pk92" id="statDupPk92">0</div>
+                <div class="stat-hint">Own group · excluded from Dup Phone</div>
             </div>
         </div>
 
@@ -235,7 +280,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <path d="M3 4h18M7 9h10M11 14h2" />
             </svg>
-            <span id="filterStripLabel">Showing filtered rows</span>
+            <div class="filter-chips" id="filterChips"></div>
             <button id="clearDupFilter">✕ Clear All</button>
         </div>
 
@@ -250,9 +295,10 @@
                 </svg>
                 Column Visibility
                 <div class="col-selector-actions" id="colSelectorActions">
-                    <button id="btnShowAll" type="button">Show All</button>
+                    <button id="btnCompact" type="button">Compact</button>
+                    <button id="btnReset" type="button">Standard</button>
+                    <button id="btnShowAll" type="button">Full</button>
                     <button id="btnHideAll" type="button">Hide All</button>
-                    <button id="btnReset" type="button">Reset Default</button>
                 </div>
                 <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                     <path d="M6 9l6 6 6-6" />
@@ -289,6 +335,7 @@
                     <tbody id="tableBody"></tbody>
                 </table>
             </div>
+            <div class="mobile-cards" id="mobileCards"></div>
             <div class="pagination-bar">
                 <span id="paginationInfo"></span>
             </div>

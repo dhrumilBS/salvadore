@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Number Validation</title>
+    <script src="https://cdn.jsdelivr.net/npm/libphonenumber-js@1.10.51/bundle/libphonenumber-js.min.js"></script>
+    <style>
+        :root {
+            --ink: #1a1d23;
+            --muted: #6b7280;
+            --border: #d8dce1;
+            --border-focus: #3b5bfd;
+            --error: #d1453b;
+            --success: #1f9d55;
+            --bg: #f5f6f8;
+            --card: #ffffff;
+            --radius: 10px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--ink);
+            padding: 24px;
+        }
+
+        .card {
+            width: 100%;
+            max-width: 380px;
+            background: var(--card);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.06);
+        }
+
+        h1 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0 0 4px;
+        }
+
+        p.sub {
+            margin: 0 0 24px;
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: var(--ink);
+        }
+
+        #phone {
+            width: 100%;
+            height: 44px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 15px;
+            padding: 0 12px;
+            outline: none;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+            background: #fff;
+            color: var(--ink);
+        }
+
+        #phone:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px rgba(59, 91, 253, 0.12);
+        }
+
+        .field.error #phone {
+            border-color: var(--error);
+        }
+
+        .field.error #phone:focus {
+            box-shadow: 0 0 0 3px rgba(209, 69, 59, 0.12);
+        }
+
+        .field.success #phone {
+            border-color: var(--success);
+        }
+
+        .msg {
+            min-height: 18px;
+            margin-top: 6px;
+            font-size: 13px;
+        }
+
+        .msg.error {
+            color: var(--error);
+        }
+
+        .msg.success {
+            color: var(--success);
+        }
+
+        button {
+            width: 100%;
+            height: 44px;
+            margin-top: 20px;
+            border: none;
+            border-radius: var(--radius);
+            background: var(--border-focus);
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s ease, transform 0.05s ease;
+        }
+
+        button:hover {
+            background: #2f4be0;
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        .result {
+            margin-top: 14px;
+            font-size: 13px;
+            color: var(--muted);
+            word-break: break-all;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="card">
+        <h1>Verify your phone number</h1>
+        <p class="sub">Include the country code, e.g. +91 98765 43210</p>
+
+        <div class="field" id="field">
+            <label for="phone">Phone number</label>
+            <input type="tel" id="phone" placeholder="+91 98765 43210">
+            <div class="msg" id="msg"></div>
+        </div>
+
+        <button id="submit" type="button">Continue</button>
+        <div class="result" id="result"></div>
+    </div>
+
+    <script>
+        const input = document.querySelector("#phone");
+        const field = document.querySelector("#field");
+        const msgEl = document.querySelector("#msg");
+        const resultEl = document.querySelector("#result");
+
+        const setState = (state, message = "") => {
+            field.classList.remove("error", "success");
+            msgEl.classList.remove("error", "success");
+            if (state === "error") {
+                field.classList.add("error");
+                msgEl.classList.add("error");
+            } else if (state === "success") {
+                field.classList.add("success");
+                msgEl.classList.add("success");
+            }
+            msgEl.textContent = message;
+        };
+
+        const validate = () => {
+            const raw = input.value.trim();
+
+            if (!raw) {
+                setState("error", "Please enter a phone number");
+                return null;
+            }
+
+            if (!raw.startsWith("+")) {
+                setState("error", "Start with a country code, e.g. +91");
+                return null;
+            }
+
+            const { isValidPhoneNumber, parsePhoneNumberFromString } = window.libphonenumber;
+
+            if (!isValidPhoneNumber(raw)) {
+                setState("error", "Invalid phone number");
+                return null;
+            }
+
+            const parsed = parsePhoneNumberFromString(raw);
+            setState("success", "Looks good");
+            return parsed;
+        };
+
+        // Clear error state while the user is actively typing; re-validate on blur.
+        input.addEventListener("input", () => {
+            if (field.classList.contains("error")) {
+                setState(null);
+            }
+        });
+
+        input.addEventListener("blur", () => {
+            if (input.value.trim()) validate();
+        });
+
+        document.querySelector("#submit").addEventListener("click", () => {
+            const parsed = validate();
+            if (parsed) {
+                resultEl.textContent = `Submitted: ${parsed.number}`;
+            } else {
+                resultEl.textContent = "";
+            }
+        });
+    </script>
+
+</body>
+
+</html>

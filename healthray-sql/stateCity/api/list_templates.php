@@ -3,8 +3,8 @@ header('Content-Type: application/json; charset=utf-8');
 require __DIR__ . '/../../conn.php';
 
 $validTemplates = [
+    'HIMS' => 'templates/template-city-page.php',
     'HMS' => 'templates/template-state-city.php',
-    'HIMS' => 'templates/template-state-city.php',
     'EMR' => 'templates/%emr%state.php',
     'EHR' => 'templates/%ehr%state.php',
     'PMS' => 'templates/%pms%state.php',
@@ -41,19 +41,15 @@ $state = [];
 foreach ($tArray as $t_name => $t_value) {
     $query = "SELECT
         p.id AS main_id,
+        p.guid AS main_guid,
         p.post_name AS main_post_name,
         p.post_title AS main_post_title,
         p.post_status AS main_post_status,
-        p.menu_order AS main_menu_order,
-        pm.meta_key AS main_meta_key,
-        pm.meta_value AS main_meta_value,
         sub_p.id AS sub_id,
+        sub_p.guid AS sub_guid,
         sub_p.post_name AS sub_post_name,
         sub_p.post_title AS sub_post_title,
-        sub_p.post_status AS sub_post_status,
-        sub_p.menu_order AS sub_menu_order,
-        sub_pm.meta_key AS sub_meta_key,
-        sub_pm.meta_value AS sub_meta_value
+        sub_p.post_status AS sub_post_status
     FROM wp_posts p
     INNER JOIN wp_postmeta pm ON p.id = pm.post_id
     LEFT JOIN wp_postmeta sub_pm ON sub_pm.meta_value = p.id
@@ -76,12 +72,10 @@ foreach ($tArray as $t_name => $t_value) {
             if ($main_id !== $last_main_id) {
                 $state[] = [
                     'id' => $row['main_id'],
+                    'guid' => $row['main_guid'],
                     'post_name' => $row['main_post_name'],
                     'post_title' => $row['main_post_title'],
                     'post_status' => $row['main_post_status'],
-                    'menu_order' => $row['main_menu_order'],
-                    'meta_key' => $row['main_meta_key'],
-                    'meta_value' => $row['main_meta_value'],
                     'template' => $t_name,
                 ];
                 $last_main_id = $main_id;
@@ -90,12 +84,10 @@ foreach ($tArray as $t_name => $t_value) {
             if (!empty($row['sub_id'])) {
                 $temp_array[] = [
                     'id' => $row['sub_id'],
+                    'guid' => $row['sub_guid'],
                     'post_name' => $row['sub_post_name'],
                     'post_title' => $row['sub_post_title'],
                     'post_status' => $row['sub_post_status'],
-                    'menu_order' => $row['sub_menu_order'],
-                    'meta_key' => $row['sub_meta_key'],
-                    'meta_value' => $row['sub_meta_value'],
                 ];
             }
         }

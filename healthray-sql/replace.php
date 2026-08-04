@@ -2,7 +2,7 @@
 require $_SERVER['DOCUMENT_ROOT'] . '/salvadore/healthray-sql/conn.php';
 
 
-$find = 'Best PMS ';
+$find = '&nbsp;';
 $replace = 'Practice Management Software';
 $qun = [];
 $lastQuery = "";

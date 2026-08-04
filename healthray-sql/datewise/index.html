@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Content Export Tool</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="page">
+        <div class="page-hdr">
+            <div>
+                <div class="page-title">Content Export Tool</div>
+                <div class="page-sub">Browse, edit and export Posts/Pages. Editable cells save on change - exports always reflect the latest saved data.</div>
+            </div>
+            <button type="button" class="theme-toggle" id="themeToggle" title="Toggle light/dark theme">
+                <svg id="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+                <svg id="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+                    <circle cx="12" cy="12" r="5" />
+                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                </svg>
+            </button>
+        </div>
+
+        <div class="card-panel">
+            <div class="panel-label">Filters &amp; search</div>
+
+            <div class="stats-row">
+                <span>Total matching <b id="stTotal">0</b></span>
+                <span>Page <b id="stPage">1</b> of <b id="stPages">1</b></span>
+            </div>
+
+            <div class="tab-group" id="fPostTypeTabs">
+                <button type="button" class="tab active" data-type="post">Post</button>
+                <button type="button" class="tab" data-type="page">Page</button>
+                <button type="button" class="tab" data-type="whitepaper">Whitepaper</button>
+                <button type="button" class="tab" data-type="case-studies">Case Studies</button>
+            </div>
+
+            <div class="toolbar">
+                <div class="search-wrap">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="m21 21-4.35-4.35" />
+                    </svg>
+                    <input type="search" id="fSearch" placeholder="Search title, slug, content, meta title/description…">
+                </div>
+                <select id="fStatus" title="Status"></select>
+                <select id="fSort" title="Sort by">
+                    <option value="post_date">Publish Date</option>
+                    <option value="post_modified">Modified Date</option>
+                    <option value="title">Title</option>
+                    <option value="menu_order">Menu Order</option>
+                    <option value="author">Author</option>
+                </select>
+                <button type="button" class="btn" id="fDir" title="Toggle sort direction">↓ DESC</button>
+                <select id="fPerPage" title="Rows per page">
+                    <option value="10">10 / page</option>
+                    <option value="20" selected>20 / page</option>
+                    <option value="50">50 / page</option>
+                    <option value="100">100 / page</option>
+                    <option value="200">200 / page</option>
+                    <option value="500">500 / page</option>
+                    <option value="1000">1000 / page</option>
+                </select>
+                <button type="button" class="btn" id="moreFiltersBtn">More filters ▾</button>
+                <button type="button" class="btn" id="columnsBtn">Columns ▾</button>
+                <button type="button" class="btn" id="checkAllLinksBtn" style="display:none">Check all links (page)</button>
+                <button type="button" class="btn" id="linkFilterBtn">Link filter ▾</button>
+            </div>
+
+            <div class="toolbar secondary" id="columnsPanel"></div>
+
+            <div class="toolbar secondary" id="linkFilterPanel">
+                <span class="col-note" style="margin:0 4px 0 0">Export only:</span>
+                <label class="col-check"><input type="checkbox" class="link-filter-cb" value="200"> 200 OK</label>
+                <label class="col-check"><input type="checkbox" class="link-filter-cb" value="301"> 301</label>
+                <label class="col-check"><input type="checkbox" class="link-filter-cb" value="302"> 302</label>
+                <label class="col-check"><input type="checkbox" class="link-filter-cb" value="404"> 404</label>
+                <label class="col-check"><input type="checkbox" class="link-filter-cb" value="410"> 410</label>
+                <label class="col-check"><input type="checkbox" class="link-filter-cb" value="other"> Other</label>
+                <span class="col-note">Live-checks every matching post's URL during export - can take minutes for large result sets.</span>
+            </div>
+
+            <div class="toolbar secondary" id="moreFilters">
+                <div class="frow">
+                    <label class="flabel">Published from</label>
+                    <input type="date" id="fDateFrom">
+                </div>
+                <div class="frow">
+                    <label class="flabel">Published to</label>
+                    <input type="date" id="fDateTo">
+                </div>
+                <div class="frow">
+                    <label class="flabel">Modified from</label>
+                    <input type="date" id="fModFrom">
+                </div>
+                <div class="frow">
+                    <label class="flabel">Modified to</label>
+                    <input type="date" id="fModTo">
+                </div>
+                <div class="frow">
+                    <label class="flabel">&nbsp;</label>
+                    <button type="button" class="btn" id="clearFiltersBtn">Clear filters</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-panel">
+            <div class="panel-label">Export CSV (respects current filters, sort &amp; search)</div>
+            <div class="export-row">
+                <a class="btn primary" id="exportCsv" href="#">⬇ Export CSV</a>
+            </div>
+        </div>
+
+        <div class="card-panel">
+            <div class="panel-label">Results</div>
+            <div class="table-wrap">
+                <table id="dataTable">
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody">
+                        <tr>
+                            <td class="state-msg"><span class="spinner"></span> Loading…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination">
+                <div>Showing <b id="stShowing">0</b> of <b id="stTotal2">0</b></div>
+                <div class="pager-btns">
+                    <button type="button" class="btn" id="pgFirst">« First</button>
+                    <button type="button" class="btn" id="pgPrev">‹ Prev</button>
+                    <button type="button" class="btn" id="pgNext">Next ›</button>
+                    <button type="button" class="btn" id="pgLast">Last »</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
