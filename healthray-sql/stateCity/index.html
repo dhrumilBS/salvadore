@@ -28,6 +28,7 @@
                             <option value="LAB">Lab</option>
                             <option value="INTERNATIONAL">International</option>
                             <option value="META">Meta</option>
+                            <option value="OTHER">Other (Elementor / No Template)</option>
                         </select>
                     </div>
                     <div id="metaRow" style="display:none; min-width: 240px;">
@@ -37,6 +38,7 @@
                     <div class="d-flex gap-2 align-items-end">
                         <button type="button" id="loadButton" class="btn btn-primary">Load</button>
                         <button type="button" id="refreshStatusButton" class="btn btn-secondary">⟳ Refresh URL status</button>
+                        <button type="button" id="exportCsvButton" class="btn btn-success">⬇ Export CSV</button>
                     </div>
                 </form>
             </div>
@@ -83,16 +85,16 @@
                     <thead>
                         <tr>
                             <th class="col-check"><input type="checkbox" id="selectAll" class="form-check-input"></th>
-                            <th>Row</th>
-                            <th>Index</th>
-                            <th>Template</th>
-                            <th>ID</th>
-                            <th>Title</th>
-                            <th>Slug</th>
-                            <th>Status</th>
-                            <th>GUID</th>
-                            <th>URL Status</th>
-                            <th>Redirect Target</th>
+                            <th class="sortable" data-col="1">Row</th>
+                            <th class="sortable" data-col="2">Index</th>
+                            <th class="sortable" data-col="3">Template</th>
+                            <th class="sortable" data-col="4">ID</th>
+                            <th class="sortable" data-col="5">Title</th>
+                            <th class="sortable" data-col="6">Slug</th>
+                            <th class="sortable" data-col="7">Status</th>
+                            <th class="sortable" data-col="8">GUID</th>
+                            <th class="sortable" data-col="9">URL Status</th>
+                            <th class="sortable" data-col="10">Redirect Target</th>
                             <th class="col-save">Action</th>
                         </tr>
                     </thead>

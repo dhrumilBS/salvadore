@@ -18,6 +18,7 @@ const templateSelect = document.getElementById('templateSelect');
 const bestInput = document.getElementById('bestInput');
 const loadButton = document.getElementById('loadButton');
 const refreshStatusButton = document.getElementById('refreshStatusButton');
+const exportCsvButton = document.getElementById('exportCsvButton');
 const metaRow = document.getElementById('metaRow');
 const searchInput = document.getElementById('searchInput');
 const issuesOnlyToggle = document.getElementById('issuesOnlyToggle');
@@ -123,7 +124,8 @@ async function loadTemplateData(template = defaultTemplate, best = defaultBest) 
             pageTitle.textContent = result.headerText || 'StateCity records';
         }
         renderTable(result.data);
-        statusBox.textContent = `${result.data.length} top-level records loaded for ${result.template === 'ALL' ? 'All templates' : result.template}.`;
+        const templateLabel = result.template === 'ALL' ? 'All templates' : (result.template === 'OTHER' ? 'Other pages' : result.template);
+        statusBox.textContent = `${result.data.length} top-level records loaded for ${templateLabel}.`;
     } catch (err) {
         if (err.name === 'AbortError' || seq !== loadRequestSeq) return;
         tableBody.innerHTML = `<tr><td colspan="${TABLE_COLSPAN}" class="text-center py-5 text-danger">Unable to load data.</td></tr>`;
@@ -170,6 +172,9 @@ function buildRowHtml(entry, rowIndex, indexLabel, template, isChild) {
 }
 
 function renderTable(rows) {
+    currentSort = { col: null, dir: 1 };
+    document.querySelectorAll('.data-table thead th.sortable').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+
     if (!rows || !rows.length) {
         tableBody.innerHTML = `<tr><td colspan="${TABLE_COLSPAN}" class="text-center py-5 text-muted">No records found.</td></tr>`;
         currentRows = [];
@@ -538,6 +543,88 @@ function applyFilters() {
     });
 }
 
+function csvEscape(value) {
+    const str = String(value ?? '');
+    return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
+// Reads the display value of a given column for a row - the live input/select
+// value where the column is editable, the badge text for URL Status, or the
+// plain cell text otherwise. Shared by CSV export and column sorting so both
+// always agree on what a column "contains".
+function getCellValue(tr, colIndex) {
+    const cell = tr.children[colIndex];
+    if (!cell) return '';
+    const input = cell.querySelector('input.field');
+    if (input) return input.value;
+    const select = cell.querySelector('select.field');
+    if (select) return select.value;
+    const badge = cell.querySelector('.status-badge');
+    if (badge) return badge.textContent.trim();
+    const link = cell.querySelector('a');
+    if (link) return link.textContent.trim();
+    return cell.textContent.trim();
+}
+
+const SORTABLE_COLUMNS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const CSV_HEADER = ['Row', 'Index', 'Template', 'ID', 'Title', 'Slug', 'Status', 'GUID', 'URL Status', 'Redirect Target'];
+
+// Exports whatever rows are currently visible in the table (i.e. respects
+// the active search / issues-only filters and the current sort order), using
+// each field's live value so unsaved edits are included.
+function exportTableToCsv() {
+    const rows = Array.from(tableBody.querySelectorAll('tr[data-id]')).filter(tr => tr.style.display !== 'none');
+    if (!rows.length) {
+        showToast('No rows to export', false);
+        return;
+    }
+
+    const csvRows = [CSV_HEADER];
+    rows.forEach(tr => {
+        csvRows.push(SORTABLE_COLUMNS.map(col => getCellValue(tr, col)));
+    });
+
+    const csvContent = csvRows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const template = (getActiveTemplate() || 'all').toLowerCase();
+    const stamp = new Date().toISOString().slice(0, 10);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `statecity-${template}-${stamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+// Column sorting flattens the parent/city hierarchy into one plain sortable
+// list, which is expected: once sorted, "which city belongs to which state"
+// is no longer the point - the column value is.
+const sortableHeaders = document.querySelectorAll('.data-table thead th.sortable');
+let currentSort = { col: null, dir: 1 };
+
+function sortRowsByColumn(colIndex, dir) {
+    const rows = Array.from(tableBody.querySelectorAll('tr[data-id]'));
+    if (!rows.length) return;
+    rows.sort((a, b) => dir * getCellValue(a, colIndex).localeCompare(
+        getCellValue(b, colIndex), undefined, { numeric: true, sensitivity: 'base' }
+    ));
+    rows.forEach(tr => tableBody.appendChild(tr));
+}
+
+sortableHeaders.forEach(th => {
+    th.addEventListener('click', () => {
+        const col = parseInt(th.dataset.col, 10);
+        currentSort.dir = currentSort.col === col ? currentSort.dir * -1 : 1;
+        currentSort.col = col;
+        sortRowsByColumn(col, currentSort.dir);
+        sortableHeaders.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+        th.classList.add(currentSort.dir === 1 ? 'sort-asc' : 'sort-desc');
+    });
+});
+
 if (templateSelect) {
     templateSelect.addEventListener('change', updateMetaRowVisibility);
 }
@@ -552,6 +639,10 @@ if (refreshStatusButton) {
     refreshStatusButton.addEventListener('click', () => {
         refreshUrlStatuses();
     });
+}
+
+if (exportCsvButton) {
+    exportCsvButton.addEventListener('click', exportTableToCsv);
 }
 
 searchInput.addEventListener('input', applyFilters);

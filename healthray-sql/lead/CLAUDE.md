@@ -36,7 +36,7 @@ Add quick-select preset buttons/dropdown alongside the existing From/To pickers:
 Dup. Email, Dup. Phone, and Same Time counts currently don't reliably reflect the live dataset:
 - Recalculate these counts every time the underlying row set changes (new date range, new data sync, filter applied) rather than relying on a stale/cached value.
 - Clicking a card should filter the table to just the matching duplicate rows, and the card's own count should stay accurate to the *currently loaded* dataset, not the original unfiltered load.
-- Confirm the dedup logic: "Dup. Email" = rows sharing the same email within the selected range; "Dup. Phone" = same phone number; "Same Time" = rows with an identical (or near-identical, e.g. same minute) submit timestamp — define the exact matching window here if it needs to be more forgiving than exact-second match.
+- Confirm the dedup logic: "Dup. Email" = rows sharing the same email within the selected range; "Dup. Phone" = same phone number; "Same Time" = rows with an identical (or near-iden, e.g. same minute) submit timestamp — define the exact matching window here if it needs to be more forgiving than exact-second match.
 
 ### 4. Multi-Filter / "Show All" Behavior
 Currently selecting one filter (e.g. Dup. Email) appears to exclude the others instead of letting them combine, and there's no way to see all data again without a full Reset.
@@ -87,3 +87,207 @@ This is a ground-up visual refresh, not just a patch on top of the current layou
 - [ ] Consistent color palette and type scale applied across all cards/widgets (no more one-off accent color per card).
 - [ ] Submissions table is readable and scannable at a glance — clear row separation, sticky headers, truncated long fields.
 - [ ] Highlite +92*** contact numbers also make it in diffrent group dont count them.
+
+## New Updates (2026-08-04)
+
+### 1. Comparison Display Improvement
+
+Current format:
+```
+▼ -63% vs prev 2026-07-29 → 2026-07-31 (128)
+```
+
+### New Requirement
+
+The primary metric should only display the percentage change.
+Examples:
+
+```
+▼ -63%
+▲ +18%
+▶ 0%
+```
+
+Move the comparison details to a secondary location such as:
+- tooltip
+- subtitle
+- expandable details
+- comparison panel
+- small muted text below the metric
+
+Example:
+Primary Card
+```
+▼ -63%
+```
+
+Secondary Details
+```
+Compared with:
+2026-07-29 → 2026-07-31
+
+Previous Period
+128 Leads
+```
+
+The main dashboard should remain clean while still providing full comparison information elsewhere.
+---
+
+## 2. Filters Must Affect Comparison Data
+Currently, comparisons are calculated from all records.
+
+### Required Behavior
+Every active filter must also be applied to the comparison period.
+Example:
+If user filters:
+- Source = Ads
+Current Period:
+```
+Ads Leads
+```
+
+Comparison should become:
+```
+Previous Ads Leads
+```
+NOT
+```
+Previous All Leads
+```
+This applies to every metric.
+
+Including:
+- Total Leads
+- Duplicate Emails
+- Duplicate Phones
+- Qualified Leads
+- Invalid Leads
+- Source Counts
+- Status Counts
+- Every percentage comparison
+
+Comparison data should always be generated using the exact same filters as the current period.
+
+---
+
+## 3. Pakistani (+92) Data Handling
+Phone numbers beginning with **+92** represent data-entry/testing records and must be excluded from business analytics.
+
+### Rules
+Do NOT include +92 records in:
+- Total Leads
+- Conversion Rate
+- Duplicate Phone Count
+- Duplicate Email Count
+- Daily Trends
+- Source Statistics
+- Campaign Statistics
+- Funnel Reports
+- Charts
+- KPIs
+- Comparison Calculations
+
+Instead:
+- Detect numbers beginning with **+92**
+- Display them separately
+- Use a Pakistani green badge/color
+- Label them as:
+
+```
+Pakistan / Test Data
+```
+
+Suggested UI
+```
+Real Leads
+842
+
+Pakistan/Test
+54
+```
+
+If possible, place these records in their own section/group.
+
+---
+
+## 4. Source Filter Experience
+
+When selecting a lead source, comparisons should remain scoped to that source.
+
+Example:
+
+User clicks
+
+```
+Ads
+```
+
+Dashboard should become
+
+Active Filter
+
+```
+Source = Ads
+```
+
+Visible metrics
+
+```
+Ads Leads
+Ads Conversion
+Ads Duplicate Email
+Ads Duplicate Phone
+Ads Trends
+Ads Charts
+Ads Comparison
+```
+
+Comparison should be
+
+```
+Current:
+Ads
+2026-08-01 → 2026-08-04
+
+vs
+
+Previous:
+Ads
+2026-07-28 → 2026-07-31
+```
+
+NOT
+
+```
+Current Ads
+
+vs
+
+Previous All Sources
+```
+
+The same behavior should apply to every filter.
+
+Examples:
+
+- Source
+- Campaign
+- Status
+- Medium
+- Device
+- Country
+- Landing Page
+- Date Range
+- Any future filters
+
+All dashboard widgets, charts, totals, and comparisons must respect the active filter state.
+
+---
+
+## General Principle
+
+The dashboard should operate on a single filtered dataset.
+
+All metrics—including totals, charts, duplicate calculations, comparisons, percentages, trends, and exports—must be calculated from the currently filtered dataset unless explicitly documented otherwise.
+
+This ensures every KPI remains internally consistent and accurately reflects the user's selected filters.

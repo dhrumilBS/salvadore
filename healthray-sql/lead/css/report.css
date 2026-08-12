@@ -67,11 +67,18 @@
     --dup-time-text:    #713f12;
     --dup-time-bg:      #fefce8;
     --dup-time-cell:    #fef9c3;
-    /* +92 is an informational group (not a warning) - primary blue family */
-    --dup-pk92-border:  var(--info);
-    --dup-pk92-text:    #1d4ed8;
-    --dup-pk92-bg:      var(--info-lt);
-    --dup-pk92-cell:    #dbeafe;
+    /* +92 (Pakistan/Test) is its own segregated group, not a lead metric -
+       Pakistani-flag green, distinct from the warning/amber dup family */
+    --dup-pk92-border:  var(--success);
+    --dup-pk92-text:    #047857;
+    --dup-pk92-bg:      var(--success-lt);
+    --dup-pk92-cell:    #d1fae5;
+    /* Outside-India (non +91) is an informational segment, not a duplicate -
+       reuses the info/blue accent so it reads distinctly from the warning-family dup cards */
+    --dup-intl-border:  var(--info);
+    --dup-intl-text:    #1e40af;
+    --dup-intl-bg:      var(--info-lt);
+    --dup-intl-cell:    #dbeafe;
 
     /* Breakdown widgets - curated categorical palette (same saturation/lightness band) */
     --utm-campaign-color: #2563eb;
@@ -111,6 +118,8 @@
         --dup-time-cell:  color-mix(in srgb, var(--dup-time-border) 30%, var(--surface));
         --dup-pk92-bg:    color-mix(in srgb, var(--dup-pk92-border) 18%, var(--surface));
         --dup-pk92-cell:  color-mix(in srgb, var(--dup-pk92-border) 30%, var(--surface));
+        --dup-intl-bg:    color-mix(in srgb, var(--dup-intl-border) 18%, var(--surface));
+        --dup-intl-cell:  color-mix(in srgb, var(--dup-intl-border) 30%, var(--surface));
     }
 }
 :root[data-theme="dark"] {
@@ -136,6 +145,8 @@
     --dup-time-cell:  color-mix(in srgb, var(--dup-time-border) 30%, var(--surface));
     --dup-pk92-bg:    color-mix(in srgb, var(--dup-pk92-border) 18%, var(--surface));
     --dup-pk92-cell:  color-mix(in srgb, var(--dup-pk92-border) 30%, var(--surface));
+    --dup-intl-bg:    color-mix(in srgb, var(--dup-intl-border) 18%, var(--surface));
+    --dup-intl-cell:  color-mix(in srgb, var(--dup-intl-border) 30%, var(--surface));
 }
 
 /* ═══════════════════════════════════════════
@@ -192,9 +203,22 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); min-
 .btn-success { background: var(--success); color: #fff; }
 .btn-success:hover { filter: brightness(.92); }
 
-/* Export dropdown */
+/* Dropdown wrapper */
+.dropdown { position: relative; }
+.dropdown-toggle { cursor: pointer; min-width: 150px; justify-content: center; }
+.dropdown-menu { display: none; position: absolute; right: 0; top: calc(100% + 8px); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.16); min-width: 180px; z-index: 200; overflow: hidden; }
+.dropdown-menu.open { display: block; }
+.dropdown-menu button,
+.dropdown-item { width: 100%; text-align: left; padding: 10px 16px; background: none; border: none; font-family: var(--font); font-size: var(--fs-base); cursor: pointer; display: flex; align-items: center; gap: 9px; color: var(--text); transition: background .1s; }
+.dropdown-menu button:hover,
+.dropdown-item:hover { background: var(--bg); }
+.dropdown-menu button svg,
+.dropdown-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
+.dropdown-menu hr { border: none; border-top: 1px solid var(--border); margin: 3px 0; }
+
+/* Backwards compatibility for existing export markup */
 .export-wrap { position: relative; }
-.export-menu { display: none; position: absolute; right: 0; top: 44px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.16); min-width: 180px; z-index: 200; overflow: hidden; }
+.export-menu { display: none; position: absolute; right: 0; top: calc(100% + 8px); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.16); min-width: 180px; z-index: 200; overflow: hidden; }
 .export-menu.open { display: block; }
 .export-menu button { width: 100%; text-align: left; padding: 10px 16px; background: none; border: none; font-family: var(--font); font-size: var(--fs-base); cursor: pointer; display: flex; align-items: center; gap: 9px; color: var(--text); transition: background .1s; }
 .export-menu button:hover { background: var(--bg); }
@@ -240,6 +264,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); min-
 .stat-card.dup-time.active-filter  { background: var(--dup-time-bg); }
 .stat-card.dup-pk92  { border-color: var(--dup-pk92-border); }
 .stat-card.dup-pk92.active-filter  { background: var(--dup-pk92-bg); }
+.stat-card.dup-intl  { border-color: var(--dup-intl-border); }
+.stat-card.dup-intl.active-filter  { background: var(--dup-intl-bg); }
 
 .stat-label { font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
 .stat-value { font-size: var(--fs-2xl); font-weight: 700; color: var(--text); letter-spacing: -1px; line-height: 1.1; }
@@ -248,11 +274,18 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); min-
 .stat-value.c-phone { color: var(--dup-phone-text); }
 .stat-value.c-time  { color: var(--dup-time-text); }
 .stat-value.c-pk92  { color: var(--dup-pk92-text); }
+.stat-value.c-intl  { color: var(--dup-intl-text); }
 .stat-hint { font-size: var(--fs-xs); color: var(--muted); margin-top: 1px; }
-.stat-delta { font-size: var(--fs-xs); font-weight: 700; margin-top: 3px; min-height: 14px; }
+.stat-delta { font-size: var(--fs-xs); font-weight: 700; margin-top: 3px; min-height: 14px; cursor: pointer; width: fit-content; }
+.stat-delta:empty { cursor: default; }
 .stat-delta.up    { color: var(--success); }
 .stat-delta.down  { color: var(--danger); }
 .stat-delta.flat  { color: var(--muted); font-weight: 500; }
+
+/* Secondary comparison detail - hidden until the delta above is clicked */
+.stat-delta-detail { display: none; font-size: var(--fs-xs); color: var(--muted); line-height: 1.6; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }
+.stat-delta-detail.open { display: block; }
+.stat-delta-detail strong { color: var(--text); font-weight: 700; }
 
 /* ═══════════════════════════════════════════
    BREAKDOWN WIDGETS  (expandable) - responsive grid
@@ -380,6 +413,24 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); min-
 .filter-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid color-mix(in srgb, var(--warning) 50%, transparent); padding: 3px 6px 3px 10px; border-radius: 20px; font-size: var(--fs-sm); font-weight: 600; color: var(--dup-time-text); }
 .filter-chip button { background: none; border: none; cursor: pointer; color: inherit; font-weight: 700; font-size: var(--fs-sm); padding: 2px 4px; line-height: 1; border-radius: 50%; }
 .filter-chip button:hover { background: var(--warning-lt); }
+
+/* ═══════════════════════════════════════════
+   PAKISTAN / TEST DATA PANEL
+   Its own section, separate from the filtered dataset -
+   opened from the "Pakistan / Test" stat card.
+═══════════════════════════════════════════ */
+.pk92-panel { display: none; background: var(--dup-pk92-bg); border: 1px solid color-mix(in srgb, var(--dup-pk92-border) 50%, transparent); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; }
+.pk92-panel.open { display: block; }
+.pk92-panel-hdr { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid color-mix(in srgb, var(--dup-pk92-border) 30%, transparent); }
+.pk92-panel-hdr strong { color: var(--dup-pk92-text); font-size: var(--fs-base); }
+.pk92-panel-count { font-size: var(--fs-sm); font-weight: 700; color: var(--dup-pk92-text); background: var(--surface); border: 1px solid color-mix(in srgb, var(--dup-pk92-border) 40%, transparent); border-radius: 20px; padding: 2px 10px; }
+.pk92-panel-note { font-size: var(--fs-xs); color: var(--muted); }
+.pk92-panel-hdr button { margin-left: auto; background: none; border: none; cursor: pointer; color: var(--dup-pk92-text); font-weight: 700; font-size: 14px; padding: 4px; }
+.pk92-panel-body { max-height: 40vh; overflow: auto; }
+.pk92-empty { padding: 18px; color: var(--muted); font-size: var(--fs-base); }
+table.pk92-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+table.pk92-table thead th { position: sticky; top: 0; background: var(--surface-alt); text-align: left; padding: 8px 16px; font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+table.pk92-table tbody td { padding: 8px 16px; border-top: 1px solid color-mix(in srgb, var(--dup-pk92-border) 20%, transparent); color: var(--text); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ═══════════════════════════════════════════
    LOADER
