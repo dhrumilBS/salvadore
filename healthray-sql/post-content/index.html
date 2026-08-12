@@ -44,9 +44,9 @@
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                     <polyline points="20 6 9 17 4 12" />
                 </svg>
-                Check All Links
+                <span id="check-all-label">Check All Links</span>
             </button>
-            <div class="ctrl-group" style="margin-left:auto">
+            <div class="ctrl-group ctrl-search">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2">
                     <circle cx="11" cy="11" r="8" />
                     <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -93,6 +93,13 @@
             <div class="progress-bar-bg">
                 <div class="progress-bar-fill" id="progress-fill"></div>
             </div>
+        </div>
+
+        <!-- ── Link Type Tabs ───────────────────────── -->
+        <div class="filter-tabs" id="type-tabs">
+            <button class="ftab active" data-type="all">All Links <span class="fc">0</span></button>
+            <button class="ftab" data-type="internal">Internal <span class="fc">0</span></button>
+            <button class="ftab" data-type="external">External <span class="fc">0</span></button>
         </div>
 
         <!-- ── Filter Tabs ───────────────────────────── -->
@@ -157,6 +164,12 @@
             <div class="modal-field">
                 <label>New URL</label>
                 <input type="text" id="modal-new-url" placeholder="https://…">
+            </div>
+            <div class="modal-field modal-checkbox-field">
+                <label class="modal-checkbox-label">
+                    <input type="checkbox" id="modal-remove-link">
+                    Remove link instead — unlink and keep plain text only
+                </label>
             </div>
             <div class="modal-actions">
                 <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>

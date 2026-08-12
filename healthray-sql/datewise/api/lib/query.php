@@ -211,6 +211,53 @@ function dw_home_url(mysqli $conn)
     return $home;
 }
 
+/**
+ * Site's actual WordPress permalink structure (wp_options "permalink_structure",
+ * e.g. "%category%/%postname%/" or the flat "%postname%/") - different sites
+ * really do differ here (category-based vs. flat), so "post" permalinks can't
+ * be reconstructed from one hardcoded shape. Cached per request.
+ */
+function dw_permalink_structure(mysqli $conn)
+{
+    static $structure = null;
+    if ($structure !== null) {
+        return $structure;
+    }
+    $res = $conn->query("SELECT option_value FROM wp_options WHERE option_name = 'permalink_structure' LIMIT 1");
+    $row = $res ? $res->fetch_assoc() : null;
+    $value = $row ? trim((string) $row['option_value']) : '';
+    // WordPress's own fallback when "plain" (query-string) permalinks are configured.
+    $structure = $value !== '' ? trim($value, '/') : '%postname%';
+    return $structure;
+}
+
+/**
+ * Build a "post" post-type row's relative permalink path (no domain, no
+ * leading/trailing slash) by substituting the site's real permalink_structure
+ * tags. Covers the tags this tool can resolve from data it already has;
+ * any other tag (e.g. %author%) is dropped rather than leaking a literal
+ * "%tag%" into the reconstructed URL.
+ */
+function dw_build_post_path($structure, array $row, $categoryPath)
+{
+    $timestamp = !empty($row['post_date']) ? strtotime($row['post_date']) : false;
+    $replacements = [
+        '%postname%' => $row['slug'] ?? '',
+        '%post_id%'  => $row['id'] ?? '',
+        '%category%' => $categoryPath !== '' ? $categoryPath : 'uncategorized',
+        '%year%'     => $timestamp ? date('Y', $timestamp) : '',
+        '%monthnum%' => $timestamp ? date('m', $timestamp) : '',
+        '%day%'      => $timestamp ? date('d', $timestamp) : '',
+        '%hour%'     => $timestamp ? date('H', $timestamp) : '',
+        '%minute%'   => $timestamp ? date('i', $timestamp) : '',
+        '%second%'   => $timestamp ? date('s', $timestamp) : '',
+    ];
+    $path = strtr($structure, $replacements);
+    $path = preg_replace('/%[a-z_]+%/', '', $path); // drop any unresolved tag
+    $path = preg_replace('#/+#', '/', $path);
+    return trim($path, '/');
+}
+
 /** Site's configured UTC offset in hours (wp_options "gmt_offset"), cached per request. */
 function dw_gmt_offset_hours(mysqli $conn)
 {
@@ -439,6 +486,7 @@ function dw_hydrate_batch(mysqli $conn, array $rows)
     $parentPaths = dw_parent_paths($conn, $parentMap);
 
     $home = dw_home_url($conn);
+    $postPermalinkStructure = dw_permalink_structure($conn);
 
     $out = [];
     foreach ($rows as $row) {
@@ -452,11 +500,12 @@ function dw_hydrate_batch(mysqli $conn, array $rows)
         if ($row['post_type'] === 'post') {
             $catTermId = $categoryTermIdByPost[$id] ?? null;
             $catPath   = $catTermId !== null ? ($categoryPaths[$catTermId] ?? '') : '';
-            $prefix    = $catPath !== '' ? $catPath : 'uncategorized';
+            $path      = dw_build_post_path($postPermalinkStructure, $row, $catPath);
         } else {
             $prefix = $parentPaths[$id] ?? '';
+            $path   = ($prefix !== '' ? $prefix . '/' : '') . $row['slug'];
         }
-        $permalink = $home . '/' . ($prefix !== '' ? $prefix . '/' : '') . $row['slug'] . '/';
+        $permalink = $home . '/' . $path . '/';
 
         $out[] = [
             'id'                => (int) $id,

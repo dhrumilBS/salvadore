@@ -1,8 +1,11 @@
 <?php
-// This tool always targets the live site, regardless of a stray "db" cookie
-// left behind by other tools (e.g. wp_options) that share this cookie
-// across the whole domain.
-$ACTIVE_DB = 'landing';
+/*
+ * Which site's database this request targets. Uses its own cookie/param
+ * ("dw_db"), deliberately NOT the shared "db" cookie other tools on this
+ * domain use (e.g. wp_options) - so switching sites here can never leak
+ * into those tools, or vice versa. Falls back to the live site.
+ */
+$ACTIVE_DB = $_GET['db'] ?? $_POST['db'] ?? $_COOKIE['dw_db'] ?? 'landing';
 require $_SERVER['DOCUMENT_ROOT'] . '/salvadore/healthray-sql/conn.php';
 require __DIR__ . '/lib/constants.php';
 require __DIR__ . '/lib/query.php';

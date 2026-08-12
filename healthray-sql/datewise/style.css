@@ -84,6 +84,31 @@ html, body {
     font-size: 13px;
 }
 
+.page-hdr-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.db-switch {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.db-switch label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text3);
+}
+
+.db-switch select {
+    height: 36px;
+    font-weight: 600;
+}
+
 .theme-toggle {
     display: inline-flex;
     align-items: center;
@@ -152,6 +177,15 @@ html, body {
     border: 1px solid var(--border);
     border-radius: 12px;
     margin-bottom: 16px;
+}
+
+.view-tab-group {
+    margin-bottom: 20px;
+}
+
+.view-tab {
+    font-size: 13px;
+    padding: 9px 22px;
 }
 
 .tab {
@@ -413,6 +447,59 @@ tbody tr:hover td {
     background: var(--danger-dim);
 }
 
+.cell-input.dirty {
+    border-color: var(--warn);
+    background: var(--warn-dim);
+}
+
+.actions-cell {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.btn-save-row {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 7px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .15s, opacity .15s;
+}
+
+.btn-save-row:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.btn-save-row:disabled {
+    background: var(--surface2);
+    border-color: var(--border);
+    color: var(--text3);
+    cursor: not-allowed;
+}
+
+#saveBar {
+    background: var(--warn-dim);
+    border: 1px solid var(--warn);
+    border-radius: 9px;
+    padding: 10px 14px;
+    justify-content: space-between;
+}
+
+#dirtyCount {
+    color: var(--warn);
+    font-weight: 600;
+    margin: 0;
+}
+
 .truncate {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -490,12 +577,6 @@ tbody tr:hover td {
 .pagination .pager-btns {
     display: flex;
     gap: 6px;
-}
-
-.export-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
 }
 
 .spinner {

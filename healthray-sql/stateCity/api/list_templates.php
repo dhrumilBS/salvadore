@@ -9,6 +9,7 @@ $validTemplates = [
     'EHR' => 'templates/%ehr%state.php',
     'PMS' => 'templates/%pms%state.php',
     'LAB' => 'templates/%lab%state.php',
+    'SPECIALITY' => 'templates/template-speciality.php',
     'INTERNATIONAL' => 'templates/template-hms-international.php',
     'META' => '',
     'OTHER' => null,
@@ -28,6 +29,7 @@ $knownTemplateLikePatterns = [
     '%pms%state.php',
     '%lab%state.php',
     '%state-city.php',
+    'templates/template-speciality.php',
     'templates/template-hms-international.php',
     'templates/template-%-state.php',
 ];

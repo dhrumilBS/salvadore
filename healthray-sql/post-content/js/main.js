@@ -11,6 +11,7 @@ const state = {
     groups: {},      // { postId: { title, links[] } }  ← built on load
     checked: {},      // { url: { status_code, is_redirect, redirect_url } }
     filter: 'all',   // all | ok | redirect | error | pending
+    linkType: 'all',   // all | internal | external
     search: '',
     selected: new Set(), // "postId||url"
     collapsed: new Set(), // collapsed post IDs
@@ -18,6 +19,8 @@ const state = {
     isChecking: false,
     checkProgress: 0,
     checkTotal: 0,
+    totalPages: 1,
+    siteUrl: '',
 };
 
 /* ── DOM refs ───────────────────────────────── */
@@ -35,6 +38,7 @@ const $modal = document.getElementById('edit-modal');
 const $modalOldUrl = document.getElementById('modal-old-url');
 const $modalNewUrl = document.getElementById('modal-new-url');
 const $modalPostId = document.getElementById('modal-post-id');
+const $modalRemoveLink = document.getElementById('modal-remove-link');
 
 /* ── Toast ──────────────────────────────────── */
 function showToast(msg, type = 'info') {
@@ -51,25 +55,39 @@ async function loadLinks() {
     state.isLoading = true;
     setTableLoading('Loading posts…');
 
-    const page = document.getElementById('inp-page').value || 1;
-    const perPage = document.getElementById('inp-perpage').value || 50;
+    const $page = document.getElementById('inp-page');
+    let page = Math.max(1, parseInt($page.value, 10) || 1);
+    const perPage = Math.max(1, parseInt(document.getElementById('inp-perpage').value, 10) || 50);
+    $page.value = page;
 
     try {
         const res = await fetch(`${API}?action=get_links&page=${page}&perPage=${perPage}`);
         const data = await res.json();
         if (data.status !== 'success') { showToast('API error: ' + data.message, 'error'); return; }
 
+        state.totalPages = Math.max(1, data.total_pages || 1);
+
+        // Requested page is beyond the last available page (e.g. after
+        // shrinking Per Page) — snap back to the last valid page instead
+        // of rendering an empty table with a stuck/broken pager.
+        if (data.total_pages > 0 && page > data.total_pages) {
+            $page.value = data.total_pages;
+            state.isLoading = false;
+            return loadLinks();
+        }
+
         state.links = data.links;
         state.checked = {};
         state.selected.clear();
         state.collapsed.clear();
 
-        document.getElementById('site-url-label').textContent = data.site_url || '';
+        state.siteUrl = data.site_url || '';
+        document.getElementById('site-url-label').textContent = state.siteUrl;
 
         buildGroups();
         updateStats();
         renderTable();
-        renderPagination(data.page, data.total_pages);
+        renderPagination(data.page, state.totalPages);
         showToast(`Loaded ${data.link_count} internal links from page ${data.page}`, 'success');
     } catch (e) {
         showToast('Failed to load: ' + e.message, 'error');
@@ -89,11 +107,26 @@ function buildGroups() {
     }
 }
 
-/* ── Check ALL links ────────────────────────── */
+/* ── Links matching the Internal/External tab + search (ignores
+   status filter — used to scope bulk "Check" to what's on screen) ── */
+function typeFilteredLinks() {
+    const search = state.search.toLowerCase();
+    return state.links.filter(link => {
+        if (state.linkType === 'internal' && !link.is_internal) return false;
+        if (state.linkType === 'external' && link.is_internal) return false;
+        if (search) {
+            const hay = (link.url + link.anchor_text + link.post_title).toLowerCase();
+            if (!hay.includes(search)) return false;
+        }
+        return true;
+    });
+}
+
+/* ── Check ALL links (scoped to current Internal/External tab) ─ */
 async function checkAllLinks() {
     if (state.isChecking) return;
-    const unchecked = state.links.filter(l => !state.checked[l.url]);
-    if (!unchecked.length) { showToast('All links already checked', 'info'); return; }
+    const unchecked = typeFilteredLinks().filter(l => !state.checked[l.url]);
+    if (!unchecked.length) { showToast('All links in this view are already checked', 'info'); return; }
 
     state.isChecking = true;
     state.checkTotal = unchecked.length;
@@ -138,11 +171,18 @@ async function checkRowLink(url, btn) {
     btn.disabled = false;
 }
 
-/* ── Repaint ONE link row in-place ──────────── */
+/* ── Repaint the row(s) for a URL in-place ───── */
 function repaintLinkRow(url) {
-    const row = document.querySelector(`tr[data-url="${CSS.escape(url)}"]`);
-    if (!row) { renderTable(); return; }
+    const rows = document.querySelectorAll(`tr[data-url="${CSS.escape(url)}"]`);
+    if (!rows.length) { renderTable(); return; }
 
+    // The same URL can appear more than once (same post, twice, or across
+    // different posts) — checking/fixing one occurrence checks the URL for
+    // all of them, so every matching row needs to be repainted, not just
+    // the first one found in the DOM.
+    if (rows.length > 1) { renderTable(); return; }
+
+    const row = rows[0];
     const postId = row.dataset.postId;
     const link = state.links.find(l => l.url === url && String(l.post_id) === String(postId));
     if (!link) return;
@@ -165,13 +205,14 @@ function updateProgress() {
 
 /* ── Stats ──────────────────────────────────── */
 function updateStats() {
-    let ok = 0, rd = 0, err = 0, pend = 0;
+    let ok = 0, rd = 0, err = 0, pend = 0, internal = 0, external = 0;
     for (const link of state.links) {
         const c = state.checked[link.url];
         if (!c) pend++;
         else if (c.status_code >= 200 && c.status_code < 300) ok++;
         else if (c.status_code >= 300 && c.status_code < 400) rd++;
         else err++;
+        link.is_internal ? internal++ : external++;
     }
     document.getElementById('stat-total').textContent = state.links.length;
     document.getElementById('stat-ok').textContent = ok;
@@ -179,13 +220,31 @@ function updateStats() {
     document.getElementById('stat-err').textContent = err;
     document.getElementById('stat-pend').textContent = pend;
 
-    document.querySelectorAll('.ftab').forEach(btn => {
+    document.querySelectorAll('.ftab[data-filter]').forEach(btn => {
         const f = btn.dataset.filter;
         const fc = btn.querySelector('.fc');
         if (!fc) return;
         const map = { all: state.links.length, ok, redirect: rd, error: err, pending: pend };
         fc.textContent = map[f] ?? '';
     });
+
+    document.querySelectorAll('.ftab[data-type]').forEach(btn => {
+        const t = btn.dataset.type;
+        const fc = btn.querySelector('.fc');
+        if (!fc) return;
+        const map = { all: state.links.length, internal, external };
+        fc.textContent = map[t] ?? '';
+    });
+
+    updateCheckAllLabel();
+}
+
+/* ── Keep "Check All Links" label in sync with the active tab ── */
+function updateCheckAllLabel() {
+    const pending = typeFilteredLinks().filter(l => !state.checked[l.url]).length;
+    const typeName = state.linkType === 'internal' ? 'Internal' : state.linkType === 'external' ? 'External' : 'All';
+    const el = document.getElementById('check-all-label');
+    if (el) el.textContent = pending ? `Check ${typeName} Links (${pending})` : `Check ${typeName} Links`;
 }
 
 /* ── Filtered + grouped data ────────────────── */
@@ -196,6 +255,9 @@ function filteredGroups() {
     for (const [postId, group] of Object.entries(state.groups)) {
         const links = group.links.filter(link => {
             const c = state.checked[link.url];
+
+            if (state.linkType === 'internal' && !link.is_internal) return false;
+            if (state.linkType === 'external' && link.is_internal) return false;
 
             if (search) {
                 const hay = (link.url + link.anchor_text + link.post_title).toLowerCase();
@@ -287,12 +349,15 @@ function linkRowInner(link, c, key, sel) {
     const redir = c?.is_redirect
         ? `<div class="redir-target" title="${escAttr(c.redirect_url || '')}">→ ${trunc(c.redirect_url || '', 55)}</div>`
         : '';
+    const dupeBadge = link.occurrence_count > 1
+        ? `<span class="sbadge s-chk" style="margin-left:6px" title="This exact URL is linked ${link.occurrence_count} times in this post — editing or removing it updates all of them">×${link.occurrence_count} in post</span>`
+        : '';
 
     return `
       <td style="width:36px"><input type="checkbox" class="row-check" data-key="${escAttr(key)}" ${sel ? 'checked' : ''}></td>
       <td class="hide-mob" style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(link.anchor_text)}">${esc(link.anchor_text)}</td>
       <td>
-        <div class="url-cell"><a href="${escAttr(link.url)}" target="_blank" rel="noopener">${trunc(link.url, 55)}</a></div>
+        <div class="url-cell"><a href="${escAttr(link.url)}" target="_blank" rel="noopener">${trunc(link.url, 55)}</a>${dupeBadge}</div>
         ${redir}
       </td>
       <td style="width:110px">${badge}</td>
@@ -414,12 +479,25 @@ async function runBulkUpdate(updates, recheckAfter = true) {
     }
 }
 
+/* ── Is this URL on the same host as the site? ──── */
+function isInternalUrl(url) {
+    if (!state.siteUrl) return false;
+    try {
+        const siteHost = new URL(state.siteUrl).host.replace(/^www\./i, '').toLowerCase();
+        const linkHost = new URL(url, state.siteUrl).host.replace(/^www\./i, '').toLowerCase();
+        return siteHost !== '' && siteHost === linkHost;
+    } catch {
+        return false;
+    }
+}
+
 /* ── Swap old URL → new URL in state.links ──── */
 function updateLinkInState(postId, oldUrl, newUrl) {
     for (const link of state.links) {
         if (String(link.post_id) === String(postId) && link.url === oldUrl) {
             link.url = newUrl;
             link.original = newUrl;
+            link.is_internal = isInternalUrl(newUrl);
             // Carry over old check result temporarily until re-check completes
             if (state.checked[oldUrl]) {
                 state.checked[newUrl] = state.checked[oldUrl];
@@ -502,6 +580,9 @@ async function bulkApplyCustom() {
 /* ── Pagination ─────────────────────────────── */
 function renderPagination(current, total) {
     if (total <= 1) { $pagination.innerHTML = ''; return; }
+    // Clamp defensively so a stale/out-of-range page number can never
+    // produce a broken widget (missing page numbers, Next stuck enabled).
+    current = Math.min(Math.max(1, current), total);
     let html = `<button class="page-btn" onclick="changePage(${current - 1})" ${current === 1 ? 'disabled' : ''}>‹</button>`;
     const s = Math.max(1, current - 2), e = Math.min(total, current + 2);
     if (s > 1) html += `<button class="page-btn" onclick="changePage(1)">1</button>${s > 2 ? '<span style="padding:0 4px">…</span>' : ''}`;
@@ -510,7 +591,11 @@ function renderPagination(current, total) {
     html += `<button class="page-btn" onclick="changePage(${current + 1})" ${current === total ? 'disabled' : ''}>›</button>`;
     $pagination.innerHTML = html;
 }
-function changePage(p) { document.getElementById('inp-page').value = p; loadLinks(); }
+function changePage(p) {
+    p = Math.min(Math.max(1, p), state.totalPages || p);
+    document.getElementById('inp-page').value = p;
+    loadLinks();
+}
 
 /* ── Select All (visible) ───────────────────── */
 $selectAll.addEventListener('change', () => {
@@ -530,30 +615,58 @@ function openEditModal(postId, oldUrl, newUrl) {
     $modalPostId.value = postId;
     $modalOldUrl.value = oldUrl;
     $modalNewUrl.value = newUrl;
+    $modalRemoveLink.checked = false;
+    updateModalRemoveMode();
     $modal.classList.add('open');
     setTimeout(() => $modalNewUrl.focus(), 80);
 }
 function closeModal() { $modal.classList.remove('open'); }
 
+/* ── Toggle New URL field on/off depending on the "remove link" checkbox */
+function updateModalRemoveMode() {
+    const removing = $modalRemoveLink.checked;
+    $modalNewUrl.disabled = removing;
+    $modalNewUrl.closest('.modal-field').classList.toggle('modal-new-url-disabled', removing);
+    document.getElementById('modal-save-btn').textContent = removing ? 'Remove Link' : 'Save';
+}
+$modalRemoveLink.addEventListener('change', updateModalRemoveMode);
+
+/* ── Remove one link from in-memory state (it's no longer an <a> tag) ── */
+function removeLinkFromState(postId, url) {
+    state.links = state.links.filter(l => !(String(l.post_id) === String(postId) && l.url === url));
+    delete state.checked[url];
+    state.selected.delete(`${postId}||${url}`);
+}
+
 async function saveModal() {
     const postId = parseInt($modalPostId.value, 10);
     const oldUrl = $modalOldUrl.value.trim();
+    const removing = $modalRemoveLink.checked;
     const newUrl = $modalNewUrl.value.trim();
-    if (!newUrl) { showToast('Enter a new URL', 'error'); return; }
+    if (!removing && !newUrl) { showToast('Enter a new URL', 'error'); return; }
 
     const btn = document.getElementById('modal-save-btn');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spin"></span> Saving…';
+    btn.innerHTML = `<span class="spin"></span> ${removing ? 'Removing…' : 'Saving…'}`;
 
     try {
-        const res = await fetch(`${API}?action=update_link`, {
+        const res = await fetch(`${API}?action=${removing ? 'remove_link' : 'update_link'}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ post_id: postId, old_url: oldUrl, new_url: newUrl }),
+            body: JSON.stringify(removing
+                ? { post_id: postId, url: oldUrl }
+                : { post_id: postId, old_url: oldUrl, new_url: newUrl }),
         });
         const data = await res.json();
 
-        if (data.status === 'success') {
+        if (data.status === 'success' && removing) {
+            closeModal();
+            removeLinkFromState(postId, oldUrl);
+            showToast('Link removed — now plain text', 'success');
+            buildGroups();
+            updateStats();
+            renderTable();
+        } else if (data.status === 'success') {
             closeModal();
             updateLinkInState(postId, oldUrl, newUrl);
             showToast('Saved! Re-checking new URL…', 'success');
@@ -571,17 +684,28 @@ async function saveModal() {
         showToast('Save failed: ' + e.message, 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Save';
+        updateModalRemoveMode();
     }
 }
 
-/* ── Filter tabs ────────────────────────────── */
-document.querySelectorAll('.ftab').forEach(btn => {
+/* ── Filter tabs (status: all/ok/redirect/error/pending) ────── */
+document.querySelectorAll('.ftab[data-filter]').forEach(btn => {
     btn.addEventListener('click', () => {
-        document.querySelectorAll('.ftab').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.ftab[data-filter]').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         state.filter = btn.dataset.filter;
         renderTable();
+    });
+});
+
+/* ── Link type tabs (all/internal/external) ─────────────────── */
+document.querySelectorAll('#type-tabs .ftab').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('#type-tabs .ftab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.linkType = btn.dataset.type;
+        renderTable();
+        updateCheckAllLabel();
     });
 });
 

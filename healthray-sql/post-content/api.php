@@ -44,6 +44,7 @@ if ($action === 'get_links') {
     }
 
     $allLinks = [];
+    $siteHost = $siteUrl ? preg_replace('/^www\./i', '', (string) parse_url($siteUrl, PHP_URL_HOST)) : '';
 
     while ($row = $result->fetch_assoc()) {
         $postId      = $row['ID'];
@@ -57,21 +58,23 @@ if ($action === 'get_links') {
             $href       = trim($match[1]);
             $anchorText = trim(strip_tags($match[2]));
 
-            // if (
-            //     $siteUrl &&
-            //     !str_starts_with($href, $siteUrl) &&
-            //     !str_starts_with($href, '/')
-            // ) {
-            //     continue;
-            // }
-
             // Skip empty, anchor-only, mailto, tel links
             if (empty($href) || str_starts_with($href, '#') || str_starts_with($href, 'mailto:') || str_starts_with($href, 'tel:')) {
                 continue;
             }
 
             // Build absolute URL
-            $absoluteUrl = str_starts_with($href, '/') ? $siteUrl . $href : $href;
+            $isRelative  = str_starts_with($href, '/');
+            $absoluteUrl = $isRelative ? $siteUrl . $href : $href;
+
+            // A relative href is always internal; an absolute href is internal
+            // only if its host matches the site's host (ignoring "www.")
+            if ($isRelative) {
+                $isInternal = true;
+            } else {
+                $linkHost   = preg_replace('/^www\./i', '', (string) parse_url($absoluteUrl, PHP_URL_HOST));
+                $isInternal = $siteHost !== '' && $linkHost !== '' && strcasecmp($linkHost, $siteHost) === 0;
+            }
 
             $allLinks[] = [
                 'post_id'     => $postId,
@@ -79,20 +82,26 @@ if ($action === 'get_links') {
                 'anchor_text' => $anchorText ?: '(no text)',
                 'url'         => $absoluteUrl,
                 'original'    => $href,
+                'is_internal' => $isInternal,
             ];
         }
     }
 
-    // Remove duplicate URLs (keep unique url+post combos)
-    $seen  = [];
-    $unique = [];
+    // Every occurrence is kept — a URL linked more than once in the same post
+    // used to be silently collapsed into a single row here, which hid the
+    // other <a> tags from the checker entirely. Instead, just tag each link
+    // with how many times its exact URL repeats within the same post, so the
+    // UI can show it (editing/removing still affects all of them at once,
+    // since that's how the href replace in update_link/remove_link works).
+    $occurrenceCounts = [];
     foreach ($allLinks as $link) {
         $key = $link['post_id'] . '||' . $link['url'];
-        if (!isset($seen[$key])) {
-            $seen[$key] = true;
-            $unique[]   = $link;
-        }
+        $occurrenceCounts[$key] = ($occurrenceCounts[$key] ?? 0) + 1;
     }
+    foreach ($allLinks as &$link) {
+        $link['occurrence_count'] = $occurrenceCounts[$link['post_id'] . '||' . $link['url']];
+    }
+    unset($link);
 
     echo json_encode([
         'status'      => 'success',
@@ -101,8 +110,8 @@ if ($action === 'get_links') {
         'page'        => $page,
         'per_page'    => $perPage,
         'total_pages' => (int) ceil($totalPosts / $perPage),
-        'link_count'  => count($unique),
-        'links'       => $unique,
+        'link_count'  => count($allLinks),
+        'links'       => $allLinks,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -194,6 +203,56 @@ if ($action === 'update_link' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         'post_id'  => $postId,
         'old_url'  => $oldUrl,
         'new_url'  => $newUrl,
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ─── ACTION: REMOVE LINK (unlink — strip <a> tag, keep plain text) ────────────
+if ($action === 'remove_link' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $body   = json_decode(file_get_contents('php://input'), true);
+    $postId = intval($body['post_id'] ?? 0);
+    $url    = trim($body['url'] ?? '');
+
+    if (!$postId || !$url) {
+        echo json_encode(['status' => 'error', 'message' => 'Missing post_id or url']);
+        exit;
+    }
+
+    $stmt = $conn->prepare("SELECT post_content FROM wp_posts WHERE ID = ?");
+    $stmt->bind_param('i', $postId);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    if (!$res || $res->num_rows === 0) {
+        echo json_encode(['status' => 'error', 'message' => 'Post not found']);
+        exit;
+    }
+    $content = $res->fetch_assoc()['post_content'];
+    $stmt->close();
+
+    // Match the specific <a href="$url">...</a> tag(s) and replace the whole
+    // tag with its plain inner text (any nested markup is stripped too).
+    $pattern    = '/<a\s[^>]*href=["\']' . preg_quote($url, '/') . '["\'][^>]*>(.*?)<\/a>/si';
+    $count      = 0;
+    $newContent = preg_replace_callback($pattern, function ($m) {
+        return trim(strip_tags($m[1]));
+    }, $content, -1, $count);
+
+    if (!$count) {
+        echo json_encode(['status' => 'no_change', 'message' => 'URL not found in post content']);
+        exit;
+    }
+
+    $stmt2 = $conn->prepare("UPDATE wp_posts SET post_content = ?, post_modified = NOW(), post_modified_gmt = UTC_TIMESTAMP() WHERE ID = ?");
+    $stmt2->bind_param('si', $newContent, $postId);
+    $stmt2->execute();
+    $affected = $stmt2->affected_rows;
+    $stmt2->close();
+
+    echo json_encode([
+        'status'   => 'success',
+        'message'  => "Unlinked {$count} occurrence(s) in {$affected} post(s)",
+        'post_id'  => $postId,
+        'url'      => $url,
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }

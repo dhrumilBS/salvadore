@@ -7,12 +7,15 @@
     padding: 0;
 }
 
+html {
+    height: 100%;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 14px;
     background: #f4f5f7;
     color: #1a1a2e;
-    min-height: 100vh;
 }
 
 /* ── Header ── */
@@ -47,11 +50,30 @@ body {
     margin-left: auto;
     font-size: 12px;
     color: #94a3b8;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-/* ── Layout ── */
+.app-header,
+.controls-bar,
+.stats-row,
+.progress-wrap,
+.filter-tabs,
+.bulk-bar,
+.pagination {
+    flex: 0 0 auto;
+}
+
+/* ── Layout (full-height app shell) ── */
 .container {
-    max-width: 1400px;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    width: 100%;
     margin: 0 auto;
     padding: 18px 22px;
 }
@@ -106,6 +128,10 @@ body {
 
 .controls-bar input[type="number"] {
     width: 70px;
+}
+
+.ctrl-search {
+    margin-left: auto;
 }
 
 #inp-search {
@@ -364,15 +390,22 @@ body {
     background: #fff;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
-    overflow: hidden;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .table-wrap table {
     width: 100%;
+    min-width: 640px;
     border-collapse: collapse;
 }
 
 .table-wrap thead th {
+    position: sticky;
+    top: 0;
+    z-index: 5;
     background: #f8fafc;
     padding: 9px 12px;
     text-align: left;
@@ -728,6 +761,34 @@ input[type="checkbox"] {
     color: #64748b;
 }
 
+.modal-checkbox-field {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+
+.modal-checkbox-label {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    text-transform: none !important;
+    color: #334155;
+    cursor: pointer;
+}
+
+.modal-checkbox-label input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.modal-new-url-disabled {
+    opacity: .5;
+}
+
 .modal-actions {
     display: flex;
     gap: 8px;
@@ -737,8 +798,58 @@ input[type="checkbox"] {
 
 /* ── Responsive ── */
 @media(max-width:768px) {
+
+    /* Drop the fixed-height app shell on mobile — let the page scroll
+       naturally instead of nesting another scroll area inside one. */
+    html,
+    body {
+        height: auto;
+        overflow: visible;
+    }
+
     .container {
+        flex: none;
+        display: block;
+        overflow: visible;
         padding: 10px;
+    }
+
+    .app-header {
+        padding: 12px 14px;
+        flex-wrap: wrap;
+        row-gap: 6px;
+    }
+
+    .app-header h1 {
+        font-size: 15px;
+    }
+
+    .app-header .site-url {
+        max-width: 100%;
+        margin-left: 0;
+        flex-basis: 100%;
+    }
+
+    .controls-bar {
+        gap: 8px;
+    }
+
+    .ctrl-group {
+        flex: 1 1 auto;
+    }
+
+    .ctrl-search {
+        margin-left: 0;
+        flex-basis: 100%;
+    }
+
+    #inp-search {
+        width: 100%;
+    }
+
+    .controls-bar>.btn {
+        flex: 1 1 auto;
+        justify-content: center;
     }
 
     .stats-row {
@@ -749,11 +860,52 @@ input[type="checkbox"] {
         width: 100%;
     }
 
-    .url-cell {
-        max-width: 150px;
+    .table-wrap {
+        flex: none;
+        max-height: 65vh;
+    }
+
+    .url-cell,
+    .redir-target {
+        max-width: 46vw;
     }
 
     .hide-mob {
         display: none;
+    }
+
+    .pagination {
+        gap: 4px;
+    }
+
+    .page-btn {
+        height: 32px;
+        min-width: 32px;
+        padding: 0 7px;
+    }
+}
+
+@media(max-width:480px) {
+    .stats-row {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+
+    .stat-card {
+        padding: 10px 8px;
+    }
+
+    .stat-card .sv {
+        font-size: 20px;
+    }
+
+    .controls-bar>.btn {
+        font-size: 12px;
+        padding: 0 10px;
+    }
+
+    .url-cell,
+    .redir-target {
+        max-width: 38vw;
     }
 }
