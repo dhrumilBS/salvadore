@@ -111,9 +111,13 @@ function renderColumnsPanel() {
     });
 }
 
+const WIDE_URL_COLUMNS = ['permalink'];
+
 function renderHead() {
     document.getElementById('tableHead').innerHTML =
-        '<tr>' + activeColumns().map(c => `<th>${c.label}</th>`).join('') + '<th>Actions</th></tr>';
+        '<tr>' + activeColumns().map(c =>
+            `<th${WIDE_URL_COLUMNS.includes(c.key) ? ' class="url-col"' : ''}>${c.label}</th>`).join('')
+        + '<th>Actions</th></tr>';
 }
 
 const STATUS_OPTIONS = ['publish', 'draft', 'pending', 'private', 'future', 'trash'];
@@ -138,7 +142,7 @@ function renderCell(r, key) {
         case 'slug':
             return `<td>${editableInput(r, 'slug', 'mono')}</td>`;
         case 'permalink':
-            return `<td><a class="truncate mono" href="${escapeHtml(r.permalink)}" target="_blank" rel="noopener">${escapeHtml(r.permalink)}</a></td>`;
+            return `<td class="url-col">${urlCellHtml(r.permalink)}</td>`;
         case 'status':
             return `<td><select class="cell-input" data-id="${r.id}" data-field="status">` +
                 STATUS_OPTIONS.map(s => `<option value="${s}"${s === r.status ? ' selected' : ''}>${s}</option>`).join('') +
@@ -186,8 +190,10 @@ function createLinkStatusController() {
             return `<span class="badge ls-error" title="${escapeHtml(s.error)}">error</span>
                 <button type="button" class="btn-check-link" data-check-id="${id}" title="Retry">↻</button>`;
         }
+        // Where it redirected to, in full — truncating this hid the one
+        // detail you check a redirect for.
         const redirectNote = s.redirect_url
-            ? `<span class="truncate mono" style="font-size:11px" title="${escapeHtml(s.redirect_url)}">→ ${escapeHtml(truncate(s.redirect_url, 40))}</span>`
+            ? `<span class="ls-target" title="${escapeHtml(s.redirect_url)}">→ ${escapeHtml(s.redirect_url)}</span>`
             : '';
         return `<span class="badge ${linkStatusClass(s.status_code)}">${s.status_code}</span>
             ${redirectNote}
@@ -453,6 +459,80 @@ function truncate(s, n) {
     return s.length > n ? s.slice(0, n) + '…' : s;
 }
 
+/* ── URL cells ───────────────────────────────────────────────
+ * URLs are rendered in full rather than truncated: they're the field
+ * you actually need to read, compare and copy. Split into
+ * scheme/host/path so the varying part (the path) stands out, and
+ * paired with a copy button. */
+
+function splitUrlParts(url) {
+    const m = /^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)([\s\S]*)$/i.exec(String(url || ''));
+    if (!m) return { scheme: '', host: '', path: String(url || '') };
+    return { scheme: m[1], host: m[2], path: m[3] };
+}
+
+/** Full URL, wrapped, with a copy button. `text` overrides the shown label. */
+function urlCellHtml(href, text = null, emptyLabel = '—') {
+    const shown = text !== null ? String(text) : String(href || '');
+    if (!shown) return `<span class="url-empty">${escapeHtml(emptyLabel)}</span>`;
+
+    const p = splitUrlParts(shown);
+    const inner = p.host
+        ? `<span class="u-scheme">${escapeHtml(p.scheme)}</span><span class="u-host">${escapeHtml(p.host)}</span><span class="u-path">${escapeHtml(p.path)}</span>`
+        : `<span class="u-path">${escapeHtml(shown)}</span>`;
+
+    const label = href
+        ? `<a class="url-full" href="${escapeHtml(href)}" target="_blank" rel="noopener" title="${escapeHtml(href)}">${inner}</a>`
+        : `<span class="url-full" title="${escapeHtml(shown)}">${inner}</span>`;
+
+    return `<div class="url-cell">${label}
+        <button type="button" class="btn-icon btn-copy" data-copy="${escapeHtml(href || shown)}" title="Copy URL" aria-label="Copy URL">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button></div>`;
+}
+
+function toast(msg, kind = '') {
+    const box = document.getElementById('toast');
+    if (!box) return;
+    const el = document.createElement('div');
+    el.className = 'toast-item' + (kind ? ' ' + kind : '');
+    el.textContent = msg;
+    box.appendChild(el);
+    setTimeout(() => el.remove(), 2200);
+}
+
+async function copyToClipboard(text) {
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+    } catch (e) { /* fall through */ }
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        return ok;
+    } catch (e) { return false; }
+}
+
+/** One delegated copy handler for any table body. */
+function bindCopyButtons(containerId) {
+    document.getElementById(containerId).addEventListener('click', async e => {
+        const btn = e.target.closest('.btn-copy');
+        if (!btn) return;
+        const ok = await copyToClipboard(btn.dataset.copy || '');
+        if (!ok) { toast('Copy failed — clipboard blocked', 'err'); return; }
+        btn.classList.add('copied');
+        toast('URL copied', 'ok');
+        setTimeout(() => btn.classList.remove('copied'), 1000);
+    });
+}
+
 function fmtDate(d) {
     if (!d) return '—';
     return d.slice(0, 16).replace(' ', ' · ');
@@ -497,6 +577,7 @@ function loadPosts() {
             document.getElementById('stTotal').textContent = json.total;
             document.getElementById('stTotal2').textContent = json.total;
             document.getElementById('stPage').textContent = json.page;
+            document.getElementById('stPage2').textContent = `${json.page} of ${json.total_pages}`;
             document.getElementById('stPages').textContent = json.total_pages;
             document.getElementById('stShowing').textContent = currentRows.length;
             document.getElementById('pgFirst').disabled = json.page <= 1;
@@ -514,6 +595,16 @@ function loadPosts() {
 function goToPage(p) {
     state.page = p;
     loadPosts();
+}
+
+/** Show/hide a secondary toolbar row and reflect that on its trigger button. */
+function bindPanelToggle(btnId, panelId) {
+    const btn = document.getElementById(btnId);
+    const panel = document.getElementById(panelId);
+    btn.addEventListener('click', () => {
+        const open = panel.classList.toggle('open');
+        btn.classList.toggle('is-open', open);
+    });
 }
 
 function bindFilters() {
@@ -568,17 +659,9 @@ function bindFilters() {
         loadPosts();
     });
 
-    document.getElementById('moreFiltersBtn').addEventListener('click', () => {
-        document.getElementById('moreFilters').classList.toggle('open');
-    });
-
-    document.getElementById('columnsBtn').addEventListener('click', () => {
-        document.getElementById('columnsPanel').classList.toggle('open');
-    });
-
-    document.getElementById('linkFilterBtn').addEventListener('click', () => {
-        document.getElementById('linkFilterPanel').classList.toggle('open');
-    });
+    bindPanelToggle('moreFiltersBtn', 'moreFilters');
+    bindPanelToggle('columnsBtn', 'columnsPanel');
+    bindPanelToggle('linkFilterBtn', 'linkFilterPanel');
 
     document.querySelectorAll('.link-filter-cb').forEach(cb => {
         cb.addEventListener('change', () => {
@@ -649,8 +732,9 @@ function updateRedirectsExportLink() {
 
 function renderRedirectsHead() {
     document.getElementById('redirectsHead').innerHTML = '<tr>' +
-        ['Origin', 'Type', 'Destination', 'Format', 'Origin match', 'Destination match', 'Link status (origin)']
-            .map(h => `<th>${h}</th>`).join('') + '</tr>';
+        [['Origin', 1], ['Type', 0], ['Destination', 1], ['Format', 0],
+        ['Origin match', 0], ['Destination match', 0], ['Link status (origin)', 0]]
+            .map(([h, wide]) => `<th${wide ? ' class="url-col"' : ''}>${h}</th>`).join('') + '</tr>';
 }
 
 function matchBadge(post) {
@@ -661,18 +745,20 @@ function matchBadge(post) {
 function renderRedirectRow(r) {
     const rid = 'r' + r.id;
 
+    // Origin/destination shown in full — these are the two values the whole
+    // tab exists to compare, so neither is ever truncated.
     const originCell = r.origin_url
-        ? `<a class="truncate mono" href="${escapeHtml(r.origin_url)}" target="_blank" rel="noopener">/${escapeHtml(r.origin)}/</a>`
-        : `<span class="mono truncate" title="${escapeHtml(r.origin)}">${escapeHtml(truncate(r.origin, 60))}</span>`;
+        ? urlCellHtml(r.origin_url, '/' + r.origin + '/')
+        : urlCellHtml('', r.origin);
 
     const destCell = !r.url
-        ? '<span class="col-note">—</span>'
+        ? '<span class="url-empty">—</span>'
         : r.dest_url
-            ? `<a class="truncate mono" href="${escapeHtml(r.dest_url)}" target="_blank" rel="noopener">/${escapeHtml(r.url)}/</a>`
-            : `<span class="mono truncate" title="${escapeHtml(r.url)}">${escapeHtml(truncate(r.url, 60))}</span>`;
+            ? urlCellHtml(r.dest_url, '/' + r.url + '/')
+            : urlCellHtml('', r.url);
 
     const originMatch = r.origin_post
-        ? `${matchBadge(r.origin_post)} <span title="Origin still resolves to a live post - this redirect may be stale or conflicting">⚠️</span>`
+        ? `${matchBadge(r.origin_post)} <span class="warn-flag" title="Origin still resolves to a live post - this redirect may be stale or conflicting">⚠️</span>`
         : '<span class="col-note">—</span>';
 
     const destMatch = !r.url
@@ -686,9 +772,9 @@ function renderRedirectRow(r) {
     const linkStatusCell = r.origin_url ? redirectLinkStatus.content(rid) : '<span class="col-note">n/a</span>';
 
     return `<tr>
-        <td>${originCell}</td>
+        <td class="url-col">${originCell}</td>
         <td><span class="badge ${redirectTypeBadgeClass(r.type)}">${r.type || '—'}</span></td>
-        <td>${destCell}</td>
+        <td class="url-col">${destCell}</td>
         <td><span class="badge badge-neutral">${escapeHtml(r.format)}</span></td>
         <td>${originMatch}</td>
         <td>${destMatch}</td>
@@ -727,6 +813,7 @@ function loadRedirects() {
             document.getElementById('rStTotal').textContent = json.total;
             document.getElementById('rStTotal2').textContent = json.total;
             document.getElementById('rStPage').textContent = json.page;
+            document.getElementById('rStPage2').textContent = `${json.page} of ${json.total_pages}`;
             document.getElementById('rStPages').textContent = json.total_pages;
             document.getElementById('rStShowing').textContent = currentRedirects.length;
             document.getElementById('rPgFirst').disabled = json.page <= 1;
@@ -794,9 +881,7 @@ function bindRedirectsFilters() {
         loadRedirects();
     });
 
-    document.getElementById('rLinkFilterBtn').addEventListener('click', () => {
-        document.getElementById('rLinkFilterPanel').classList.toggle('open');
-    });
+    bindPanelToggle('rLinkFilterBtn', 'rLinkFilterPanel');
 
     document.querySelectorAll('.redirect-link-filter-cb').forEach(cb => {
         cb.addEventListener('change', () => {
@@ -922,6 +1007,8 @@ document.addEventListener('DOMContentLoaded', () => {
     bindFilters();
     bindCellEditing();
     bindLinkStatus();
+    bindCopyButtons('tableBody');
+    bindCopyButtons('redirectsBody');
     renderColumnsPanel();
     renderHead();
     updateCheckAllBtnVisibility();

@@ -4,112 +4,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Template Explorer | Healthray</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"> </script>
-    <style>
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        .loading-icon {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #1b2374;
-            border-radius: 50%;
-
-            width: 30px;
-            height: 30px;
-            display: flex;
-            animation: spin 2s linear infinite;
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-    <div class="container">
-        <form id="myForm">
-            <label for="category">Select Category:</label>
-            <select id="category" name="category">
-                <option value="%state-city%">HIMS</option>
-                <option value="%lab%">Lab</option>
-                <option value="%emr%">EMR</option>
-                <option value="%ehr%">EHR</option>
-                <option value="%pms%">PMS</option>
-            </select>
-            <button type="submit">Submit</button>
-        </form>
-        <div class="p-3"></div>
-        <div id="response" class="alert"></div>
-    </div>
-
-    <div class="container">
-        <div id="date_add">
-
-        </div>
-    </div>
+    <main class="app-shell">
+        <a class="visually-hidden-focusable" href="#category">Skip to template selector</a>
+        <header class="d-flex align-items-center gap-3 mb-5">
+            <div class="brand-mark" aria-hidden="true">H</div>
+            <div><strong>Healthray</strong>
+                <div class="small text-secondary">Content operations</div>
+            </div>
+        </header>
+        <section class="mb-4">
+            <div class="eyebrow mb-2">Template explorer</div>
+            <h1 class="mb-2">Find the right page structure.</h1>
+            <p class="intro mb-0">Browse templates by product area and inspect their page hierarchy in one place.</p>
+        </section>
+        <section class="control-panel" aria-labelledby="selector-title">
+            <h2 id="selector-title" class="h5 mb-1">Choose a product area</h2>
+            <p class="small text-secondary mb-4">Select an area to load its available page templates.</p>
+            <form id="myForm" class="row g-3 align-items-end">
+                <div class="col-12 col-md-8"><label class="form-label" for="category">Product area</label><select id="category" name="category" class="form-select" required>
+                        <option value="%state-city%">HIMS</option>
+                        <option value="%lab%">Lab</option>
+                        <option value="%emr%">EMR</option>
+                        <option value="%ehr%">EHR</option>
+                        <option value="%pms%">PMS</option>
+                    </select></div>
+                <div class="col-12 col-md-4"><button id="submitButton" class="btn btn-primary w-100" type="submit">Load templates <span aria-hidden="true">&rarr;</span></button></div>
+            </form>
+        </section>
+        <section class="results-panel" aria-labelledby="results-title">
+            <div class="results-header d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+                <div>
+                    <h2 id="results-title" class="h5 mb-1">Template results</h2>
+                    <p id="resultSummary" class="small text-secondary mb-0">Choose a product area to begin.</p>
+                </div>
+                <div class="d-flex flex-wrap gap-3">
+                    <div class="metric"><strong id="parentCount">0</strong> parent pages</div>
+                    <div class="metric"><strong id="childCount">0</strong> child pages</div>
+                </div>
+            </div>
+            <div class="results-toolbar d-flex flex-column flex-md-row gap-2 justify-content-between">
+                <div class="d-flex flex-column flex-sm-row gap-2 flex-grow-1">
+                    <div id="searchWrap" class="d-none flex-grow-1" style="max-width: 360px;"><label class="visually-hidden" for="searchInput">Filter results</label><input id="searchInput" class="form-control toolbar-control" type="search" placeholder="Search titles or slugs"></div>
+                    <div id="statusWrap" class="d-none"><label class="visually-hidden" for="statusInput">Filter by status</label><select id="statusInput" class="form-select toolbar-control">
+                            <option value="">All statuses</option>
+                        </select></div><button id="clearFilters" class="btn btn-outline-secondary toolbar-control d-none" type="button">Clear filters</button>
+                </div>
+                <div class="d-flex gap-2"><button id="exportButton" class="btn btn-outline-secondary toolbar-control" type="button" disabled>Export CSV</button><button id="copyButton" class="btn btn-outline-secondary toolbar-control" type="button" disabled>Copy JSON</button></div>
+            </div>
+            <div id="response" class="px-4 pt-3" role="status" aria-live="polite"></div>
+            <div id="date_add" class="results-body">
+                <div class="empty-state">
+                    <div class="empty-icon mb-2">&#128196;</div><strong>No templates loaded</strong>
+                    <p class="mb-0 mt-1">Your results will appear here.</p>
+                </div>
+            </div>
+        </section>
+    </main>
 
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
-    <script>
-        $(document).ready(function() {
-            $('#myForm').on('submit', function(event) {
-                event.preventDefault();
-
-                const formData = {
-                    category: $('#category').val()
-                };
-
-                $('#date_add').html('');
-                $('#response').removeAttr('class');
-                // Show loading message
-                $('#response').html('<p class="d-flex gap-2 align-items-center" class=""><span class="loading-icon"></span> Loading, please wait...</p>');
-
-                $.ajax({
-                    url: './submit.php',
-                    type: 'POST',
-                    data: formData,
-                    dataType: 'json', // expecting JSON response
-                    success: function(response) {
-                        console.log(response);
-
-                        let tableHTML = `
-                    <table border="1" width="100%" class="table table-bordered">
-                        <thead> <tr> <th>No.</th> <th>ID</th> <th>Post Title</th> <th>Post Status</th> <th>Post Name</th> <th>Menu Order</th> </tr> </thead>
-                        <tbody> `;
-                        Object.values(response.data).forEach((item, index) => {
-                            tableHTML += `
-                        <tr>
-                            <td>${index + 1}</td>
-                            <td>${item.id}</td>
-                            <td>${item.post_title}</td>
-                            <td>${item.post_status}</td>
-                            <td>${item.post_name}</td>
-                            <td>${item.menu_order}</td>
-                        </tr>`;
-                        });
-                        tableHTML += `</tbody>`;
-                        tableHTML += `</table>`;
-
-
-
-                        $('#date_add').html(tableHTML);
-                        $('#response').addClass('alert alert-success').html('<div style="color:green;">✅ ' + response.msg + '</div>');
-                    },
-                    error: function(xhr, status, error) {
-                        $('#response').addClass('alert alert-danger').html('<div style="color:red;">❌ An error occurred: ' + error + '</div>');
-                    }
-                });
-            });
-        });
-    </script>
+    <script src="script.js"></script>
 
 </body>
 

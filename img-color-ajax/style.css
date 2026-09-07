@@ -1,4 +1,0 @@
-body { transition: background-color 0.8s ease; }
-.container { min-height: 100vh; height: 800px; }
-.card-img { width: 100%; object-fit: contain; max-height: 400px; }
-.ambient-card { border: none; border-radius: 12px; transition: box-shadow 0.8s ease; }

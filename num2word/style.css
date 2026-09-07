@@ -1,8 +1,0 @@
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; padding: 40px; }
-.container { max-width: 600px; margin: auto; background: #fff; padding: 30px 40px; border-radius: 12px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
-h2 { text-align: center; color: #333; }
-input[type="text"] { width: 100%; padding: 10px; font-size: 18px; margin-top: 20px; border: 1px solid #ccc; border-radius: 6px; appearance: none; }
-input[type="submit"] { margin-top: 20px; width: 100%; padding: 10px; font-size: 18px; background: #007BFF; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
-.result { margin-top: 30px; padding: 15px; background-color: #f9f9ff; border-left: 5px solid #007BFF; font-size: 18px; color: #222; }
-.log { margin-top: 20px; font-size: 13px; color: #666; background: #eee; padding: 10px; border-radius: 5px; font-family: monospace; }

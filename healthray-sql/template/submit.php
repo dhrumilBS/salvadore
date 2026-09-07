@@ -1,8 +1,15 @@
 <?php
 require $_SERVER['DOCUMENT_ROOT'] . '/salvadore/healthray-sql/conn.php';
 
-if (isset($_POST['category']) && !empty($_POST['category']))
-    $t = $_POST['category'];
+$allowedCategories = ['%state-city%', '%lab%', '%emr%', '%ehr%', '%pms%'];
+$t = $_POST['category'] ?? '';
+
+header('Content-Type: application/json; charset=utf-8');
+if (!in_array($t, $allowedCategories, true)) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'msg' => 'Please select a valid category.', 'data' => []]);
+    exit;
+}
 
 $allTemplateState = [];
 $state = [];
@@ -61,7 +68,7 @@ if ($res && mysqli_num_rows($res) > 0) {
         }
     }
     if (!empty($temp_array)) {
-        $state[$t][count($state) - 1]["textdata"] = $temp_array;
+        $state[count($state) - 1]["textdata"] = $temp_array;
     }
 }
 

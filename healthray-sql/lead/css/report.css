@@ -176,7 +176,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); min-
 /* ═══════════════════════════════════════════
    PAGE
 ═══════════════════════════════════════════ */
-.page { padding: 20px 28px 28px; }
+.page { padding: 20px; }
 
 /* ═══════════════════════════════════════════
    CONTROLS (sticky filter/control bar)
@@ -471,7 +471,7 @@ tbody tr:last-child { border-bottom: none; }
 tbody tr:nth-child(even) { background: var(--surface-alt); }
 tbody tr:hover { filter: brightness(.97); }
 :root[data-theme="dark"] tbody tr:hover { filter: brightness(1.15); }
-tbody td { padding: 13px 16px; color: var(--text); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+tbody td { padding: 13px 16px; color: var(--text); max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
 
 /* Duplicate highlights */
 tr.dup-email { background: var(--dup-email-bg) !important; border-left: 3px solid var(--dup-email-border); }

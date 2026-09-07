@@ -4,134 +4,214 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WP Internal Link Checker</title>
+    <title>Internal Link Checker — WordPress</title>
     <link rel="stylesheet" href="./css/style.css">
 </head>
 
 <body>
 
-    <!-- ── Header ──────────────────────────────────── -->
+    <!-- ══ Header ═══════════════════════════════════════════ -->
     <header class="app-header">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-        </svg>
-        <h1>Internal Link Checker</h1>
-        <span class="hbadge">WordPress</span>
-        <span class="site-url" id="site-url-label"></span>
+        <div class="brand">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+            <h1>Internal Link Checker</h1>
+            <span class="hbadge">WordPress</span>
+        </div>
+        <div class="header-meta">
+            <a class="site-url" id="site-url-label" target="_blank" rel="noopener" title="Site URL"></a>
+            <button class="hicon" id="btn-help" title="Keyboard shortcuts (press ?)" aria-label="Keyboard shortcuts">?</button>
+        </div>
     </header>
 
     <div class="container">
 
-        <!-- ── Controls ─────────────────────────────── -->
-        <div class="controls-bar">
-            <div class="ctrl-group">
-                <label>Page</label>
-                <input type="number" id="inp-page" value="1" min="1">
+        <!-- ══ Toolbar ══════════════════════════════════════ -->
+        <div class="toolbar">
+
+            <!-- Post type picker -->
+            <div class="pt-select" id="pt-select">
+                <button type="button" class="pt-trigger" id="pt-trigger" aria-haspopup="true" aria-expanded="false">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                        <path d="M3 6h18M3 12h18M3 18h18" />
+                    </svg>
+                    <span id="pt-trigger-label">Post Types</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="pt-caret" aria-hidden="true">
+                        <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                </button>
+                <div class="pt-panel" id="pt-panel" role="dialog" aria-label="Choose content types">
+                    <div class="pt-panel-head">
+                        <span>Scan these content types</span>
+                        <div class="pt-panel-actions">
+                            <button type="button" class="pt-mini" id="btn-pt-all">All</button>
+                            <button type="button" class="pt-mini" id="btn-pt-none">None</button>
+                        </div>
+                    </div>
+                    <div class="pt-options" id="pt-options">
+                        <div class="pt-empty">Loading…</div>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm pt-apply" id="btn-pt-apply">Apply &amp; Reload</button>
+                </div>
             </div>
-            <div class="ctrl-group">
-                <label>Per Page</label>
-                <input type="number" id="inp-perpage" value="50" min="1" max="500">
-            </div>
-            <button class="btn btn-primary" onclick="loadLinks()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+
+            <button class="btn btn-ghost" id="btn-load" title="Reload the current page of posts (R)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                     <polyline points="23 4 23 10 17 10" />
                     <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                 </svg>
-                Load Posts
+                Reload
             </button>
-            <button class="btn btn-success" id="btn-check-all" onclick="checkAllLinks()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+
+            <button class="btn btn-success" id="btn-check-all" title="Check every link in the current view (C)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                     <polyline points="20 6 9 17 4 12" />
                 </svg>
-                <span id="check-all-label">Check All Links</span>
+                <span id="check-all-label">Check Links</span>
             </button>
-            <div class="ctrl-group ctrl-search">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2">
+
+            <div class="toolbar-sep" aria-hidden="true"></div>
+
+            <!-- Search -->
+            <div class="searchbox" id="searchbox">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
                     <circle cx="11" cy="11" r="8" />
                     <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="inp-search" placeholder="Search URL, anchor, title…">
+                <select class="search-scope" id="inp-search-scope" title="Which field to search" aria-label="Search field">
+                    <option value="all">All fields</option>
+                    <option value="url">URL</option>
+                    <option value="anchor">Anchor</option>
+                    <option value="title">Post</option>
+                </select>
+                <input type="text" id="inp-search" placeholder="Search full URLs, anchors, posts…   ( / )" aria-label="Search links" autocomplete="off" spellcheck="false">
+                <span class="search-count" id="search-count"></span>
+                <button class="search-clear" id="btn-search-clear" title="Clear search (Esc)" aria-label="Clear search">×</button>
             </div>
-            <button class="btn btn-ghost" onclick="exportCsv()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                CSV
+
+            <div class="toolbar-end">
+                <label class="switch" title="Check every link automatically right after posts load">
+                    <input type="checkbox" id="chk-autocheck">
+                    <span class="switch-track"></span>
+                    <span class="switch-label">Auto-check</span>
+                </label>
+                <button class="btn btn-ghost btn-sm" id="btn-copy-urls" title="Copy every URL in the current view to the clipboard">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+                        <rect x="9" y="9" width="13" height="13" rx="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                    Copy URLs
+                </button>
+                <button class="btn btn-ghost btn-sm" id="btn-csv" title="Download the current view as CSV">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    CSV
+                </button>
+            </div>
+        </div>
+
+        <!-- ══ Stats (also the status filter) ═══════════════ -->
+        <div class="stats-row" id="stats-row" role="group" aria-label="Filter links by status">
+            <button class="stat-card s-all active" data-filter="all" title="Show every link">
+                <span class="sv" id="stat-total">–</span>
+                <span class="sl">Total Links</span>
+            </button>
+            <button class="stat-card s-ok" data-filter="ok" title="Links that returned 2xx">
+                <span class="sv" id="stat-ok">–</span>
+                <span class="sl">OK · 2xx</span>
+            </button>
+            <button class="stat-card s-rd" data-filter="redirect" title="Links that return a 3xx redirect">
+                <span class="sv" id="stat-rd">–</span>
+                <span class="sl">Redirects · 3xx</span>
+            </button>
+            <button class="stat-card s-err" data-filter="error" title="Broken links, timeouts and server errors">
+                <span class="sv" id="stat-err">–</span>
+                <span class="sl">Errors · 4xx/5xx</span>
+            </button>
+            <button class="stat-card s-pend" data-filter="pending" title="Not checked yet">
+                <span class="sv" id="stat-pend">–</span>
+                <span class="sl">Unchecked</span>
+            </button>
+            <button class="stat-card s-dup" data-filter="duplicate" title="The same URL linked more than once inside one post">
+                <span class="sv" id="stat-dup">–</span>
+                <span class="sl">Duplicates</span>
             </button>
         </div>
 
-        <!-- ── Stats ─────────────────────────────────── -->
-        <div class="stats-row">
-            <div class="stat-card">
-                <div class="sv" id="stat-total">-</div>
-                <div class="sl">Total Links</div>
+        <!-- ══ View bar ═════════════════════════════════════ -->
+        <div class="viewbar">
+            <div class="seg" id="type-tabs" role="group" aria-label="Filter by link type">
+                <button class="seg-btn active" data-type="all">All <span class="fc">0</span></button>
+                <button class="seg-btn" data-type="internal">Internal <span class="fc">0</span></button>
+                <button class="seg-btn" data-type="external">External <span class="fc">0</span></button>
             </div>
-            <div class="stat-card s-ok">
-                <div class="sv" id="stat-ok">-</div>
-                <div class="sl">OK (2xx)</div>
-            </div>
-            <div class="stat-card s-rd">
-                <div class="sv" id="stat-rd">-</div>
-                <div class="sl">Redirects (3xx)</div>
-            </div>
-            <div class="stat-card s-err">
-                <div class="sv" id="stat-err">-</div>
-                <div class="sl">Errors (4xx/5xx)</div>
-            </div>
-            <div class="stat-card s-pend">
-                <div class="sv" id="stat-pend">-</div>
-                <div class="sl">Unchecked</div>
+
+            <span class="filter-note" id="filter-note"></span>
+
+            <div class="viewbar-end">
+                <div class="field">
+                    <label for="sel-sort" class="field-label">Sort</label>
+                    <select class="select input-sm" id="sel-sort">
+                        <option value="id-asc">Post ID ↑</option>
+                        <option value="id-desc">Post ID ↓</option>
+                        <option value="title-asc">Title A–Z</option>
+                        <option value="issues">Issues first</option>
+                        <option value="links-desc">Most links</option>
+                    </select>
+                </div>
+                <button class="btn btn-ghost btn-sm" id="btn-toggle-all" title="Collapse or expand every post group (E)">Collapse all</button>
+                <button class="btn btn-ghost btn-sm" id="btn-density" title="Toggle compact row height (D)">Compact</button>
             </div>
         </div>
 
-        <!-- ── Progress ──────────────────────────────── -->
-        <div class="progress-wrap" id="progress-wrap">
-            <div class="progress-label"><span id="progress-text">Checking…</span></div>
+        <!-- ══ Progress ═════════════════════════════════════ -->
+        <div class="progress-wrap" id="progress-wrap" role="status" aria-live="polite">
+            <div class="progress-label">
+                <span class="spin spin-dark"></span>
+                <span id="progress-text">Checking…</span>
+                <button class="btn btn-ghost btn-sm" id="btn-cancel-check">Stop</button>
+            </div>
             <div class="progress-bar-bg">
                 <div class="progress-bar-fill" id="progress-fill"></div>
             </div>
         </div>
 
-        <!-- ── Link Type Tabs ───────────────────────── -->
-        <div class="filter-tabs" id="type-tabs">
-            <button class="ftab active" data-type="all">All Links <span class="fc">0</span></button>
-            <button class="ftab" data-type="internal">Internal <span class="fc">0</span></button>
-            <button class="ftab" data-type="external">External <span class="fc">0</span></button>
-        </div>
-
-        <!-- ── Filter Tabs ───────────────────────────── -->
-        <div class="filter-tabs">
-            <button class="ftab active" data-filter="all">All <span class="fc">0</span></button>
-            <button class="ftab" data-filter="ok">OK <span class="fc">0</span></button>
-            <button class="ftab" data-filter="redirect">Redirects <span class="fc">0</span></button>
-            <button class="ftab" data-filter="error">Errors <span class="fc">0</span></button>
-            <button class="ftab" data-filter="pending">Unchecked <span class="fc">0</span></button>
-        </div>
-
-        <!-- ── Bulk Action Bar ───────────────────────── -->
+        <!-- ══ Bulk action bar ══════════════════════════════ -->
         <div class="bulk-bar" id="bulk-bar">
-            <span class="bulk-info" id="bulk-count">0 links selected</span>
-            <button class="btn btn-warning" id="btn-bulk-redir" onclick="bulkFixRedirects()" disabled>⇒ Fix Redirects</button>
-            <input type="text" id="bulk-new-url" placeholder="Or type new URL to apply…">
-            <button class="btn btn-success" id="btn-bulk-custom" onclick="bulkApplyCustom()">Apply</button>
-            <button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.3)" onclick="state.selected.clear();renderTable();updateBulkBar();document.getElementById('select-all').checked=false;">
-                Clear
-            </button>
+            <span class="bulk-info" id="bulk-count"><span class="bulk-pill">0</span> selected</span>
+            <span class="bulk-sep" aria-hidden="true"></span>
+            <button class="btn btn-warning btn-sm" id="btn-bulk-redir" disabled>⇒ Fix Redirects</button>
+            <button class="btn btn-danger btn-sm" id="btn-bulk-remove" title="Unlink: keeps the visible text, drops the href">✕ Unlink</button>
+            <span class="bulk-sep" aria-hidden="true"></span>
+            <input type="text" id="bulk-new-url" placeholder="Replace all selected with this URL…" autocomplete="off" spellcheck="false">
+            <button class="btn btn-success btn-sm" id="btn-bulk-custom">Apply</button>
+            <div class="bulk-end">
+                <button class="btn btn-ghost btn-sm" id="btn-bulk-clear">Clear selection</button>
+            </div>
         </div>
 
-        <!-- ── Table ─────────────────────────────────── -->
-        <div class="table-wrap">
+        <!-- ══ Table ════════════════════════════════════════ -->
+        <div class="table-wrap" id="table-wrap">
             <table>
+                <colgroup>
+                    <col class="col-check">
+                    <col class="col-anchor">
+                    <col class="col-url">
+                    <col class="col-status">
+                    <col class="col-actions">
+                </colgroup>
                 <thead>
                     <tr>
-                        <th style="width:36px"><input type="checkbox" id="select-all"></th>
-                        <th class="hide-mob" style="width:120px">Anchor Text</th>
+                        <th class="col-check"><input type="checkbox" id="select-all" title="Select every link in view" aria-label="Select all links in view"></th>
+                        <th class="col-anchor hide-mob"><span>Anchor Text</span></th>
                         <th>URL / Redirect Target</th>
-                        <th style="width:110px">Status</th>
-                        <th style="width:175px">Actions</th>
+                        <th class="col-status">Status</th>
+                        <th class="col-actions">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="tbody">
@@ -139,7 +219,7 @@
                         <td colspan="5">
                             <div class="empty-state">
                                 <div class="icon">🔗</div>
-                                <p>Click <strong>Load Posts</strong> to fetch internal links.</p>
+                                <p>Loading links…</p>
                             </div>
                         </td>
                     </tr>
@@ -147,39 +227,123 @@
             </table>
         </div>
 
-        <!-- ── Pagination ────────────────────────────── -->
-        <div class="pagination" id="pagination"></div>
+        <!-- ══ Footer / pagination ══════════════════════════ -->
+        <div class="footer-bar">
+            <span class="footer-info" id="footer-info">—</span>
+            <div class="field">
+                <label for="inp-perpage" class="field-label">Posts / page</label>
+                <select class="select input-sm" id="inp-perpage">
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="inp-page" class="field-label">Page</label>
+                <input type="number" class="input input-sm input-num" id="inp-page" value="1" min="1" title="Type a page number and press Enter">
+                <span class="footer-info" id="page-total">/ 1</span>
+            </div>
+            <div class="pagination" id="pagination"></div>
+        </div>
 
     </div><!-- /container -->
 
-    <!-- ── Edit Modal ──────────────────────────────── -->
-    <div class="modal-overlay" id="edit-modal">
+    <!-- ══ Edit modal ═══════════════════════════════════════ -->
+    <div class="modal-overlay" id="edit-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal-box">
-            <h3>Edit Link URL</h3>
-            <input type="hidden" id="modal-post-id">
-            <div class="modal-field">
-                <label>Current URL</label>
-                <input type="text" id="modal-old-url" readonly>
+            <div class="modal-head">
+                <h3 id="modal-title">Edit Link</h3>
+                <span class="modal-sub" id="modal-sub"></span>
+                <button class="modal-close" id="modal-close" title="Close (Esc)" aria-label="Close">×</button>
             </div>
-            <div class="modal-field">
-                <label>New URL</label>
-                <input type="text" id="modal-new-url" placeholder="https://…">
+
+            <div class="modal-scroll">
+                <div class="modal-meta" id="modal-meta"></div>
+                <input type="hidden" id="modal-post-id">
+
+                <div class="modal-field">
+                    <div class="modal-field-head">
+                        <label for="modal-old-url">Current URL</label>
+                        <div class="modal-field-actions">
+                            <button class="btn btn-quiet btn-sm" id="btn-modal-copy-old" title="Copy the current URL">Copy</button>
+                            <a class="btn btn-quiet btn-sm" id="btn-modal-open-old" target="_blank" rel="noopener" title="Open the current URL in a new tab">Open ↗</a>
+                        </div>
+                    </div>
+                    <textarea class="url-input" id="modal-old-url" rows="2" readonly spellcheck="false"></textarea>
+                </div>
+
+                <div class="modal-field">
+                    <div class="modal-field-head">
+                        <label for="modal-new-url">New URL</label>
+                        <div class="modal-field-actions">
+                            <button class="btn btn-quiet btn-sm" id="btn-modal-use-redirect" hidden title="Fill in the redirect target found by the checker">Use redirect target</button>
+                            <button class="btn btn-quiet btn-sm" id="btn-modal-copy-current" title="Start from the current URL and edit it">Copy current</button>
+                        </div>
+                    </div>
+                    <textarea class="url-input" id="modal-new-url" rows="2" placeholder="https://…" spellcheck="false"></textarea>
+                    <div class="modal-hint" id="modal-hint"></div>
+                </div>
+
+                <div class="modal-field modal-checkbox-field">
+                    <label class="modal-checkbox-label">
+                        <input type="checkbox" id="modal-remove-link">
+                        <span>Remove the link instead — unlink it and keep the anchor text as plain text</span>
+                    </label>
+                </div>
             </div>
-            <div class="modal-field modal-checkbox-field">
-                <label class="modal-checkbox-label">
-                    <input type="checkbox" id="modal-remove-link">
-                    Remove link instead — unlink and keep plain text only
-                </label>
-            </div>
+
             <div class="modal-actions">
-                <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-                <button class="btn btn-primary" id="modal-save-btn" onclick="saveModal()">Save</button>
+                <span class="kbd-hint"><span class="kbd">Ctrl</span> + <span class="kbd">↵</span> to save</span>
+                <button class="btn btn-ghost" id="modal-cancel-btn">Cancel</button>
+                <button class="btn btn-primary" id="modal-save-btn">Save</button>
             </div>
         </div>
     </div>
 
-    <!-- ── Toasts ──────────────────────────────────── -->
-    <div id="toast"></div>
+    <!-- ══ Shortcuts modal ══════════════════════════════════ -->
+    <div class="modal-overlay" id="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
+        <div class="modal-box" style="max-width:460px">
+            <div class="modal-head">
+                <h3 id="help-title">Keyboard Shortcuts</h3>
+                <button class="modal-close" id="help-close" title="Close (Esc)" aria-label="Close">×</button>
+            </div>
+            <div class="modal-scroll">
+                <div class="shortcut-list">
+                    <div class="help-section-title">Search &amp; navigation</div>
+                    <div class="keys"><span class="kbd">/</span></div>
+                    <div>Focus the search box</div>
+                    <div class="keys"><span class="kbd">Esc</span></div>
+                    <div>Clear search / close dialogs</div>
+                    <div class="keys"><span class="kbd">←</span> <span class="kbd">→</span></div>
+                    <div>Previous / next page of posts</div>
+
+                    <div class="help-section-title">Actions</div>
+                    <div class="keys"><span class="kbd">C</span></div>
+                    <div>Check all links in the current view</div>
+                    <div class="keys"><span class="kbd">R</span></div>
+                    <div>Reload posts</div>
+                    <div class="keys"><span class="kbd">E</span></div>
+                    <div>Collapse / expand all post groups</div>
+                    <div class="keys"><span class="kbd">D</span></div>
+                    <div>Toggle compact rows</div>
+                    <div class="keys"><span class="kbd">1</span>…<span class="kbd">6</span></div>
+                    <div>Jump to a status filter</div>
+
+                    <div class="help-section-title">In the edit dialog</div>
+                    <div class="keys"><span class="kbd">Ctrl</span>+<span class="kbd">↵</span></div>
+                    <div>Save the change</div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="help-ok">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ Toasts ═══════════════════════════════════════════ -->
+    <div id="toast" aria-live="polite" aria-atomic="false"></div>
 
     <script src="./js/main.js"></script>
 </body>

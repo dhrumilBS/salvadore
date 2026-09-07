@@ -2,8 +2,8 @@
 require $_SERVER['DOCUMENT_ROOT'] . '/salvadore/healthray-sql/conn.php';
 
 
-$find = '&nbsp;';
-$replace = 'Practice Management Software';
+$find = '1,000';
+$replace = '1000';
 $qun = [];
 $lastQuery = "";
 
