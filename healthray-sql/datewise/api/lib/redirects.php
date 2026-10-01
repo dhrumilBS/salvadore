@@ -67,13 +67,25 @@ function dw_resolve_paths_to_posts(mysqli $conn, array $paths)
 
     $knownTypes = dw_known_post_types($conn);
     $slugs = array_keys($byLastSegment);
-    $slugPh = implode(',', array_fill(0, count($slugs), '?'));
+    /*
+     * A trashed post's post_name is "<slug>__trashed", so a redirect origin
+     * ending in the original slug would never match it on an exact lookup -
+     * which is precisely the case that matters here (retired posts are the
+     * ones with 410/301 rules). Look for both spellings and compare on the
+     * cleaned slug below.
+     */
+    $lookupSlugs = $slugs;
+    foreach ($slugs as $s) {
+        $lookupSlugs[] = $s . '__trashed';
+    }
+    $lookupSlugs = array_values(array_unique($lookupSlugs));
+    $slugPh = implode(',', array_fill(0, count($lookupSlugs), '?'));
     $typePh = implode(',', array_fill(0, count($knownTypes), '?'));
     $stmt = $conn->prepare("SELECT ID AS id, post_type, post_title AS title, post_status AS status,
             post_name AS slug, post_parent, post_date
         FROM wp_posts
         WHERE post_name IN ($slugPh) AND post_type IN ($typePh)");
-    $params = array_map(fn($s) => ['type' => 's', 'value' => $s], $slugs);
+    $params = array_map(fn($s) => ['type' => 's', 'value' => $s], $lookupSlugs);
     foreach ($knownTypes as $t) {
         $params[] = ['type' => 's', 'value' => $t];
     }
@@ -143,10 +155,10 @@ function dw_resolve_paths_to_posts(mysqli $conn, array $paths)
             $fullPath  = dw_build_post_path($postPermalinkStructure, $row, $catPath);
         } else {
             $prefix   = $parentPaths[$id] ?? '';
-            $fullPath = ($prefix !== '' ? $prefix . '/' : '') . $row['slug'];
+            $fullPath = ($prefix !== '' ? $prefix . '/' : '') . dw_clean_slug($row['slug']);
         }
 
-        foreach ($byLastSegment[$row['slug']] ?? [] as $origPath) {
+        foreach ($byLastSegment[dw_clean_slug($row['slug'])] ?? [] as $origPath) {
             if ($result[$origPath] === null && strcasecmp($fullPath, $origPath) === 0) {
                 $result[$origPath] = [
                     'id'        => (int) $id,

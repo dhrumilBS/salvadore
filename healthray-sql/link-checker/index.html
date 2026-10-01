@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Link &amp; UTM Checker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- ══ Sticky top bar: identity, site, theme ══ -->
+    <header class="topbar">
+        <div class="brand">
+            <span class="brand-mark">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+            </span>
+            <div>
+                <div class="page-title">Link &amp; UTM Checker</div>
+                <div class="page-sub">Finds every link in your content, flags UTM tracking links, and checks them live for broken/redirecting URLs.</div>
+            </div>
+        </div>
+
+        <div class="topbar-end">
+            <div class="db-switch">
+                <label for="dbSelector">Site</label>
+                <select id="dbSelector" title="Switch which site's database this tool reads"></select>
+            </div>
+            <button type="button" class="theme-toggle" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">
+                <svg id="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+                <svg id="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+                    <circle cx="12" cy="12" r="5" />
+                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <div class="page">
+
+        <!-- ══ Stats ══ -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-label">Posts</div>
+                <div class="stat-val accent" id="statPosts">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Links</div>
+                <div class="stat-val" id="statLinks">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">UTM Links</div>
+                <div class="stat-val warn" id="statUtm">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Posts w/ UTM</div>
+                <div class="stat-val warn" id="statPostsUtm">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Checked</div>
+                <div class="stat-val ok" id="statChecked">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Broken / Error</div>
+                <div class="stat-val danger" id="statBroken">0</div>
+            </div>
+        </div>
+
+        <!-- ══ Filters & search ══ -->
+        <div class="card-panel">
+            <div class="panel-label">
+                <span>Filters &amp; search</span>
+                <div class="stats-row" style="margin-left:auto;display:flex;gap:8px;font-size:11.5px;color:var(--text3)">
+                    <span>Matching <b id="stTotal" style="color:var(--text)">0</b></span>
+                    <span>Showing <b id="stShown" style="color:var(--text)">0</b></span>
+                </div>
+            </div>
+
+            <!-- Row 1: what to look at -->
+            <div class="toolbar">
+                <div class="frow" style="min-width:150px">
+                    <label class="flabel">Post Type</label>
+                    <select id="fPostType"><option value="">All Types</option></select>
+                </div>
+                <div class="frow" style="min-width:150px">
+                    <label class="flabel">Status</label>
+                    <select id="fStatus"></select>
+                </div>
+                <div class="search-wrap" style="align-self:flex-end">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="m21 21-4.35-4.35" />
+                    </svg>
+                    <input type="search" id="fSearch" placeholder="Search title, slug, content…" autocomplete="off">
+                </div>
+            </div>
+
+            <!-- Row 2: link-derived filters -->
+            <div class="toolbar">
+                <div class="tab-group" id="fUtmTabs">
+                    <button type="button" class="tab active" data-utm="all">All Posts</button>
+                    <button type="button" class="tab" data-utm="utm">Has UTM</button>
+                    <button type="button" class="tab" data-utm="clean">Clean Links</button>
+                    <button type="button" class="tab" data-utm="nolinks">No Links</button>
+                </div>
+                <select id="fDomain" title="Filter by link domain"><option value="">All Domains</option></select>
+                <select id="fLinkStatus" title="Filter by live check result (after checking)">
+                    <option value="">Any Status</option>
+                    <option value="unchecked">Unchecked</option>
+                    <option value="ok">OK (2xx)</option>
+                    <option value="redirect">Redirect (3xx)</option>
+                    <option value="broken">Broken (4xx/5xx)</option>
+                    <option value="error">Error / Timeout</option>
+                </select>
+
+                <div class="toolbar-sep" aria-hidden="true"></div>
+
+                <button type="button" class="btn" id="moreFiltersBtn" title="Publish date range">Dates ▾</button>
+                <button type="button" class="btn" id="checkAllBtn" title="Live-check every link currently shown">Check all links</button>
+
+                <div class="toolbar-end">
+                    <div class="export-wrap">
+                        <button type="button" class="btn primary" id="exportBtn">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        <div class="export-menu" id="exportMenu">
+                            <div class="export-menu-header">Export CSV (current filters)</div>
+                            <div class="export-item" data-mode="posts">One row per post <span class="ei-badge">posts</span></div>
+                            <div class="export-item" data-mode="links">One row per link <span class="ei-badge">links</span></div>
+                            <div class="export-item" data-mode="utm">UTM links only <span class="ei-badge warn">utm</span></div>
+                            <div class="export-menu-footer">
+                                <label class="col-check"><input type="checkbox" id="exportCheckLive"> Include live HTTP status <span class="col-note">(slow)</span></label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="toolbar secondary" id="datesPanel">
+                <div class="frow">
+                    <label class="flabel">Published From</label>
+                    <input type="date" id="fDateFrom">
+                </div>
+                <div class="frow">
+                    <label class="flabel">Published To</label>
+                    <input type="date" id="fDateTo">
+                </div>
+                <button type="button" class="btn small" id="clearDatesBtn">Clear</button>
+            </div>
+        </div>
+
+        <div class="cap-banner" id="capBanner" style="display:none"></div>
+
+        <!-- ══ Table ══ -->
+        <div class="table-shell">
+            <div id="loadingOverlay"><span class="spinner"></span><span>Loading posts…</span></div>
+            <div class="table-wrap">
+                <table>
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="pagination">
+            <span>Page <b id="pgCur">1</b> of <b id="pgTotal">1</b> · <b id="pgRows">0</b> row(s)</span>
+            <div class="pager-btns">
+                <select id="fPerPage" class="btn small" style="height:31px">
+                    <option value="20">20 / page</option>
+                    <option value="50" selected>50 / page</option>
+                    <option value="100">100 / page</option>
+                    <option value="200">200 / page</option>
+                </select>
+                <button type="button" class="btn small" id="pgPrev">‹ Prev</button>
+                <button type="button" class="btn small" id="pgNext">Next ›</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ Post link-detail modal ══ -->
+    <div id="detailModal" class="modal-backdrop">
+        <div class="modal">
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title" id="detailTitle">Post</div>
+                    <div class="modal-meta" id="detailMeta"></div>
+                </div>
+                <button class="modal-close" id="detailClose" aria-label="Close">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-actions">
+                    <span class="col-note" id="detailLinkCount">0 links</span>
+                    <button type="button" class="btn small" id="detailCheckAllBtn">Check all links in this post</button>
+                </div>
+                <div class="link-cards" id="detailLinkCards"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

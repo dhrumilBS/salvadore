@@ -242,7 +242,9 @@ function dw_build_post_path($structure, array $row, $categoryPath)
 {
     $timestamp = !empty($row['post_date']) ? strtotime($row['post_date']) : false;
     $replacements = [
-        '%postname%' => $row['slug'] ?? '',
+        // Cleaned, not raw: a trashed post's post_name carries a "__trashed"
+        // suffix that was never part of its public URL (see dw_clean_slug).
+        '%postname%' => dw_clean_slug($row['slug'] ?? ''),
         '%post_id%'  => $row['id'] ?? '',
         '%category%' => $categoryPath !== '' ? $categoryPath : 'uncategorized',
         '%year%'     => $timestamp ? date('Y', $timestamp) : '',
@@ -287,6 +289,26 @@ function dw_upsert_postmeta(mysqli $conn, $postId, $metaKey, $value)
         $stmt->bind_param('iss', $postId, $metaKey, $value);
     }
     return $stmt->execute();
+}
+
+/**
+ * WordPress renames post_name to "<slug>__trashed" when a post is trashed
+ * (and "__trashed-2", "__trashed-3", … when that name is already taken).
+ * That suffixed name never existed as a public URL, so reconstructing a
+ * permalink from it yields a URL that can only ever 404 - masking the real
+ * status of the URL the post actually lived at, which for a retired post is
+ * usually a Yoast 301 or 410 rule. Every permalink this tool builds must
+ * therefore come from the cleaned slug, not the raw column.
+ */
+function dw_clean_slug($slug)
+{
+    return (string) preg_replace('~__trashed(-\d+)?$~', '', (string) $slug);
+}
+
+/** True when post_name still carries WordPress's "__trashed" suffix. */
+function dw_slug_is_trashed($slug)
+{
+    return (bool) preg_match('~__trashed(-\d+)?$~', (string) $slug);
 }
 
 /** Light slug sanitizer - lowercase, only [a-z0-9-], collapsed/trimmed dashes. */
@@ -382,7 +404,8 @@ function dw_parent_paths(mysqli $conn, array $postIdToParentId)
                 continue;
             }
             foreach ($origIds as $origId) {
-                array_unshift($paths[$origId], $row['post_name']);
+                // An ancestor can itself be trashed - use its real slug.
+                array_unshift($paths[$origId], dw_clean_slug($row['post_name']));
                 if ((int) $row['post_parent'] !== 0) {
                     $nextFrontier[$row['post_parent']][] = $origId;
                 }
@@ -497,13 +520,15 @@ function dw_hydrate_batch(mysqli $conn, array $rows)
         }
         $metaDescription = $metaByPost[$id]['_yoast_wpseo_metadesc'] ?? '';
 
+        $cleanSlug = dw_clean_slug($row['slug']);
+
         if ($row['post_type'] === 'post') {
             $catTermId = $categoryTermIdByPost[$id] ?? null;
             $catPath   = $catTermId !== null ? ($categoryPaths[$catTermId] ?? '') : '';
             $path      = dw_build_post_path($postPermalinkStructure, $row, $catPath);
         } else {
             $prefix = $parentPaths[$id] ?? '';
-            $path   = ($prefix !== '' ? $prefix . '/' : '') . $row['slug'];
+            $path   = ($prefix !== '' ? $prefix . '/' : '') . $cleanSlug;
         }
         $permalink = $home . '/' . $path . '/';
 
@@ -511,8 +536,16 @@ function dw_hydrate_batch(mysqli $conn, array $rows)
             'id'                => (int) $id,
             'post_type'         => $row['post_type'],
             'title'             => $row['title'],
+            // Raw column value - this is what the Slug editor shows and saves.
             'slug'              => $row['slug'],
+            // The slug the public URL actually used, and a flag so the UI can
+            // point out that the stored one still carries "__trashed".
+            'slug_clean'        => $cleanSlug,
+            'slug_trashed'      => dw_slug_is_trashed($row['slug']),
             'permalink'         => $permalink,
+            // Site-relative path (no domain, no surrounding slashes) - the exact
+            // shape Yoast stores a redirect origin in.
+            'path'              => $path,
             'status'            => $row['status'],
             'category'          => implode(', ', $categoryNamesByPost[$id] ?? []),
             'meta_title'        => $metaTitle,
