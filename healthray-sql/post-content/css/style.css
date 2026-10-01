@@ -209,6 +209,32 @@ textarea:focus-visible,
     background: rgba(255, 255, 255, .1);
 }
 
+.site-select {
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #e2e8f0;
+    background: rgba(255, 255, 255, .08);
+    border: 1px solid rgba(255, 255, 255, .14);
+    border-radius: 999px;
+    padding: 3px 10px;
+    outline: none;
+    cursor: pointer;
+    transition: background-color .15s, border-color .15s;
+}
+
+.site-select:hover {
+    background: rgba(255, 255, 255, .14);
+}
+
+.site-select:focus {
+    border-color: #60a5fa;
+}
+
+.site-select option {
+    color: #0f172a;
+}
+
 .hicon {
     width: 26px;
     height: 26px;

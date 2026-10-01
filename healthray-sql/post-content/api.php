@@ -4,10 +4,31 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
 header('Access-Control-Allow-Headers: Content-Type');
 
+/*
+ * Which site's database this request should use - its own "pc_db" cookie,
+ * deliberately separate from the "db" cookie other tools under
+ * healthray-sql/ share, so switching sites here can never affect them (or
+ * vice versa). Falls back to conn.php's own $DEFAULT_DB.
+ */
+$ACTIVE_DB = $_GET['db'] ?? $_POST['db'] ?? $_COOKIE['pc_db'] ?? null;
 require __DIR__ . '/../conn.php';
 $conn->set_charset("utf8mb4");
 
 $action = $_GET['action'] ?? 'get_links';
+
+// ─── ACTION: LIST AVAILABLE DATABASES (for the UI's Site switcher) ───────────
+if ($action === 'databases') {
+    $databases = [];
+    foreach ($DATABASES as $key => $cfg) {
+        $databases[] = ['key' => $key, 'label' => $cfg['label'] ?? $key];
+    }
+    echo json_encode([
+        'status'    => 'success',
+        'databases' => $databases,
+        'current'   => db_resolve_key(),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 // Internal/plumbing post types that never hold editorial link content (form
 // builders, design-library assets, ACF field definitions, etc.) — excluded

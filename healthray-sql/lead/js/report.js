@@ -33,6 +33,17 @@ document.addEventListener("DOMContentLoaded", () => {
     let compareRequestId = 0;          // guards against stale async responses
     let lastPrevRange = null;          // { from, to } of the last loaded comparison period
 
+    /* Active data source ('landing' = Healthray, 'botphonic' = Botphonic).
+       Kept in its own localStorage key - separate from any other tool's
+       DB/site selection - so switching here never affects other pages. */
+    const DB_KEY = "reportDb";
+    const VALID_DBS = ["landing", "botphonic"];
+    let activeDb = "landing";
+    try {
+        const stored = localStorage.getItem(DB_KEY);
+        if (VALID_DBS.includes(stored)) activeDb = stored;
+    } catch (e) { /* ignore */ }
+
     /* Table sort state - persists across filter changes */
     let sortState = { col: null, dir: 1 };  // dir: 1 = asc, -1 = desc
 
@@ -103,6 +114,36 @@ document.addEventListener("DOMContentLoaded", () => {
         const next = isDark ? "light" : "dark";
         document.documentElement.setAttribute("data-theme", next);
         try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+    });
+
+    /* ══════════════════════════════════════
+       DATA SOURCE SWITCH (Healthray / Botphonic)
+    ══════════════════════════════════════ */
+    const dbSwitch = document.getElementById("dbSwitch");
+
+    function setActiveDbButton(db) {
+        dbSwitch.querySelectorAll(".db-switch-btn").forEach(btn => {
+            const isActive = btn.dataset.db === db;
+            btn.classList.toggle("active", isActive);
+            btn.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
+    }
+    setActiveDbButton(activeDb); // reflect a restored (non-default) selection before the first load
+
+    dbSwitch.addEventListener("click", e => {
+        const btn = e.target.closest(".db-switch-btn");
+        if (!btn || btn.dataset.db === activeDb) return;
+
+        activeDb = btn.dataset.db;
+        try { localStorage.setItem(DB_KEY, activeDb); } catch (e) { /* ignore */ }
+        setActiveDbButton(activeDb);
+
+        /* Switching source is a full reload of this dashboard's data - the
+           previous DB's rows/comparison must never linger and get mixed in. */
+        compareRows = null;
+        compareDupMeta = {};
+        compareFilteredRows = null;
+        loadData();
     });
 
     /* ══════════════════════════════════════
@@ -248,7 +289,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    db: 'landing',
+                    db: activeDb,
                     from: document.getElementById("from").value,
                     to: document.getElementById("to").value,
                 })
@@ -297,7 +338,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const res = await fetch("./../api/get_report.php", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ db: "landing", from, to })
+            body: JSON.stringify({ db: activeDb, from, to })
         });
         if (!res.ok) throw new Error(`Server error - HTTP ${res.status}`);
         const data = await res.json();
@@ -456,9 +497,13 @@ document.addEventListener("DOMContentLoaded", () => {
         return m ? m[0] : String(t).slice(0, 10) || "(unknown)";
     }
 
-    /* Page the form was submitted from - shown as the URL path (e.g. "/emr-software/") */
+    /* Page the form was submitted from - shown as the URL path (e.g. "/emr-software/").
+       Healthray logs this as "page-name"/"handl_url_cf7-264"; Botphonic's CF7 setup
+       has no equivalent of those two keys at all, so without a fallback this always
+       reads "(unknown)" for Botphonic even though the same URL is captured under
+       "handl_url_base_cf7" (or "full_url" on a different form variant). */
     function getPageName(row) {
-        const raw = row["page-name"] || row["handl_url_cf7-264"] || "";
+        const raw = row["page-name"] || row["handl_url_cf7-264"] || row["handl_url_base_cf7"] || row["full_url"] || "";
         if (!raw) return "(unknown)";
         try {
             const path = new URL(String(raw)).pathname;
@@ -466,10 +511,23 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch { return String(raw); }
     }
 
-    /* Organic (no ad platform) vs Ads (utm_medium=cpc from Google/Facebook Ads etc.) */
+    /* Organic (no ad platform) vs Ads.
+       Healthray's convention is medium=cpc for every paid row (verified against
+       live data - source ending in "ads" always pairs with medium=cpc there, so
+       this fallback never changes a Healthray classification). Botphonic's CF7
+       setup never sets medium=cpc at all - e.g. 497 real Google Ads leads there
+       have source="GoogleAds" but medium="Lead-search-01" - so without a fallback
+       every Botphonic row reads as "Organic", including confirmed paid ones.
+       A gclid (Google's own paid-click id) or a source literally named after an
+       ad platform are unambiguous paid-traffic signals Healthray's data never has,
+       so neither fallback can relabel anything there. */
     function getAdType(row) {
         const medium = extractUtmVal(row["utm_medium"], "utm_medium").trim().toLowerCase();
-        return medium === "cpc" ? "Ads" : "Organic";
+        if (medium === "cpc") return "Ads";
+        if (row["gclid"] || row["gclid_cf7"]) return "Ads";
+        const source = extractUtmVal(row["utm_source"], "utm_source").trim().toLowerCase();
+        if (/ads$/.test(source)) return "Ads";
+        return "Organic";
     }
 
     /* Build [{ value, count }] from a set of rows for a given dimension */

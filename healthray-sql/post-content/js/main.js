@@ -330,6 +330,33 @@ async function loadLinks() {
     }
 }
 
+/* ── Database switcher ─────────────────────────────────────────
+ * Lets this tool point at a different site's database. Persisted in its
+ * own "pc_db" cookie, scoped to this folder - kept separate from the "db"
+ * cookie other tools under healthray-sql/ share, so switching here never
+ * affects them (see api.php's "databases" action / conn.php). */
+async function loadDatabaseSwitcher() {
+    try {
+        const res = await fetch(`${API}?action=databases`);
+        const data = await res.json();
+        if (data.status !== 'success') return;
+        const sel = $('site-select');
+        sel.innerHTML = (data.databases || []).map(d =>
+            `<option value="${escAttr(d.key)}"${d.key === data.current ? ' selected' : ''}>${esc(d.label)}</option>`
+        ).join('');
+    } catch (e) {
+        console.error('Failed to load database list', e);
+    }
+}
+
+function bindDatabaseSwitcher() {
+    $('site-select').addEventListener('change', e => {
+        const key = e.target.value;
+        document.cookie = `pc_db=${encodeURIComponent(key)}; path=/salvadore/healthray-sql/post-content/; max-age=${60 * 60 * 24 * 365}`;
+        location.reload();
+    });
+}
+
 /* A URL can exist both as a post_content <a> and inside an FAQ answer field
    on the same post, so post_id + url alone can't identify an occurrence. */
 function linkKey(link) {
@@ -1573,6 +1600,8 @@ function restorePrefs() {
 (async function init() {
     restorePrefs();
     bindEvents();
+    bindDatabaseSwitcher();
+    await loadDatabaseSwitcher();
     await loadPostTypes();
     await loadLinks();
     updateToggleAllLabel();

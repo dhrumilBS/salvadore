@@ -383,6 +383,9 @@ async function saveAllDirty() {
 
 /** Send every staged field for one post to update_post.php. Fields that fail stay dirty for retry. */
 async function persistFields(id, fields) {
+    const rowBefore = currentRows.find(r => String(r.id) === String(id));
+    const wasTrash = rowBefore ? rowBefore.status === 'trash' : true;
+
     const entries = Object.entries(fields);
     entries.forEach(([field]) => {
         const input = document.querySelector(`.cell-input[data-id="${id}"][data-field="${field}"]`);
@@ -443,6 +446,96 @@ async function persistFields(id, fields) {
 
     if (slugSaved) {
         loadPosts(); // permalink is derived from slug - refresh so it stays accurate; other pending edits are re-applied via applyDirtyOverlay()
+    }
+
+    const justTrashed = !wasTrash && results.some(({ field, value, json }) =>
+        field === 'status' && json.success && (json.value ?? value) === 'trash');
+    if (justTrashed && rowBefore && rowBefore.path) {
+        offerTrashRedirect(id, rowBefore.path);
+    }
+}
+
+/* ── "Trashed a post -> add a 410?" prompt ─────────────────────────────
+ * Shared by the Content tab's status save (single row + bulk save) and the
+ * Bulk URL Update tab's status apply. Nothing is written to the Yoast
+ * redirect store without an explicit confirm() per the same "ask first"
+ * convention as every other write in this tool. */
+
+/** POST to add_redirect.php and return the parsed JSON, or null on a network failure. */
+async function submitRedirectRaw(origin, type, target, replace = false) {
+    try {
+        const res = await fetch('api/add_redirect.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ origin, type, target, replace: replace ? '1' : '' }),
+        });
+        return await res.json();
+    } catch (err) {
+        console.error(err);
+        return null;
+    }
+}
+
+/** Single-post prompt (Content tab): confirm, add a 410, offer to replace an existing conflicting rule. */
+async function offerTrashRedirect(id, path) {
+    const ok = confirm(`Post #${id} was just trashed.\n\nAdd a 410 (Gone) redirect for its old URL?\n\n/${path}/`);
+    if (!ok) return;
+
+    const json = await submitRedirectRaw(path, 410, '');
+    if (!json) {
+        toast('Redirect request failed — check the console/network tab', 'err');
+        return;
+    }
+
+    if (json.status === 'duplicate') {
+        const existing = json.existing;
+        const okReplace = confirm(
+            `/${path}/ already has a redirect configured (type ${existing.type}${existing.url ? ' → /' + existing.url + '/' : ''}).\n\nReplace it with a 410?`
+        );
+        if (!okReplace) {
+            toast('Redirect left unchanged', '');
+            return;
+        }
+        const replaced = await submitRedirectRaw(path, 410, '', true);
+        toast(replaced && replaced.success ? 'Redirect replaced with 410' : (replaced?.msg || 'Redirect not saved'), replaced?.success ? 'ok' : 'err');
+        return;
+    }
+
+    toast(json.success ? (json.msg || 'Redirect saved') : (json.msg || 'Redirect not saved'), json.success ? 'ok' : 'err');
+}
+
+/** Batch prompt (Bulk URL Update tab): one confirm for the whole set, then one follow-up for any conflicts found along the way. */
+async function offerBulkTrashRedirects(rows) {
+    rows = rows.filter(r => r.path);
+    if (!rows.length) return;
+
+    const preview = rows.slice(0, 8).map(r => `• /${r.path}/`).join('\n');
+    const more = rows.length > 8 ? `\n…and ${rows.length - 8} more` : '';
+    const ok = confirm(`${rows.length} post${rows.length === 1 ? '' : 's'} just trashed.\n\nAdd a 410 (Gone) redirect for each old URL?\n\n${preview}${more}`);
+    if (!ok) return;
+
+    let added = 0;
+    const duplicates = [];
+    for (const r of rows) {
+        const json = await submitRedirectRaw(r.path, 410, '');
+        if (json && json.status === 'duplicate') duplicates.push(r);
+        else if (json && json.success) added++;
+    }
+
+    if (added) toast(`Added ${added} redirect${added === 1 ? '' : 's'}`, 'ok');
+
+    if (duplicates.length) {
+        const dPreview = duplicates.slice(0, 8).map(r => `• /${r.path}/`).join('\n');
+        const dMore = duplicates.length > 8 ? `\n…and ${duplicates.length - 8} more` : '';
+        const okReplace = confirm(`${duplicates.length} of those already have a different redirect configured.\n\nReplace ${duplicates.length === 1 ? 'it' : 'them'} with a 410?\n\n${dPreview}${dMore}`);
+        if (!okReplace) return;
+
+        let replaced = 0;
+        for (const r of duplicates) {
+            const json = await submitRedirectRaw(r.path, 410, '', true);
+            if (json && json.success) replaced++;
+        }
+        toast(`Replaced ${replaced} redirect${replaced === 1 ? '' : 's'}`, 'ok');
     }
 }
 
@@ -938,12 +1031,193 @@ function bindViewTabs() {
             const view = btn.dataset.view;
             document.getElementById('contentView').style.display = view === 'content' ? '' : 'none';
             document.getElementById('redirectsView').style.display = view === 'redirects' ? '' : 'none';
+            document.getElementById('bulkView').style.display = view === 'bulk' ? '' : 'none';
             if (view === 'redirects' && !redirectsLoadedOnce) {
                 redirectsLoadedOnce = true;
                 loadRedirects();
             }
         });
     });
+}
+
+/* ══════════════════════════ Bulk URL Update tab ══════════════════════════
+ * Paste any mix of slugs / site-relative paths / full permalinks (5, 10,
+ * 100+, comma- and/or newline-separated), resolve each to a real post via
+ * api/bulk_find_posts.php, then apply one status to whichever of the
+ * matched posts are checked via api/bulk_update_status.php. Nothing is
+ * written until the user picks a status, selects rows and confirms -
+ * same "ask first" convention as the Content tab's save flow. */
+
+let bulkMatched = [];
+let bulkUnmatched = [];
+let bulkSelected = new Set();
+
+function renderBulkTable() {
+    const tbody = document.getElementById('bulkTableBody');
+    if (!bulkMatched.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="state-msg">No posts matched.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = bulkMatched.map(r => `
+        <tr>
+            <td><input type="checkbox" class="bulk-row-cb" data-id="${r.id}"${bulkSelected.has(r.id) ? ' checked' : ''}></td>
+            <td class="mono">${r.id}</td>
+            <td><span class="badge badge-neutral">${escapeHtml(r.post_type)}</span></td>
+            <td>${escapeHtml(r.title)}</td>
+            <td class="mono">${escapeHtml(r.slug)}</td>
+            <td class="url-col">${urlCellHtml(r.permalink)}</td>
+            <td>${statusBadge(r.status)}</td>
+            <td><span class="truncate" title="${escapeHtml(r.matched_input)}">${escapeHtml(r.matched_input)}</span></td>
+        </tr>`).join('');
+}
+
+function updateBulkApplyState() {
+    document.getElementById('bulkApplyBtn').disabled = bulkSelected.size === 0;
+    const allChecked = bulkMatched.length > 0 && bulkSelected.size === bulkMatched.length;
+    document.getElementById('bulkSelectAll').checked = allChecked;
+}
+
+function renderBulkResults() {
+    document.getElementById('bulkResultsPanel').style.display = '';
+    document.getElementById('bulkMatchedCount').textContent = bulkMatched.length;
+    document.getElementById('bulkUnmatchedCount').textContent = bulkUnmatched.length;
+
+    bulkSelected = new Set(bulkMatched.map(r => r.id));
+    renderBulkTable();
+    updateBulkApplyState();
+
+    const unmatchedWrap = document.getElementById('bulkUnmatchedWrap');
+    if (bulkUnmatched.length) {
+        unmatchedWrap.style.display = '';
+        document.getElementById('bulkUnmatchedList').textContent = bulkUnmatched.join('\n');
+    } else {
+        unmatchedWrap.style.display = 'none';
+    }
+}
+
+function runBulkSearch() {
+    const raw = document.getElementById('bulkUrlsInput').value;
+    if (!raw.trim()) {
+        toast('Paste at least one slug or URL first', 'err');
+        return;
+    }
+
+    const btn = document.getElementById('bulkSearchBtn');
+    btn.disabled = true;
+    btn.textContent = 'Searching…';
+
+    fetch('api/bulk_find_posts.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ urls: raw }),
+    })
+        .then(r => r.json())
+        .then(json => {
+            if (!json.success) {
+                toast(json.msg || 'Search failed', 'err');
+                bulkMatched = [];
+                bulkUnmatched = [];
+                document.getElementById('bulkResultsPanel').style.display = 'none';
+                return;
+            }
+            bulkMatched = json.matched;
+            bulkUnmatched = json.unmatched;
+            renderBulkResults();
+            toast(`Matched ${bulkMatched.length} of ${json.total_input} pasted`, bulkUnmatched.length ? '' : 'ok');
+        })
+        .catch(err => {
+            console.error(err);
+            toast('Search failed — check the console/network tab', 'err');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = 'Search';
+        });
+}
+
+function applyBulkStatusUpdate() {
+    const ids = Array.from(bulkSelected);
+    if (!ids.length) return;
+
+    const status = document.getElementById('bulkStatusSelect').value;
+    const preview = bulkMatched
+        .filter(r => bulkSelected.has(r.id))
+        .slice(0, 8)
+        .map(r => `• #${r.id} ${truncate(r.title, 50)} (${r.status} → ${status})`)
+        .join('\n');
+    const more = ids.length > 8 ? `\n…and ${ids.length - 8} more post(s)` : '';
+    const ok = confirm(`Set status to "${status}" for ${ids.length} post${ids.length === 1 ? '' : 's'}?\n\n${preview}${more}`);
+    if (!ok) return;
+
+    // Captured before the write lands, so "just trashed" means posts that
+    // were NOT already trash and are about to become trash.
+    const newlyTrashed = status === 'trash'
+        ? bulkMatched.filter(r => bulkSelected.has(r.id) && r.status !== 'trash')
+        : [];
+
+    const btn = document.getElementById('bulkApplyBtn');
+    btn.disabled = true;
+    btn.textContent = 'Updating…';
+
+    fetch('api/bulk_update_status.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ ids: ids.join(','), status }),
+    })
+        .then(r => r.json())
+        .then(async json => {
+            if (!json.success) {
+                toast(json.msg || 'Update failed', 'err');
+                return;
+            }
+            bulkMatched.forEach(r => {
+                if (bulkSelected.has(r.id)) r.status = status;
+            });
+            renderBulkTable();
+            toast(`Updated ${json.updated} post${json.updated === 1 ? '' : 's'} to "${status}"`, 'ok');
+
+            if (newlyTrashed.length) {
+                await offerBulkTrashRedirects(newlyTrashed);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            toast('Update failed — check the console/network tab', 'err');
+        })
+        .finally(() => {
+            updateBulkApplyState();
+            btn.textContent = 'Update status for selected';
+        });
+}
+
+function bindBulkTab() {
+    document.getElementById('bulkSearchBtn').addEventListener('click', runBulkSearch);
+
+    document.getElementById('bulkClearBtn').addEventListener('click', () => {
+        document.getElementById('bulkUrlsInput').value = '';
+        bulkMatched = [];
+        bulkUnmatched = [];
+        bulkSelected = new Set();
+        document.getElementById('bulkResultsPanel').style.display = 'none';
+    });
+
+    document.getElementById('bulkTableBody').addEventListener('change', e => {
+        const cb = e.target.closest('.bulk-row-cb');
+        if (!cb) return;
+        const id = parseInt(cb.dataset.id, 10);
+        if (cb.checked) bulkSelected.add(id); else bulkSelected.delete(id);
+        updateBulkApplyState();
+    });
+
+    document.getElementById('bulkSelectAll').addEventListener('change', e => {
+        bulkSelected = e.target.checked ? new Set(bulkMatched.map(r => r.id)) : new Set();
+        renderBulkTable();
+        updateBulkApplyState();
+    });
+
+    document.getElementById('bulkApplyBtn').addEventListener('click', applyBulkStatusUpdate);
+
+    bindCopyButtons('bulkTableBody');
 }
 
 /* ══════════════════════════ Database switcher ══════════════════════════
@@ -1019,6 +1293,7 @@ document.addEventListener('DOMContentLoaded', () => {
     bindRedirectsFilters();
     bindRedirectsLinkStatus();
     renderRedirectsHead();
+    bindBulkTab();
 
     bindDatabaseSwitcher();
     loadDatabaseSwitcher();

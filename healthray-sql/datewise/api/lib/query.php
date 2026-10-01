@@ -321,6 +321,38 @@ function dw_sanitize_slug($value)
 }
 
 /**
+ * Turn one line of pasted bulk-search input - a bare slug, a site-relative
+ * path, or a full permalink - into the slug candidate to match against
+ * wp_posts.post_name. Only the last non-empty path segment matters: a
+ * post's post_name is never more than that one segment, no matter how many
+ * parent/category segments came before it in the URL.
+ */
+function dw_extract_slug_from_input($value)
+{
+    $value = trim((string) $value);
+    if ($value === '') {
+        return '';
+    }
+    // Strip a scheme+host prefix if this looks like a full URL.
+    $value = preg_replace('#^[a-z][a-z0-9+.\-]*://[^/]+#i', '', $value);
+    // Strip any query string / fragment.
+    $value = preg_replace('~[?#].*$~', '', $value);
+    $value = trim($value, '/');
+    if ($value === '') {
+        return '';
+    }
+    $segments = explode('/', $value);
+    $last = end($segments);
+    return dw_sanitize_slug(urldecode($last));
+}
+
+/** Escape a string for safe use inside a LIKE pattern (with ESCAPE '\'). */
+function dw_like_escape($value)
+{
+    return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], (string) $value);
+}
+
+/**
  * Walk wp_term_taxonomy.parent chains for a set of category term_ids and
  * return term_id => full ancestor-to-leaf slug path (e.g. "blog/lims").
  * One query per depth level for the whole batch, not per term.

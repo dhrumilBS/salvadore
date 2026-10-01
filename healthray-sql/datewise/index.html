@@ -28,6 +28,7 @@
         <div class="tab-group view-tab-group" id="viewTabs">
             <button type="button" class="tab view-tab active" data-view="content">Content</button>
             <button type="button" class="tab view-tab" data-view="redirects">Redirects</button>
+            <button type="button" class="tab view-tab" data-view="bulk">Bulk URL Update</button>
         </div>
 
         <div class="topbar-end">
@@ -291,6 +292,79 @@
                         <button type="button" class="btn" id="rPgNext">Next ›</button>
                         <button type="button" class="btn" id="rPgLast">Last »</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══════════════════ BULK URL UPDATE VIEW ══════════════════ -->
+        <div id="bulkView" style="display:none">
+
+            <div class="card-panel">
+                <div class="panel-label">
+                    <span>Bulk URL / slug search</span>
+                </div>
+
+                <p class="col-note" style="margin:0 0 8px">
+                    Paste slugs, site-relative paths, or full permalinks — one per line, or separated by
+                    commas. 5, 10, 100 or more at once.
+                </p>
+
+                <textarea id="bulkUrlsInput" class="bulk-textarea" rows="6"
+                    placeholder="my-post-slug&#10;https://example.com/another-post/&#10;/a-third-post/"></textarea>
+
+                <div class="toolbar">
+                    <button type="button" class="btn primary" id="bulkSearchBtn">Search</button>
+                    <button type="button" class="btn" id="bulkClearBtn">Clear</button>
+                    <span class="col-note" id="bulkInputCount"></span>
+                </div>
+            </div>
+
+            <div class="card-panel" id="bulkResultsPanel" style="display:none">
+                <div class="panel-label">
+                    <span>Matched posts</span>
+                    <div class="stats-row">
+                        <span>Matched <b id="bulkMatchedCount">0</b></span>
+                        <span>Not found <b id="bulkUnmatchedCount">0</b></span>
+                    </div>
+                </div>
+
+                <div class="toolbar">
+                    <label class="col-check"><input type="checkbox" id="bulkSelectAll"> Select all matched</label>
+                    <div class="toolbar-sep" aria-hidden="true"></div>
+                    <span class="col-note">Set status to</span>
+                    <select id="bulkStatusSelect">
+                        <option value="publish">publish</option>
+                        <option value="draft">draft</option>
+                        <option value="pending">pending</option>
+                        <option value="private">private</option>
+                        <option value="future">future</option>
+                        <option value="trash">trash</option>
+                    </select>
+                    <button type="button" class="btn primary" id="bulkApplyBtn" disabled>Update status for selected</button>
+                </div>
+
+                <div class="table-wrap">
+                    <table id="bulkTable">
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th>ID</th>
+                                <th>Post Type</th>
+                                <th>Title</th>
+                                <th>Slug</th>
+                                <th class="url-col">Permalink</th>
+                                <th>Status</th>
+                                <th>Matched from</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bulkTableBody"></tbody>
+                    </table>
+                </div>
+
+                <div id="bulkUnmatchedWrap" style="display:none">
+                    <div class="panel-label"><span>Not found</span></div>
+                    <p class="col-note">No post matches these — check the slug/URL, or it may belong to an excluded post type.</p>
+                    <div id="bulkUnmatchedList" class="mono" style="white-space:pre-wrap"></div>
                 </div>
             </div>
         </div>

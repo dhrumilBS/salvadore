@@ -59,6 +59,20 @@ $stmt->bind_param("ssi", $fromTs, $toTs, $limit);
 $stmt->execute();
 $result = $stmt->get_result();
 
+/*
+ * Some sites' Contact Form 7 setups (e.g. Botphonic) log UTM fields under
+ * a "_cf7"-suffixed key instead of the plain name Healthray uses. Alias the
+ * plain key onto the same value (when the plain key isn't already present)
+ * so the dashboard's breakdown widgets/filters - which read the plain key -
+ * work the same regardless of which site's data is loaded. The original
+ * "_cf7" key is left in place too, so it still shows up in the raw column list.
+ */
+$utmKeyAliases = [
+    'utm_campaign' => 'utm_campaign_cf7',
+    'utm_source'   => 'utm_source_cf7',
+    'utm_medium'   => 'utm_medium_cf7',
+];
+
 /* ── Decode rows ── */
 $rows      = [];
 $allColSet = [];          // ordered array - preserves first-seen order
@@ -68,6 +82,13 @@ while ($r = $result->fetch_assoc()) {
     $decoded = json_decode($r['form_data'], true);
     if (!is_array($decoded)) continue;          // skip malformed rows
     $decoded['created_date'] = $r['created_date'];
+
+    foreach ($utmKeyAliases as $plainKey => $altKey) {
+        if (!isset($decoded[$plainKey]) && isset($decoded[$altKey])) {
+            $decoded[$plainKey] = $decoded[$altKey];
+        }
+    }
+
     foreach (array_keys($decoded) as $col) {
         if (!isset($allColMap[$col])) {
             $allColMap[$col] = true;

@@ -23,6 +23,14 @@ Practically, that means:
 - Because it connects directly to the DB, it can (and does) point at
   **more than one WordPress site** - see below.
 
+> **This is the only copy.** A separate `/salvadore/botphonic-sql/datewise/`
+> port used to exist, kept in sync by hand; it was deleted because
+> `/salvadore/healthray-sql/conn.php` already carries a `botphonic` entry in
+> `$DATABASES` (see below), so this one copy already serves both sites via
+> the Site dropdown - there was nothing the second copy did that this one
+> couldn't. Don't recreate a per-site fork for a future WordPress site
+> either; add its DB to `$DATABASES` here instead.
+
 ## Multi-site database switching
 
 `/salvadore/healthray-sql/conn.php` defines every reachable database in a
@@ -89,6 +97,60 @@ Botphonic live, `old` = a local Healthray snapshot).
   design - it's opt-in for exactly that reason). Excel/JSON export from
   the original spec was intentionally dropped; CSV covers every real
   requirement so far.
+
+## Feature: Bulk URL Update tab
+
+- Third `#viewTabs` view (alongside Content/Redirects). Paste any mix of
+  bare slugs, site-relative paths, or full permalinks - comma- and/or
+  newline-separated, 5/10/100+ at once - into a textarea and hit **Search**.
+- `api/bulk_find_posts.php` (POST `urls`) resolves each pasted line to the
+  slug candidate WordPress would actually use (`dw_extract_slug_from_input()`
+  in `query.php`: strips scheme/host/query/fragment, takes the **last** path
+  segment, sanitizes it) and matches it against `wp_posts.post_name` -
+  including trashed posts, whose `post_name` carries the `__trashed[-N]`
+  suffix WordPress adds on delete (`dw_like_escape()` + a per-candidate LIKE,
+  same trashed-suffix handling the Content tab's permalink reconstruction
+  relies on via `dw_clean_slug()`). Response separates `matched` (hydrated
+  the same way as the Content tab, so Permalink/Status render identically)
+  from `unmatched` (the original pasted lines that found nothing).
+- Every matched row is pre-checked; unchecking/rechecking and **Select all**
+  are purely client-side (`bulkSelected` in `script.js`).
+- **Nothing is written until Update status for selected is clicked and
+  confirmed** - same `confirm()`-before-write convention as the Content
+  tab's save flow. `api/bulk_update_status.php` (POST `ids`, `status`) then
+  runs one `UPDATE wp_posts ... WHERE ID IN (...)` for the whole batch
+  (same status whitelist as `update_post.php`'s `status` case).
+- Extension pointer: if bulk-editing another field (not just status) is ever
+  needed, follow the same shape - a find endpoint that reuses
+  `dw_hydrate_batch()`, and a batched write endpoint mirroring the relevant
+  `update_post.php` case.
+
+### "Trashed a post -> add a 410?" prompt
+
+- Fires whenever a save transitions a post's status **into** `trash` (not
+  when it was already trash) - from the Content tab's per-row/bulk Save, and
+  from the Bulk URL Update tab's status apply. Never fires on any other
+  status change.
+- `api/add_redirect.php` (POST `origin`, `type`, `target`, `replace`) is a
+  thin wrapper over `lib/redirect_store.php`'s `dw_redirect_upsert()` - the
+  write-side Yoast redirect library that already existed (backup-before-
+  write, base + both export-map options kept in sync, duplicate detection)
+  but had no HTTP endpoint until this. Defaults to a 410 Gone (empty
+  target) since that's this feature's only caller so far, but any type
+  `dw_redirect_types()` supports works.
+- Client flow (`offerTrashRedirect()` for one post, `offerBulkTrashRedirects()`
+  for a batch, both in `script.js`): confirm the post(s) were trashed and
+  ask to add the 410 for the post's `path` (the same site-relative path
+  `dw_hydrate_batch()` already computes) -> POST without `replace` -> if the
+  backend reports `status: 'duplicate'` (an existing rule with a different
+  type/target), a second confirm offers to overwrite it with `replace=1`.
+  `status: 'unchanged'` (an identical 410 already exists) needs no prompt.
+  Nothing is written without an explicit confirm, same convention as every
+  other write in this tool.
+- **This only adds the redirect - it never removes/edits one for any other
+  reason.** Un-trashing a post does not touch its 410; that's a manual
+  Redirects-tab cleanup (there is still no delete/edit UI - `dw_redirect_delete()`
+  exists in the library but is only exercised via CLI/tests so far).
 
 ## Feature: Redirects tab
 
@@ -166,6 +228,9 @@ Botphonic live, `old` = a local Healthray snapshot).
 | `redirects.php` | GET - paginated/filtered/sorted Redirects list. |
 | `redirects_export.php` | GET - CSV export for Redirects. |
 | `databases.php` | GET - which sites are configured + which one is currently active. |
+| `bulk_find_posts.php` | POST - Bulk URL Update tab's search: resolves pasted slugs/paths/permalinks to real posts. |
+| `bulk_update_status.php` | POST - Bulk URL Update tab's write: one status applied to many post IDs at once. |
+| `add_redirect.php` | POST - create/update one Yoast redirect rule (`lib/redirect_store.php`'s `dw_redirect_upsert()`). Used by the "trashed -> add a 410?" prompt. |
 
 ## Known gaps (intentional, not oversights)
 
@@ -190,7 +255,8 @@ Botphonic live, `old` = a local Healthray snapshot).
   `state` key + its fetch param wiring in `bindFilters()` (`script.js`).
 - **New site**: add to `$DATABASES` in
   `/salvadore/healthray-sql/conn.php` + its env vars - appears in the Site
-  dropdown automatically.
+  dropdown automatically. This is the only copy of the tool - a new site
+  never needs a new folder or a new fork.
 
 ---
 

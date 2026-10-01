@@ -164,6 +164,13 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); min-
 .topbar-icon svg { width: 18px; height: 18px; color: #fff; }
 .topbar h1 { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.3px; }
 .topbar-badge { background: var(--primary-lt); color: var(--primary); font-size: var(--fs-sm); font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+
+/* Data source (Healthray / Botphonic) switch - segmented control, same visual
+   language as the topbar badge/buttons. Healthray is the default active tab. */
+.db-switch { display: inline-flex; align-items: center; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 3px; flex-shrink: 0; }
+.db-switch-btn { border: none; background: none; font-family: var(--font); font-size: var(--fs-sm); font-weight: 600; padding: 5px 14px; border-radius: 999px; cursor: pointer; color: var(--muted); transition: background .15s, color .15s; white-space: nowrap; }
+.db-switch-btn:hover { color: var(--text); }
+.db-switch-btn.active { background: var(--primary); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
 .topbar-spacer { margin-left: auto; }
 .icon-btn { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; flex-shrink: 0; }
 .icon-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-lt); }
@@ -572,6 +579,7 @@ td.lead-name-link:hover { text-decoration: underline; }
     .page { padding: 16px 14px 20px; }
     .topbar { padding: 0 14px; gap: 8px; }
     .topbar h1 { font-size: var(--fs-md); }
+    .db-switch-btn { padding: 5px 10px; font-size: var(--fs-xs); }
     .mobile-filters-toggle { display: inline-flex; }
 
     .controls-bar { margin: 0 -14px 0; }

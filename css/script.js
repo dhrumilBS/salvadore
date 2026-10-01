@@ -13,11 +13,24 @@ $(document).ready(function () {
             success: function (response) {
                 if (response.status == 'success') {
 
-                    let newFolder = $("<div class='large-4 columns'></div>")
-                        .attr("data-dirname", $("input[name='folderName']").val())
-                        .html(`<h1 class="folder dir_item"> <a href="./${$("input[name='folderName']").val()}" target="_blank"> 📁 ${$("input[name='folderName']").val()} </a></h1>`);
+                    const name = $("input[name='folderName']").val();
+                    const esc = $('<div>').text(name).html();
+                    const id = 'del_' + esc.replace(/[^a-zA-Z0-9_-]/g, '_');
+                    const newFolder = $(`
+                        <div class="file-card dir_item" data-dirname="${esc.toLowerCase()}">
+                            <input type="checkbox" name="inputCheckbox[]" class="inputCheckbox" id="${id}" value="${esc}">
+                            <span class="file-ico dir">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                            </span>
+                            <a href="./${esc}" target="_blank" style="min-width:0">
+                                <h1 class="large-4 columns"> ${esc}</h1>
+                                <small>Folder</small>
+                            </a>
+                        </div>
+                    `);
 
-                    $(".dir_list .row").prepend(newFolder);
+                    $("#fileGrid").prepend(newFolder);
+                    $('#fileEmpty').prop('hidden', true);
                     $("#createFolderForm")[0].reset(); // Reset the form
                 } else {
                     toastr.error("Error: " + response.message);

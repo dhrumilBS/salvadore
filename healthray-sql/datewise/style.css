@@ -408,6 +408,25 @@ select:focus {
     box-shadow: var(--focus-ring);
 }
 
+.bulk-textarea {
+    width: 100%;
+    min-height: 120px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--r-sm);
+    font-size: 12.5px;
+    outline: none;
+    padding: 9px;
+    resize: vertical;
+    transition: border-color .15s, box-shadow .15s;
+}
+
+.bulk-textarea:focus {
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+}
+
 select {
     cursor: pointer;
 }

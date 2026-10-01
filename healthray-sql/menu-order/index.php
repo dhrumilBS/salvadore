@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Menu Order</title>
-    <link rel="stylesheet" href="../bootstrap/dist/css/bootstrap.css">
+    <link rel="stylesheet" href="../../bootstrap/dist/css/bootstrap.css">
     <link rel="stylesheet" href="style.css">
 
 </head>
@@ -101,7 +101,7 @@
                 </div>
             </div>
         </div>
-        <script src="../bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+        <script src="../../bootstrap/dist/js/bootstrap.bundle.min.js"></script>
         <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
         <script>
             function updatePost(id) {
@@ -110,6 +110,7 @@
                     post_title: $('#title-' + id).val(),
                     post_name: $('#name-' + id).val(),
                     post_status: 'publish',
+                    post_date: $('#date-' + id).val(),
                     menu_order: $('#order-' + id).val()
                 };
 
