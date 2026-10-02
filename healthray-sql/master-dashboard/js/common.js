@@ -14,6 +14,39 @@ function qs(params) {
     return usp.toString();
 }
 
+/* ══════════════════════════ API calls ══════════════════════════
+ * Every request goes through api()/apiUrl(), which add two things:
+ * - ?db=<the site this page was opened on>. The site is pinned once at load
+ *   (initSite) instead of being read from the md_db cookie per request, so
+ *   switching site in another browser tab can never send this tab's saves
+ *   to a different site's database.
+ * - X-Master-Dashboard: 1, which the server requires on every write and
+ *   outbound check (bootstrap.php require_same_origin) so other websites
+ *   can't trigger them. */
+let SITE = '';
+
+function apiUrl(path, params = {}) {
+    const q = qs({ ...params, db: SITE });
+    return 'api/' + path + (q ? '?' + q : '');
+}
+
+function api(path, { params = {}, method = 'GET', body = undefined, signal = undefined } = {}) {
+    return fetch(apiUrl(path, params), { method, body, signal, headers: { 'X-Master-Dashboard': '1' } })
+        .then(r => r.json());
+}
+
+/** Each call aborts the previous request from the same caller, so only the newest response is ever rendered. */
+function latestOnly() {
+    let ctrl = null;
+    return () => {
+        if (ctrl) ctrl.abort();
+        ctrl = new AbortController();
+        return ctrl.signal;
+    };
+}
+
+const isAbort = err => err && err.name === 'AbortError';
+
 function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -111,7 +144,8 @@ function urlCellHtml(href, text = null, emptyLabel = '—') {
         ? `<span class="u-scheme">${escapeHtml(p.scheme)}</span><span class="u-host">${escapeHtml(p.host)}</span><span class="u-path">${escapeHtml(p.path)}</span>`
         : `<span class="u-path">${escapeHtml(shown)}</span>`;
 
-    const label = href
+    // Links come out of post content, so only http(s) is ever made clickable (no javascript:/data:/vbscript: hrefs).
+    const label = href && /^https?:\/\//i.test(href)
         ? `<a class="url-full" href="${escapeHtml(href)}" target="_blank" rel="noopener" title="${escapeHtml(href)}">${inner}</a>`
         : `<span class="url-full" title="${escapeHtml(shown)}">${inner}</span>`;
 
@@ -168,11 +202,15 @@ const LinkStatus = (() => {
         return `<span class="ls-cell" data-status-url="${escapeHtml(url)}">${badge(url)}</span>`;
     }
 
-    function refresh(url) {
+    /** Re-render every element showing any of these URLs, in one pass over the DOM. */
+    function refreshMany(urls) {
+        const set = urls instanceof Set ? urls : new Set(urls);
+        if (!set.size) return;
         document.querySelectorAll('[data-status-url]').forEach(el => {
-            if (el.dataset.statusUrl === url) el.innerHTML = badge(url);
+            if (set.has(el.dataset.statusUrl)) el.innerHTML = badge(el.dataset.statusUrl);
         });
     }
+    const refresh = url => refreshMany([url]);
 
     function notify() {
         listeners.forEach(fn => fn());
@@ -182,8 +220,7 @@ const LinkStatus = (() => {
         cache[url] = { checking: true };
         refresh(url);
         try {
-            const res = await fetch('api/check_url_status.php?url=' + encodeURIComponent(url));
-            const json = await res.json();
+            const json = await api('check_url_status.php', { params: { url } });
             cache[url] = json.success
                 ? { status_code: json.status_code, bucket: json.bucket, redirect_url: json.redirect_url }
                 : { error: json.msg || 'Check failed' };
@@ -201,22 +238,30 @@ const LinkStatus = (() => {
      * otherwise everything is re-checked (Links tab, where a fresh sweep is
      * the point).
      */
-    async function checkMany(urls, { onProgress = null, skipChecked = false } = {}) {
-        const CHUNK = 250; // server caps a single bulk call at 300
+    async function checkMany(urls, { onProgress = null, skipChecked = false, isCancelled = () => false } = {}) {
+        // Small batches so Cancel takes effect quickly (the server caps one call at 300).
+        const CHUNK = 50;
         let unique = [...new Set(urls.filter(Boolean))];
         if (skipChecked) unique = unique.filter(u => !cache[u] || cache[u].error || cache[u].bucket === 'blocked');
         if (!unique.length) return 0;
 
-        unique.forEach(u => { cache[u] = { checking: true }; refresh(u); });
+        unique.forEach(u => { cache[u] = { checking: true }; });
+        refreshMany(unique);
 
         let done = 0;
         for (let i = 0; i < unique.length; i += CHUNK) {
+            if (isCancelled()) {
+                // Never sent: back to "unchecked" rather than a spinner forever.
+                const skipped = unique.slice(i);
+                skipped.forEach(u => { delete cache[u]; });
+                refreshMany(skipped);
+                break;
+            }
             const batch = unique.slice(i, i + CHUNK);
             try {
                 const fd = new FormData();
                 fd.append('urls', JSON.stringify(batch));
-                const res = await fetch('api/check_links_bulk.php', { method: 'POST', body: fd });
-                const json = await res.json();
+                const json = await api('check_links_bulk.php', { method: 'POST', body: fd });
                 if (json.success) {
                     batch.forEach(u => {
                         const info = json.results[u];
@@ -231,35 +276,70 @@ const LinkStatus = (() => {
                 console.error(err);
                 batch.forEach(u => { cache[u] = { error: 'Network error' }; });
             }
-            batch.forEach(refresh);
+            refreshMany(batch);
             done += batch.length;
             if (onProgress) onProgress(done, unique.length);
         }
         notify();
-        return unique.length;
+        return done;
     }
 
-    /** Run checkMany() behind a button: disable it, show progress, restore its label. */
+    const running = new WeakMap(); // button -> { cancel }
+
+    /**
+     * Run checkMany() behind a button, showing progress. The button stays
+     * clickable while it runs and acts as Cancel: a second click stops after
+     * the batch already in flight.
+     */
     async function checkManyWithButton(urls, btn, opts = {}) {
+        const run = running.get(btn);
+        if (run) {
+            run.cancel = true;
+            btn.textContent = 'Stopping…';
+            return 0;
+        }
         const idle = btn.textContent;
-        btn.disabled = true;
-        const n = await checkMany(urls, {
-            ...opts,
-            onProgress: (done, total) => { btn.textContent = `Checking… (${done}/${total})`; },
-        });
-        btn.disabled = false;
-        btn.textContent = idle;
-        return n;
+        const state = { cancel: false };
+        running.set(btn, state);
+        btn.classList.add('is-running');
+        btn.textContent = 'Cancel (starting…)'; // cancellable from the first moment, not after the first batch returns
+        try {
+            return await checkMany(urls, {
+                ...opts,
+                isCancelled: () => state.cancel,
+                onProgress: (done, total) => { if (!state.cancel) btn.textContent = `Cancel (${done}/${total} checked)`; },
+            });
+        } finally {
+            running.delete(btn);
+            btn.classList.remove('is-running');
+            btn.textContent = idle;
+        }
     }
 
-    function stats() {
+    /** Is a "Check all" run going on this button right now? */
+    const isRunning = btn => running.has(btn);
+
+    /** Checked / broken counts over just these URLs (e.g. the links currently on screen). */
+    function stats(urls) {
         let checked = 0, broken = 0;
-        Object.values(cache).forEach(s => {
-            if (s.checking) return;
+        new Set(urls).forEach(u => {
+            const s = cache[u];
+            if (!s || s.checking) return;
             checked++;
             if (s.error || ['broken', 'error', 'blocked'].includes(s.bucket)) broken++;
         });
         return { checked, broken };
+    }
+
+    /** Drop cached results for every URL whose path is this site-relative path (its redirect just changed). */
+    function forgetPath(path) {
+        const want = '/' + String(path).replace(/^\/+|\/+$/g, '') + '/';
+        const gone = Object.keys(cache).filter(u => {
+            try { return new URL(u).pathname.replace(/\/*$/, '/') === want; } catch (e) { return false; }
+        });
+        gone.forEach(u => { delete cache[u]; });
+        refreshMany(gone);
+        if (gone.length) notify();
     }
 
     /** One delegated handler: every "Check" / "↻" button on the page. */
@@ -270,7 +350,7 @@ const LinkStatus = (() => {
         });
     }
 
-    return { cache, bucket, badge, cell, checkOne, checkMany, checkManyWithButton, stats, bind, onChange: fn => listeners.push(fn) };
+    return { cache, bucket, badge, cell, checkOne, checkMany, checkManyWithButton, isRunning, stats, forgetPath, bind, onChange: fn => listeners.push(fn) };
 })();
 
 /* ══════════════════════════ Theme ══════════════════════════ */
@@ -302,22 +382,44 @@ function cookieDir() {
     return location.pathname.replace(/[^/]*$/, '') || '/';
 }
 
-function loadDatabaseSwitcher() {
-    fetch('api/databases.php')
-        .then(r => r.json())
-        .then(json => {
-            if (!json.success) return;
-            document.getElementById('dbSelector').innerHTML = json.databases.map(d =>
-                `<option value="${escapeHtml(d.key)}"${d.key === json.current ? ' selected' : ''}>${escapeHtml(d.label)}</option>`
-            ).join('');
-        })
-        .catch(err => console.error('Failed to load database list', err));
+function readCookie(name) {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+}
+
+let siteList = [];
+
+/**
+ * Pin the site for this page's whole lifetime: whatever md_db said at load,
+ * as validated by the server (an unknown key falls back to the default).
+ * Must finish before any other API call.
+ */
+async function initSite() {
+    SITE = readCookie('md_db');
+    try {
+        const json = await api('databases.php');
+        if (json.success) {
+            SITE = json.current;
+            siteList = json.databases;
+        }
+    } catch (err) {
+        console.error('Failed to load database list', err);
+    }
+    renderDatabaseSwitcher();
+    const label = siteList.find(d => d.key === SITE)?.label;
+    if (label) document.title = `${label} · Master Dashboard`; // tells two open tabs apart
+}
+
+function renderDatabaseSwitcher() {
+    document.getElementById('dbSelector').innerHTML = siteList.map(d =>
+        `<option value="${escapeHtml(d.key)}"${d.key === SITE ? ' selected' : ''}>${escapeHtml(d.label)}</option>`
+    ).join('');
 }
 
 function bindDatabaseSwitcher() {
     document.getElementById('dbSelector').addEventListener('change', e => {
         if (hasUnsavedContentEdits() && !confirm('You have unsaved Content edits. Switching site discards them. Continue?')) {
-            loadDatabaseSwitcher(); // put the dropdown back
+            renderDatabaseSwitcher(); // put the dropdown back
             return;
         }
         contentDirty = {}; // already confirmed above - don't let beforeunload ask a second time
@@ -328,8 +430,7 @@ function bindDatabaseSwitcher() {
 
 /* ---------- filter options (statuses + post types), shared by every tab ---------- */
 function loadFilterOptions() {
-    return fetch('api/filter_options.php')
-        .then(r => r.json())
+    return api('filter_options.php')
         .then(json => {
             if (!json.success) throw new Error(json.msg);
             return json;
@@ -350,12 +451,13 @@ function loadFilterOptions() {
 /** POST to add_redirect.php and return the parsed JSON, or null on a network failure. */
 async function submitRedirectRaw(origin, type, target, replace = false) {
     try {
-        const res = await fetch('api/add_redirect.php', {
+        const json = await api('add_redirect.php', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({ origin, type, target, replace: replace ? '1' : '' }),
         });
-        return await res.json();
+        // That URL now answers differently (410) - a cached "200" for it would be wrong.
+        if (json && json.success) LinkStatus.forgetPath(origin);
+        return json;
     } catch (err) {
         console.error(err);
         return null;

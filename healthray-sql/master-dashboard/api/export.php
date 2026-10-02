@@ -83,13 +83,13 @@ header("Content-Disposition: attachment; filename=\"{$filename}\"");
 
 $out = fopen('php://output', 'w');
 fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel doesn't mangle non-ASCII text
-fputcsv($out, array_column($columns, 1));
+dw_csv_write($out, array_column($columns, 1));
 
 $offset = 0;
 while (true) {
     [$rows, $isLast] = dw_next_export_batch($conn, $f, $offset, $linkStatusOn, $wantedCodes, $wantOther);
     foreach ($rows as $row) {
-        fputcsv($out, dw_flatten_row($row, $columns));
+        dw_csv_write($out, dw_flatten_row($row, $columns));
     }
     if ($isLast) {
         break;

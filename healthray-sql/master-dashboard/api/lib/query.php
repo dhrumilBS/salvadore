@@ -167,7 +167,7 @@ function dw_build_where(array $f)
     }
 
     if ($f['search'] !== '') {
-        $like = '%' . $f['search'] . '%';
+        $like = '%' . dw_like_escape($f['search']) . '%'; // a literal % or _ in the search box is not a wildcard
         $conditions[] = "(p.post_title LIKE ? OR p.post_name LIKE ? OR p.post_content LIKE ?
             OR EXISTS (SELECT 1 FROM wp_postmeta spm WHERE spm.post_id = p.ID
                 AND spm.meta_key IN ('_yoast_wpseo_title','_yoast_wpseo_metadesc','_yoast_wpseo_focuskw')

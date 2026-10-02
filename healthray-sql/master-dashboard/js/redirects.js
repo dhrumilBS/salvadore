@@ -16,6 +16,7 @@ const redirectsState = {
 };
 
 let currentRedirects = [];
+const nextRedirectsSignal = latestOnly();
 
 function redirectTypeBadgeClass(type) {
     if (type === 301 || type === 302) return 'ls-redirect';
@@ -25,7 +26,7 @@ function redirectTypeBadgeClass(type) {
 
 function updateRedirectsExportLink() {
     const { page, per_page, ...rest } = redirectsState;
-    document.getElementById('redirectsExportCsv').href = 'api/redirects_export.php?' + qs(rest);
+    document.getElementById('redirectsExportCsv').href = apiUrl('redirects_export.php', rest);
 }
 
 function renderRedirectsHead() {
@@ -53,17 +54,23 @@ function renderRedirectRow(r) {
             ? urlCellHtml(r.dest_url, '/' + r.url + '/')
             : urlCellHtml('', r.url);
 
-    const originMatch = r.origin_post
-        ? `${matchBadge(r.origin_post)} <span class="warn-flag" title="Origin still resolves to a live post - this redirect may be stale or conflicting">⚠️</span>`
-        : '<span class="col-note">—</span>';
+    // A trashed/draft origin post is the normal state of a retired URL; only a
+    // post that is still reachable conflicts with the redirect.
+    const originMatch = !r.origin_post
+        ? '<span class="col-note">—</span>'
+        : r.origin_live
+            ? `${matchBadge(r.origin_post)} <span class="warn-flag" title="Origin still resolves to a live post - this redirect may be stale or conflicting">⚠️</span>`
+            : matchBadge(r.origin_post);
 
     const destMatch = !r.url
         ? '<span class="col-note">—</span>'
         : r.format !== 'plain'
             ? '<span class="col-note" title="Regex destination - not checked against posts">regex</span>'
-            : r.dest_post
-                ? matchBadge(r.dest_post)
-                : '<span class="badge ls-gone" title="Destination doesn\'t match any known post">missing</span>';
+            : !r.dest_post
+                ? '<span class="badge ls-gone" title="Destination doesn\'t match any known post">missing</span>'
+                : r.dest_live
+                    ? matchBadge(r.dest_post)
+                    : `${matchBadge(r.dest_post)} <span class="warn-flag" title="Destination post isn't published - visitors are sent to a page that doesn't load">⚠️</span>`;
 
     return `<tr>
         <td class="url-col">${originCell}</td>
@@ -86,8 +93,7 @@ function loadRedirects() {
     updateRedirectsExportLink();
 
     const { link_status, ...listParams } = redirectsState;
-    fetch('api/redirects.php?' + qs(listParams))
-        .then(r => r.json())
+    api('redirects.php', { params: listParams, signal: nextRedirectsSignal() })
         .then(json => {
             if (!json.success) {
                 currentRedirects = [];
@@ -111,6 +117,7 @@ function loadRedirects() {
             document.getElementById('rPgLast').disabled = json.page >= json.total_pages;
         })
         .catch(err => {
+            if (isAbort(err)) return;
             console.error(err);
             currentRedirects = [];
             showRedirectsState('Failed to load redirects — check the console/network tab', true);

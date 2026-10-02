@@ -67,12 +67,8 @@
 
                 <!-- Row 1: what to look at -->
                 <div class="toolbar">
-                    <div class="tab-group" id="fPostTypeTabs">
-                        <button type="button" class="tab active" data-type="post">Post</button>
-                        <button type="button" class="tab" data-type="page">Page</button>
-                        <button type="button" class="tab" data-type="whitepaper">Whitepaper</button>
-                        <button type="button" class="tab" data-type="case-studies">Case Studies</button>
-                    </div>
+                    <!-- One tab per real post type on the current site - filled from filter_options.php (js/content.js) -->
+                    <div class="tab-group post-type-tabs" id="fPostTypeTabs"></div>
                     <div class="toolbar-sep" aria-hidden="true"></div>
                     <div class="search-wrap">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

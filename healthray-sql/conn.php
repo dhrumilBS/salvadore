@@ -54,9 +54,12 @@ function db_connect($key = null)
     }
     $cfg = $DATABASES[$key];
 
-    $conn = new mysqli($cfg['host'], $cfg['user'], $cfg['pass'], $cfg['name'], $cfg['port']);
-    if ($conn->connect_error) {
-        die("Connection failed ({$key}): " . $conn->connect_error);
+    // Remote sites sit ~200ms away and post_content is bulky text, so compress
+    // the wire protocol for them; a local server gains nothing from it.
+    $isLocal = in_array($cfg['host'], ['127.0.0.1', 'localhost', '::1'], true);
+    $conn = mysqli_init();
+    if (!@$conn->real_connect($cfg['host'], $cfg['user'], $cfg['pass'], $cfg['name'], $cfg['port'], null, $isLocal ? 0 : MYSQLI_CLIENT_COMPRESS)) {
+        die("Connection failed ({$key}): " . mysqli_connect_error());
     }
     return $conn;
 }

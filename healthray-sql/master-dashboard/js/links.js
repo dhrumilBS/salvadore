@@ -53,11 +53,15 @@ function linksServerParams() {
     return { post_type, status, search, date_from, date_to, mod_from, mod_to };
 }
 
+const nextLinksSignal = latestOnly();
+
 function loadLinks() {
     document.getElementById('lLoadingOverlay').classList.add('show');
 
-    fetch('api/links_list.php?' + qs(linksServerParams()))
-        .then(r => r.json())
+    // Links loads can take several seconds on a remote site; a newer filter
+    // change aborts the older request so its response can't land last and win.
+    const signal = nextLinksSignal();
+    api('links_list.php', { params: linksServerParams(), signal })
         .then(json => {
             if (!json.success) throw new Error(json.msg);
             linksAllRows = json.data;
@@ -77,12 +81,16 @@ function loadLinks() {
             applyLinksFiltersAndRender();
         })
         .catch(err => {
+            if (isAbort(err)) return;
             console.error(err);
             toast('Failed to load posts', 'err');
             linksAllRows = [];
             applyLinksFiltersAndRender();
         })
-        .finally(() => document.getElementById('lLoadingOverlay').classList.remove('show'));
+        .finally(() => {
+            // An aborted request's newer replacement is still loading - keep the overlay up for it.
+            if (!signal.aborted) document.getElementById('lLoadingOverlay').classList.remove('show');
+        });
 }
 
 /* ---------- domain filter options (derived from loaded link data) ---------- */
@@ -150,7 +158,8 @@ function renderLinksStats() {
     document.getElementById('lStatUtm').textContent = utmLinks.toLocaleString();
     document.getElementById('lStatPostsUtm').textContent = postsUtm.toLocaleString();
 
-    const { checked, broken } = LinkStatus.stats();
+    // Only the links currently on screen - not checks made on other tabs or for filtered-out posts.
+    const { checked, broken } = LinkStatus.stats(linksFilteredRows.flatMap(r => rowLinksScoped(r).map(l => l.url)));
     document.getElementById('lStatChecked').textContent = checked.toLocaleString();
     document.getElementById('lStatBroken').textContent = broken.toLocaleString();
 }
@@ -293,9 +302,11 @@ function bindLinksTab() {
     });
 
     document.getElementById('lCheckAllBtn').addEventListener('click', async e => {
+        const btn = e.currentTarget;
+        if (LinkStatus.isRunning(btn)) { LinkStatus.checkManyWithButton([], btn); return; } // = Cancel
         const urls = linksFilteredRows.flatMap(r => rowLinksScoped(r).map(l => l.url));
         if (!urls.length) { toast('No links to check', 'warn'); return; }
-        const n = await LinkStatus.checkManyWithButton(urls, e.currentTarget);
+        const n = await LinkStatus.checkManyWithButton(urls, btn);
         toast(`Checked ${n} link(s)`, 'ok');
     });
 
@@ -316,15 +327,22 @@ function bindLinksTab() {
     exportMenu.querySelectorAll('.export-item').forEach(item => {
         item.addEventListener('click', () => {
             const checkLive = document.getElementById('lExportCheckLive').checked;
-            window.location.href = 'api/links_export.php?' + qs({
+            // Same rows, same order as the table. The live-result filter can only be
+            // applied server-side when the export checks links live.
+            const statusFilter = ['ok', 'redirect', 'broken', 'error'].includes(linksState.linkStatus) ? linksState.linkStatus : '';
+            window.location.href = apiUrl('links_export.php', {
                 mode: item.dataset.mode,
                 ...linksServerParams(),
                 utm_filter: linksState.utm,
                 domain: linksState.domain,
+                sort: linksState.sort,
+                dir: linksState.dir,
+                link_status: checkLive ? statusFilter : '',
                 check: checkLive ? 1 : '',
             });
             exportMenu.classList.remove('open');
             if (checkLive) toast('Live-checked export started — this can take a while for large sites', 'warn');
+            else if (linksState.linkStatus) toast('The live-result filter only applies with "Include live HTTP status" — exported every status', 'warn');
         });
     });
 

@@ -58,7 +58,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindBulkTab();
 
     bindDatabaseSwitcher();
-    loadDatabaseSwitcher();
+    // Pin this page to one site before anything else talks to the API.
+    await initSite();
 
     document.getElementById('viewTabs').addEventListener('click', e => {
         const btn = e.target.closest('.view-tab');
@@ -69,6 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Status/post-type options feed both the Content and Links filters - load
     // them before the first list request so the dropdowns are never empty.
     const opts = await loadFilterOptions();
+    populateContentPostTypes(opts.post_types);
     populateContentStatuses(opts.statuses);
     populateLinksFilters(opts.post_types, opts.statuses);
 

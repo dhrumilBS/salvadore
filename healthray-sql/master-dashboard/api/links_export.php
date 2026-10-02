@@ -9,6 +9,9 @@
  *   utm   - one row per extracted link, UTM links only
  * `check=1` opts into a live HTTP status column - this re-checks every
  * exported link for real, so it's opt-in and much slower by design.
+ * `sort`/`dir` follow the table's sort; `link_status` (ok|redirect|broken|
+ * error) mirrors the table's live-result filter and needs `check=1`, since
+ * the server has no other way to know a link's live status.
  */
 require __DIR__ . '/bootstrap.php';
 
@@ -21,10 +24,29 @@ if (!in_array($mode, ['posts', 'links', 'utm'], true)) {
 $utmFilter    = $_GET['utm_filter'] ?? 'all'; // all | utm | clean | nolinks
 $domainFilter = trim((string) ($_GET['domain'] ?? ''));
 $doCheck      = !empty($_GET['check']);
+$sort         = in_array($_GET['sort'] ?? '', ['post_date', 'title', 'link_count', 'id'], true) ? $_GET['sort'] : 'post_date';
+$dir          = strtoupper((string) ($_GET['dir'] ?? 'DESC')) === 'ASC' ? 1 : -1;
+$statusWanted = in_array($_GET['link_status'] ?? '', ['ok', 'redirect', 'broken', 'error'], true) ? $_GET['link_status'] : '';
 
 $rows     = dw_fetch_posts_with_content($conn, $f, dw_links_row_cap());
 $home     = dw_home_url($conn);
 $homeHost = parse_url($home, PHP_URL_HOST);
+
+// Extract once, then sort exactly like the on-screen table.
+foreach ($rows as &$r) {
+    $r['links'] = dw_extract_links($r['post_content'], $r['permalink'] ?: $home, $homeHost);
+    unset($r['post_content']);
+}
+unset($r);
+usort($rows, function ($a, $b) use ($sort, $dir) {
+    [$av, $bv] = match ($sort) {
+        'title'      => [mb_strtolower((string) $a['title']), mb_strtolower((string) $b['title'])],
+        'link_count' => [count($a['links']), count($b['links'])],
+        'id'         => [(int) $a['id'], (int) $b['id']],
+        default      => [$a['publish_date'], $b['publish_date']],
+    };
+    return ($av <=> $bv) * $dir;
+});
 
 /** Does this post's link set pass the utm_filter / domain dropdown? */
 function dw_post_passes_link_filters(array $links, $utmFilter, $domainFilter)
@@ -52,9 +74,9 @@ $out = fopen('php://output', 'w');
 fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel doesn't mangle non-ASCII text
 
 if ($mode === 'posts') {
-    fputcsv($out, ['ID', 'Slug', 'Title', 'Permalink', 'Status', 'Published', 'Total Links', 'UTM Links']);
+    dw_csv_write($out, ['ID', 'Slug', 'Title', 'Permalink', 'Status', 'Published', 'Total Links', 'UTM Links']);
     foreach ($rows as $r) {
-        $links = dw_extract_links($r['post_content'], $r['permalink'] ?: $home, $homeHost);
+        $links = $r['links'];
         if (!dw_post_passes_link_filters($links, $utmFilter, $domainFilter)) {
             continue;
         }
@@ -62,7 +84,7 @@ if ($mode === 'posts') {
             ? array_values(array_filter($links, fn($l) => $l['domain'] === $domainFilter))
             : $links;
         $utmCount = count(array_filter($scoped, fn($l) => $l['is_utm']));
-        fputcsv($out, [$r['id'], $r['slug'], $r['title'], $r['permalink'], $r['status'], $r['publish_date'], count($scoped), $utmCount]);
+        dw_csv_write($out, [$r['id'], $r['slug'], $r['title'], $r['permalink'], $r['status'], $r['publish_date'], count($scoped), $utmCount]);
     }
     fclose($out);
     exit;
@@ -71,7 +93,7 @@ if ($mode === 'posts') {
 /* links / utm modes: one row per link. */
 $linkRows = [];
 foreach ($rows as $r) {
-    $links = dw_extract_links($r['post_content'], $r['permalink'] ?: $home, $homeHost);
+    $links = $r['links'];
     if (!dw_post_passes_link_filters($links, $utmFilter, $domainFilter)) {
         continue;
     }
@@ -90,8 +112,15 @@ $statusByUrl = [];
 if ($doCheck && $linkRows) {
     set_time_limit(0); // a full live-checked export can legitimately take minutes
     $uniqueUrls  = array_values(array_unique(array_map(fn($row) => $row['link']['url'], $linkRows)));
-    $safeUrls    = array_values(array_filter($uniqueUrls, fn($u) => dw_url_checkable($conn, $u)));
-    $statusByUrl = dw_check_urls_concurrent($safeUrls, 20, 6);
+    [$pins]      = dw_check_plans($conn, $uniqueUrls);
+    $statusByUrl = dw_check_urls_concurrent(array_keys($pins), 20, 6, $pins);
+
+    if ($statusWanted !== '') {
+        $linkRows = array_values(array_filter($linkRows, function ($row) use ($statusByUrl, $statusWanted) {
+            $info = $statusByUrl[$row['link']['url']] ?? null;
+            return $info !== null && dw_bucket_for_code($info['code']) === $statusWanted;
+        }));
+    }
 }
 
 $header = ['Post ID', 'Slug', 'Title', 'Permalink', 'Published', 'Link URL', 'Anchor Text', 'Domain', 'Internal/External', 'Has UTM', 'UTM Params'];
@@ -99,7 +128,7 @@ if ($doCheck) {
     $header[] = 'HTTP Status';
     $header[] = 'Redirect To';
 }
-fputcsv($out, $header);
+dw_csv_write($out, $header);
 
 foreach ($linkRows as $row) {
     $r = $row['post'];
@@ -114,6 +143,6 @@ foreach ($linkRows as $row) {
         $cells[] = $info ? $info['code'] : '';
         $cells[] = $info['redirect_url'] ?? '';
     }
-    fputcsv($out, $cells);
+    dw_csv_write($out, $cells);
 }
 fclose($out);

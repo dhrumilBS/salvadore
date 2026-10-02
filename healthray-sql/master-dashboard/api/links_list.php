@@ -13,9 +13,10 @@ require __DIR__ . '/bootstrap.php';
 
 $f = dw_parse_input($_GET, dw_known_post_types($conn));
 
-$cap   = dw_links_row_cap();
-$total = dw_count_posts($conn, $f);
-$rows  = dw_fetch_posts_with_content($conn, $f, $cap);
+$cap  = dw_links_row_cap();
+$rows = dw_fetch_posts_with_content($conn, $f, $cap);
+// Under the cap the fetch already is the full result - skip a round trip (~0.2s per query to a remote site).
+$total = count($rows) < $cap ? count($rows) : dw_count_posts($conn, $f);
 
 $home     = dw_home_url($conn);
 $homeHost = parse_url($home, PHP_URL_HOST);

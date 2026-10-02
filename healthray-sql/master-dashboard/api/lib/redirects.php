@@ -8,35 +8,35 @@
  * "this 301's destination doesn't match anything published".
  */
 
-/** All configured redirects, normalized to plain arrays with slash-trimmed paths. */
+require_once __DIR__ . '/redirect_store.php';
+
+/**
+ * All configured redirects as plain rows with slash-trimmed paths. Built on
+ * redirect_store.php's dw_redirect_load() - the same reader every write uses -
+ * so both of Yoast's storage layouts (indexed list, or origin => rule map) and
+ * the export-map fallback are handled in one place.
+ */
 function dw_load_yoast_redirects(mysqli $conn)
 {
-    $res = $conn->query("SELECT option_value FROM wp_options WHERE option_name = 'wpseo-premium-redirects-base' LIMIT 1");
-    $row = $res ? $res->fetch_assoc() : null;
-    if (!$row || $row['option_value'] === '') {
-        return [];
-    }
-
-    // Trusted, admin-authored plugin data - still disable object instantiation defensively.
-    $data = @unserialize($row['option_value'], ['allowed_classes' => false]);
-    if (!is_array($data)) {
-        return [];
-    }
-
     $out = [];
-    foreach ($data as $i => $r) {
-        if (!is_array($r)) {
-            continue;
-        }
+    $n = 0;
+    foreach (dw_redirect_load($conn)['rules'] as $key => $r) {
         $out[] = [
-            'id'     => (int) $i,
-            'origin' => trim((string) ($r['origin'] ?? ''), '/'),
-            'url'    => trim((string) ($r['url'] ?? ''), '/'),
-            'type'   => (int) ($r['type'] ?? 0),
-            'format' => (string) ($r['format'] ?? 'plain'),
+            'id'     => is_int($key) ? $key : $n,
+            'origin' => trim($r['origin'], '/'),
+            'url'    => trim($r['url'], '/'),
+            'type'   => (int) $r['type'],
+            'format' => $r['format'],
         ];
+        $n++;
     }
     return $out;
+}
+
+/** Statuses at which a post is actually reachable on the site. */
+function dw_live_statuses()
+{
+    return ['publish', 'private', 'future'];
 }
 
 /**
@@ -71,8 +71,9 @@ function dw_resolve_paths_to_posts(mysqli $conn, array $paths)
      * A trashed post's post_name is "<slug>__trashed", so a redirect origin
      * ending in the original slug would never match it on an exact lookup -
      * which is precisely the case that matters here (retired posts are the
-     * ones with 410/301 rules). Look for both spellings and compare on the
-     * cleaned slug below.
+     * ones with 410/301 rules). WordPress adds "-2", "-3"... when a slug was
+     * trashed more than once, so match "<slug>__trashed" exactly and
+     * "<slug>__trashed-N" by prefix, then compare on the cleaned slug below.
      */
     $lookupSlugs = $slugs;
     foreach ($slugs as $s) {
@@ -81,11 +82,15 @@ function dw_resolve_paths_to_posts(mysqli $conn, array $paths)
     $lookupSlugs = array_values(array_unique($lookupSlugs));
     $slugPh = implode(',', array_fill(0, count($lookupSlugs), '?'));
     $typePh = implode(',', array_fill(0, count($knownTypes), '?'));
+    $trashedLike = implode(' OR ', array_fill(0, count($slugs), 'post_name LIKE ?'));
     $stmt = $conn->prepare("SELECT ID AS id, post_type, post_title AS title, post_status AS status,
             post_name AS slug, post_parent, post_date
         FROM wp_posts
-        WHERE post_name IN ($slugPh) AND post_type IN ($typePh)");
+        WHERE (post_name IN ($slugPh) OR $trashedLike) AND post_type IN ($typePh)");
     $params = array_map(fn($s) => ['type' => 's', 'value' => $s], $lookupSlugs);
+    foreach ($slugs as $s) {
+        $params[] = ['type' => 's', 'value' => dw_like_escape($s . '__trashed-') . '%'];
+    }
     foreach ($knownTypes as $t) {
         $params[] = ['type' => 's', 'value' => $t];
     }
@@ -211,6 +216,10 @@ function dw_attach_redirect_matches(mysqli $conn, array $rows)
     foreach ($rows as &$r) {
         $r['origin_post'] = $r['format'] === 'plain' ? ($matches[$r['origin']] ?? null) : null;
         $r['dest_post']   = ($r['format'] === 'plain' && $r['url'] !== '') ? ($matches[$r['url']] ?? null) : null;
+        // Matching a *trashed/draft* post is the normal state of a retired URL,
+        // not a conflict - only a post that is still reachable counts as live.
+        $r['origin_live'] = $r['origin_post'] !== null && in_array($r['origin_post']['status'], dw_live_statuses(), true);
+        $r['dest_live']   = $r['dest_post'] !== null && in_array($r['dest_post']['status'], dw_live_statuses(), true);
     }
     unset($r);
 
@@ -230,13 +239,14 @@ function dw_apply_redirect_match_filter(array $rows, $matchFilter)
     $rows = array_values(array_filter($rows, fn($r) => $r['format'] === 'plain'));
 
     if ($matchFilter === 'origin_live') {
-        return array_values(array_filter($rows, fn($r) => $r['origin_post'] !== null));
+        return array_values(array_filter($rows, fn($r) => $r['origin_live']));
     }
+    // A destination that resolves only to a trashed/draft post is as broken as one that resolves to nothing.
     if ($matchFilter === 'dest_missing') {
-        return array_values(array_filter($rows, fn($r) => $r['url'] !== '' && $r['dest_post'] === null));
+        return array_values(array_filter($rows, fn($r) => $r['url'] !== '' && !$r['dest_live']));
     }
     if ($matchFilter === 'healthy') {
-        return array_values(array_filter($rows, fn($r) => $r['origin_post'] === null && ($r['url'] === '' || $r['dest_post'] !== null)));
+        return array_values(array_filter($rows, fn($r) => !$r['origin_live'] && ($r['url'] === '' || $r['dest_live'])));
     }
     return $rows;
 }

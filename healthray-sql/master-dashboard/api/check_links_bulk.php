@@ -26,18 +26,14 @@ if ($truncated) {
     $urls = array_slice($urls, 0, DW_BULK_MAX_URLS);
 }
 
-$safe = [];
+[$pins, $refused] = dw_check_plans($conn, $urls);
 $results = [];
-foreach ($urls as $u) {
-    if (dw_url_checkable($conn, $u)) {
-        $safe[] = $u;
-    } else {
-        $results[$u] = ['bucket' => 'blocked'] + dw_status_result(0, null);
-    }
+foreach ($refused as $u) {
+    $results[$u] = ['bucket' => 'blocked'] + dw_status_result(0, null);
 }
 
 set_time_limit(0);
-foreach (dw_check_urls_concurrent($safe, 15, 6) as $u => $info) {
+foreach (dw_check_urls_concurrent(array_keys($pins), 15, 6, $pins) as $u => $info) {
     $results[$u] = dw_status_result($info['code'], $info['redirect_url']);
 }
 

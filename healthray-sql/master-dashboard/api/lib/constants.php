@@ -40,6 +40,8 @@ function dw_excluded_post_types()
         'frm_form_actions',
         'aiosrs-schema',
         'option-tree',
+        'wpcf7r_action',  // Contact Form 7 redirection actions (Botphonic)
+        'e_global_class', // Elementor global CSS classes (Botphonic)
     ];
 }
 

@@ -10,14 +10,16 @@
  * not an open fetcher into the internal network.
  */
 require __DIR__ . '/bootstrap.php';
+require_same_origin(); // triggers an outbound request, so only from this dashboard's own pages
 
 $url = trim((string) ($_GET['url'] ?? ''));
 if ($url === '') {
     json_out(false, 'No URL provided');
 }
 
-if (!dw_url_checkable($conn, $url)) {
+$pin = dw_check_plan($conn, $url);
+if ($pin === null) {
     json_out(false, 'That URL is not allowed to be checked (must be a public http/https address).');
 }
 
-json_out(true, 'Checked', dw_check_url_once($url, 8));
+json_out(true, 'Checked', dw_check_url_once($url, 8, $pin));

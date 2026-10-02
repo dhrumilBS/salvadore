@@ -29,6 +29,18 @@ switch ($field) {
         if ($slug === '') {
             json_out(false, 'Slug cannot be empty');
         }
+        // WordPress keeps slugs unique per post type (and per parent for pages);
+        // a duplicate would make one of the two URLs unreachable.
+        $stmt = $conn->prepare("SELECT o.ID FROM wp_posts o JOIN wp_posts p ON p.ID = ?
+            WHERE o.post_name = ? AND o.post_type = p.post_type AND o.post_parent = p.post_parent AND o.ID <> p.ID
+              AND o.post_status NOT IN ('trash', 'auto-draft', 'inherit')
+            LIMIT 1");
+        $stmt->bind_param('is', $id, $slug);
+        $stmt->execute();
+        $clash = $stmt->get_result()->fetch_assoc();
+        if ($clash) {
+            json_out(false, "Slug \"{$slug}\" is already used by post #{$clash['ID']} - pick another one.");
+        }
         $stmt = $conn->prepare('UPDATE wp_posts SET post_name = ? WHERE ID = ?');
         $stmt->bind_param('si', $slug, $id);
         $ok = $stmt->execute();
@@ -39,6 +51,15 @@ switch ($field) {
         $validStatuses = dw_writable_statuses();
         if (!in_array($value, $validStatuses, true)) {
             json_out(false, 'Invalid status');
+        }
+        // Report what it was, so the client decides "just trashed -> offer a 410"
+        // from the database rather than from a possibly stale row on screen.
+        $stmt = $conn->prepare('SELECT post_status FROM wp_posts WHERE ID = ?');
+        $stmt->bind_param('i', $id);
+        $stmt->execute();
+        $previous = $stmt->get_result()->fetch_column();
+        if ($previous === false) {
+            json_out(false, 'Post not found');
         }
         $stmt = $conn->prepare('UPDATE wp_posts SET post_status = ? WHERE ID = ?');
         $stmt->bind_param('si', $value, $id);
@@ -80,5 +101,5 @@ switch ($field) {
 }
 
 $ok
-    ? json_out(true, 'Saved', ['id' => $id, 'field' => $field, 'value' => $saved])
+    ? json_out(true, 'Saved', ['id' => $id, 'field' => $field, 'value' => $saved] + (isset($previous) ? ['previous' => $previous] : []))
     : json_out(false, 'Update failed: ' . $conn->error);

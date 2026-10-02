@@ -59,12 +59,7 @@ function runBulkSearch() {
     btn.disabled = true;
     btn.textContent = 'Searching…';
 
-    fetch('api/bulk_find_posts.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ urls: raw }),
-    })
-        .then(r => r.json())
+    api('bulk_find_posts.php', { method: 'POST', body: new URLSearchParams({ urls: raw }) })
         .then(json => {
             if (!json.success) {
                 toast(json.msg || 'Search failed', 'err');
@@ -102,22 +97,11 @@ function applyBulkStatusUpdate() {
     const ok = confirm(`Set status to "${status}" for ${ids.length} post${ids.length === 1 ? '' : 's'}?\n\n${preview}${more}`);
     if (!ok) return;
 
-    // Captured before the write lands, so "just trashed" means posts that
-    // were NOT already trash and are about to become trash.
-    const newlyTrashed = status === 'trash'
-        ? bulkMatched.filter(r => bulkSelected.has(r.id) && r.status !== 'trash')
-        : [];
-
     const btn = document.getElementById('bulkApplyBtn');
     btn.disabled = true;
     btn.textContent = 'Updating…';
 
-    fetch('api/bulk_update_status.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ ids: ids.join(','), status }),
-    })
-        .then(r => r.json())
+    api('bulk_update_status.php', { method: 'POST', body: new URLSearchParams({ ids: ids.join(','), status }) })
         .then(async json => {
             if (!json.success) {
                 toast(json.msg || 'Update failed', 'err');
@@ -130,6 +114,11 @@ function applyBulkStatusUpdate() {
             toast(`Updated ${json.updated} post${json.updated === 1 ? '' : 's'} to "${status}"`, 'ok');
             onPostsChanged();
 
+            // The server reports which posts really moved *into* trash just now -
+            // not this table's copy of their status, which a Content-tab save may
+            // already have made stale - so the 410 question is never asked twice.
+            const moved = new Set(json.newly_trashed || []);
+            const newlyTrashed = bulkMatched.filter(r => moved.has(r.id));
             if (newlyTrashed.length) {
                 await offerBulkTrashRedirects(newlyTrashed);
             }

@@ -15,9 +15,7 @@ foreach ($DATABASES as $key => $cfg) {
     $list[] = ['key' => $key, 'label' => $cfg['label'] ?? $key];
 }
 
-$current = isset($DATABASES[$ACTIVE_DB]) ? $ACTIVE_DB : ($DEFAULT_DB ?? 'landing');
-
 json_out(true, 'Databases loaded', [
     'databases' => $list,
-    'current'   => $current,
+    'current'   => $ACTIVE_DB, // always a configured key - bootstrap.php pins unknown ones to the default
 ]);

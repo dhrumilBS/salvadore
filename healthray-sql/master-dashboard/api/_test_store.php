@@ -1,4 +1,9 @@
 <?php
+// Command line only - it prints site data and must never be reachable over the web.
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
 /*
  * TEMPORARY read-only test for lib/redirect_store.php.
  * Nothing here writes to the database — it asserts that what the library

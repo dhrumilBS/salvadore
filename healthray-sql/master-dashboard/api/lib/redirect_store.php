@@ -309,29 +309,6 @@ function dw_redirect_find(array $store, $origin, $home = '')
 }
 
 /**
- * path => rule map for a batch of site-relative paths. Used to show each row's
- * configured rule next to its live HTTP status without a query per row.
- */
-function dw_redirect_map_for_paths(array $store, array $paths)
-{
-    $out = [];
-    foreach ($paths as $path) {
-        $key = dw_redirect_key($path);
-        if (isset($out[$path])) {
-            continue;
-        }
-        $idx = $store['by_key'][$key] ?? null;
-        $out[$path] = $idx === null ? null : [
-            'origin' => $store['rules'][$idx]['origin'],
-            'url'    => $store['rules'][$idx]['url'],
-            'type'   => (int) $store['rules'][$idx]['type'],
-            'format' => $store['rules'][$idx]['format'],
-        ];
-    }
-    return $out;
-}
-
-/**
  * Existing regex rules whose pattern already covers this path.
  *
  * Purely advisory: it explains why a path might already be redirecting before
@@ -398,7 +375,7 @@ function dw_redirect_backup(array $options, $dbKey = '')
         ];
     }
 
-    $file = sprintf('%s/redirects-%s%s.json', $dir, date('Ymd-His'), $dbKey !== '' ? '-' . preg_replace('~[^a-z0-9_-]~i', '', $dbKey) : '');
+    $file = sprintf('%s/redirects-%s%s.json', $dir, (new DateTime())->format('Ymd-His-u'), $dbKey !== '' ? '-' . preg_replace('~[^a-z0-9_-]~i', '', $dbKey) : '');
     $json = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
     return @file_put_contents($file, $json) === false ? '' : $file;
@@ -644,30 +621,3 @@ function dw_redirect_delete(mysqli $conn, $origin, $dbKey = '', $home = null)
     }
 }
 
-/**
- * Live HTTP status for one URL on this site.
- *
- * Shares the single-URL check endpoint's settings on purpose. Note there is no
- * cache-busting query string: Yoast matches a plain origin against the whole
- * request URI, so "?_=123" makes a URL that has a 410 rule answer 404 instead.
- */
-function dw_redirect_probe_status($url)
-{
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => false,
-        CURLOPT_NOBODY         => true,
-        CURLOPT_CONNECTTIMEOUT => 8,
-        CURLOPT_TIMEOUT        => 12,
-        CURLOPT_USERAGENT      => 'Mozilla/5.0 (compatible; DatewiseLinkChecker/1.0)',
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => false,
-    ]);
-    curl_exec($ch);
-    $code     = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $location = (string) curl_getinfo($ch, CURLINFO_REDIRECT_URL);
-    curl_close($ch);
-
-    return ['status_code' => $code, 'redirect_url' => $location !== '' ? $location : null];
-}

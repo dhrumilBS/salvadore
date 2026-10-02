@@ -56,6 +56,12 @@ let visibleColumns = loadVisibleColumns();
 // to update_post.php once the user explicitly confirms a Save - nothing is
 // written to the database on change/blur alone.
 let contentDirty = {};
+// What each staged post looked like when its first edit was staged - its
+// status and site-relative path - so a Save can still offer the trash -> 410
+// prompt for a post whose row has since been paged off screen.
+let contentDirtyMeta = {};
+const nextContentSignal = latestOnly();
+let contentPostTypes = []; // [{type, count}] for the current site
 
 function hasUnsavedContentEdits() {
     return Object.keys(contentDirty).some(id => Object.keys(contentDirty[id]).length);
@@ -119,7 +125,7 @@ function contentExportParams() {
 }
 
 function updateContentExportLink() {
-    document.getElementById('exportCsv').href = 'api/export.php?' + qs(contentExportParams());
+    document.getElementById('exportCsv').href = apiUrl('export.php', contentExportParams());
 }
 
 /* ---------- table ---------- */
@@ -195,8 +201,9 @@ function loadContent() {
     updateContentExportLink();
 
     const { link_status, ...listParams } = contentState;
-    fetch('api/list_posts.php?' + qs(listParams))
-        .then(r => r.json())
+    // A newer filter/page click aborts this request, so a slow older response
+    // can never land on top of the one the user is now looking at.
+    api('list_posts.php', { params: listParams, signal: nextContentSignal() })
         .then(json => {
             if (!json.success) {
                 contentRows = [];
@@ -218,6 +225,7 @@ function loadContent() {
             document.getElementById('pgLast').disabled = json.page >= json.total_pages;
         })
         .catch(err => {
+            if (isAbort(err)) return;
             console.error(err);
             contentRows = [];
             showContentState('Failed to load posts — check the console/network tab', true);
@@ -241,6 +249,10 @@ function markDirty(input) {
 
     if (!contentDirty[id]) contentDirty[id] = {};
     contentDirty[id][field] = input.value;
+    if (!contentDirtyMeta[id]) {
+        const row = contentRows.find(r => String(r.id) === String(id));
+        if (row) contentDirtyMeta[id] = { status: row.status, path: row.path };
+    }
 
     updateRowSaveButton(id);
     updateSaveBar();
@@ -297,7 +309,9 @@ function saveRow(id) {
     const ok = confirm(`Save ${count} change${count === 1 ? '' : 's'} to post #${id}?\n\n${describeChanges(fields)}`);
     if (!ok) return;
 
-    persistFields(id, fields);
+    persistFields(id, fields).then(trashed => {
+        if (trashed) offerTrashRedirect(trashed.id, trashed.path);
+    });
 }
 
 async function saveAllDirty() {
@@ -318,22 +332,32 @@ async function saveAllDirty() {
 
     const CONCURRENCY = 4;
     let next = 0;
+    const trashed = [];
     async function worker() {
         while (next < ids.length) {
             const id = ids[next++];
-            await persistFields(id, { ...contentDirty[id] });
+            const t = await persistFields(id, { ...contentDirty[id] });
+            if (t) trashed.push(t);
         }
     }
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, ids.length) }, worker));
 
     saveAllBtn.disabled = false;
     saveAllBtn.textContent = 'Save all changes';
+
+    // One "add 410s?" question for the whole batch, not one dialog per post.
+    if (trashed.length === 1) offerTrashRedirect(trashed[0].id, trashed[0].path);
+    else if (trashed.length) offerBulkTrashRedirects(trashed);
 }
 
-/** Send every staged field for one post to update_post.php. Fields that fail stay dirty for retry. */
+/**
+ * Send every staged field for one post to update_post.php. Fields that fail
+ * stay dirty for retry. Resolves to {id, path} when this save moved the post
+ * into trash (so the caller can offer a 410), otherwise null.
+ */
 async function persistFields(id, fields) {
-    const rowBefore = contentRows.find(r => String(r.id) === String(id));
-    const wasTrash = rowBefore ? rowBefore.status === 'trash' : true;
+    const meta = contentDirtyMeta[id] || contentRows.find(r => String(r.id) === String(id)) || {};
+    const path = meta.path;
     const inputFor = field => document.querySelector(`#tableBody .cell-input[data-id="${id}"][data-field="${field}"]`);
 
     const entries = Object.entries(fields);
@@ -343,12 +367,7 @@ async function persistFields(id, fields) {
     });
 
     const results = await Promise.all(entries.map(([field, value]) =>
-        fetch('api/update_post.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ id, field, value }),
-        })
-            .then(r => r.json())
+        api('update_post.php', { method: 'POST', body: new URLSearchParams({ id, field, value }) })
             .catch(() => ({ success: false, msg: 'Network error - not saved' }))
             .then(json => ({ field, value, json }))
     ));
@@ -385,7 +404,10 @@ async function persistFields(id, fields) {
         if (contentDirty[id]) delete contentDirty[id][field];
     });
 
-    if (contentDirty[id] && !Object.keys(contentDirty[id]).length) delete contentDirty[id];
+    if (contentDirty[id] && !Object.keys(contentDirty[id]).length) {
+        delete contentDirty[id];
+        delete contentDirtyMeta[id];
+    }
 
     updateRowSaveButton(id);
     updateSaveBar();
@@ -402,14 +424,28 @@ async function persistFields(id, fields) {
         loadContent(); // permalink is derived from slug - refresh so it stays accurate; other pending edits are re-applied via applyDirtyOverlay()
     }
 
-    const justTrashed = !wasTrash && results.some(({ field, value, json }) =>
-        field === 'status' && json.success && (json.value ?? value) === 'trash');
-    if (justTrashed && rowBefore && rowBefore.path) {
-        offerTrashRedirect(id, rowBefore.path);
-    }
+    // The server reports the status it replaced, so "just trashed" is decided by
+    // the database, not by a row on screen that may be out of date.
+    const statusSave = results.find(({ field, json }) => field === 'status' && json.success);
+    const justTrashed = statusSave && statusSave.json.value === 'trash' && statusSave.json.previous !== 'trash';
+    return justTrashed && path ? { id, path } : null;
 }
 
 /* ---------- binding ---------- */
+function defaultContentPostType() {
+    if (contentPostTypes.some(t => t.type === 'post')) return 'post';
+    return contentPostTypes[0]?.type || 'post';
+}
+
+/** One tab per real content type on this site (sites differ - Botphonic has success-stories, Healthray has whitepaper...). */
+function populateContentPostTypes(postTypes) {
+    contentPostTypes = postTypes;
+    if (!postTypes.some(t => t.type === contentState.post_type)) contentState.post_type = defaultContentPostType();
+    document.getElementById('fPostTypeTabs').innerHTML = postTypes.map(t =>
+        `<button type="button" class="tab${t.type === contentState.post_type ? ' active' : ''}" data-type="${escapeHtml(t.type)}" title="${t.count} item${t.count === 1 ? '' : 's'}">` +
+        `${escapeHtml(t.type)} <span class="tab-count">${t.count}</span></button>`).join('');
+}
+
 function populateContentStatuses(statuses) {
     const sel = document.getElementById('fStatus');
     sel.innerHTML = Object.entries(statuses).map(([k, label]) =>
@@ -496,10 +532,10 @@ function bindContentTab() {
 
     document.getElementById('clearFiltersBtn').addEventListener('click', () => {
         Object.assign(contentState, {
-            post_type: 'post', status: 'publish',
+            post_type: defaultContentPostType(), status: 'publish',
             date_from: '', date_to: '', mod_from: '', mod_to: '', search: '', page: 1,
         });
-        document.querySelectorAll('#fPostTypeTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.type === 'post'));
+        document.querySelectorAll('#fPostTypeTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.type === contentState.post_type));
         document.getElementById('fStatus').value = 'publish';
         ['fDateFrom', 'fDateTo', 'fModFrom', 'fModTo', 'fSearch'].forEach(id => { document.getElementById(id).value = ''; });
         loadContent();

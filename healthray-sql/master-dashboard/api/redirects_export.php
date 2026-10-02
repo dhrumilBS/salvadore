@@ -44,7 +44,7 @@ header("Content-Disposition: attachment; filename=\"{$filename}\"");
 
 $out = fopen('php://output', 'w');
 fwrite($out, "\xEF\xBB\xBF");
-fputcsv($out, [
+dw_csv_write($out, [
     'Origin', 'Origin URL', 'Type', 'Destination', 'Destination URL', 'Format',
     'Origin Post ID', 'Origin Post Title', 'Origin Post Type', 'Origin Post Status',
     'Destination Post ID', 'Destination Post Title', 'Destination Post Type', 'Destination Post Status',
@@ -56,7 +56,7 @@ foreach ($rows as $r) {
     $op        = $r['origin_post'];
     $dp        = $r['dest_post'];
 
-    fputcsv($out, [
+    dw_csv_write($out, [
         $r['origin'], $originUrl, $r['type'], $r['url'], $destUrl, $r['format'],
         $op['id'] ?? '', $op['title'] ?? '', $op['post_type'] ?? '', $op['status'] ?? '',
         $dp['id'] ?? '', $dp['title'] ?? '', $dp['post_type'] ?? '', $dp['status'] ?? '',
