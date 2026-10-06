@@ -1,7 +1,7 @@
 /* ══════════════════════════ Content tab ══════════════════════════
  * Posts/Pages/CPT list with inline editing. Nothing auto-saves: an edit
  * only stages the change locally (contentDirty) and enables that row's
- * Save; every Save asks confirm() first, listing exactly what will change,
+ * Save; every Save opens the confirm dialog first, listing exactly what will change,
  * before anything is sent to api/update_post.php. */
 
 const ALL_COLUMNS = [
@@ -295,23 +295,31 @@ function updateSaveBar() {
         `${totalFields} unsaved change${totalFields === 1 ? '' : 's'} across ${ids.length} post${ids.length === 1 ? '' : 's'}`;
 }
 
-function describeChanges(fields) {
-    return Object.entries(fields)
-        .map(([field, value]) => `• ${FIELD_LABELS[field] || field}: ${truncate(String(value), 60)}`)
-        .join('\n');
+/** Confirm-dialog rows for one post's staged edits: field, current value -> new value. */
+function describeChanges(id, fields) {
+    const row = contentRows.find(r => String(r.id) === String(id));
+    return Object.entries(fields).map(([field, value]) => ({
+        post: `#${id} · ${FIELD_LABELS[field] || field}`,
+        from: row ? String(row[field] ?? '') : undefined,
+        to: String(value),
+        toLabel: '(empty)',
+    }));
 }
 
-function saveRow(id) {
+async function saveRow(id) {
     const fields = contentDirty[id];
     if (!fields || !Object.keys(fields).length) return;
 
     const count = Object.keys(fields).length;
-    const ok = confirm(`Save ${count} change${count === 1 ? '' : 's'} to post #${id}?\n\n${describeChanges(fields)}`);
+    const ok = await confirmDialog({
+        title: `Save ${pluralize(count, 'change')} to post #${id}?`,
+        changes: describeChanges(id, fields),
+        okLabel: 'Save',
+    });
     if (!ok) return;
 
-    persistFields(id, fields).then(trashed => {
-        if (trashed) offerTrashRedirect(trashed.id, trashed.path);
-    });
+    const trashed = await persistFields(id, fields);
+    if (trashed) offerTrashRedirect(trashed.id, trashed.path);
 }
 
 async function saveAllDirty() {
@@ -319,11 +327,11 @@ async function saveAllDirty() {
     if (!ids.length) return;
 
     const totalFields = ids.reduce((n, id) => n + Object.keys(contentDirty[id]).length, 0);
-    const preview = ids.slice(0, 8)
-        .map(id => `• Post #${id}: ${Object.keys(contentDirty[id]).map(f => FIELD_LABELS[f] || f).join(', ')}`)
-        .join('\n');
-    const more = ids.length > 8 ? `\n…and ${ids.length - 8} more post(s)` : '';
-    const ok = confirm(`Save ${totalFields} change${totalFields === 1 ? '' : 's'} across ${ids.length} post${ids.length === 1 ? '' : 's'}?\n\n${preview}${more}`);
+    const ok = await confirmDialog({
+        title: `Save ${pluralize(totalFields, 'change')} across ${pluralize(ids.length, 'post')}?`,
+        changes: ids.flatMap(id => describeChanges(id, contentDirty[id])),
+        okLabel: `Save ${pluralize(totalFields, 'change')}`,
+    });
     if (!ok) return;
 
     const saveAllBtn = document.getElementById('saveAllBtn');
@@ -413,7 +421,7 @@ async function persistFields(id, fields) {
     updateSaveBar();
 
     if (errors.length) {
-        alert(`Some changes to post #${id} were not saved:\n\n${errors.join('\n')}`);
+        alertDialog(`Post #${id}: some changes were not saved`, 'They are still staged (amber) so you can fix and retry.', errors);
     }
 
     if (results.some(({ json }) => json.success)) {
@@ -524,11 +532,9 @@ function bindContentTab() {
         });
     });
 
-    document.getElementById('exportCsv').addEventListener('click', e => {
-        if (!contentState.link_status) return;
-        const ok = confirm('This export will live-check every matching post\'s URL before including it - it can take minutes for large result sets. Continue?');
-        if (!ok) e.preventDefault();
-    });
+    document.getElementById('exportCsv').addEventListener('click', e => confirmSlowExport(e,
+        'This export will live-check every matching post\'s URL before including it — it can take minutes for large result sets.',
+        !!contentState.link_status));
 
     document.getElementById('clearFiltersBtn').addEventListener('click', () => {
         Object.assign(contentState, {

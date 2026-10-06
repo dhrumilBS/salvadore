@@ -17,6 +17,7 @@ require __DIR__ . '/lib/constants.php';
 require __DIR__ . '/lib/query.php';
 require __DIR__ . '/lib/link_extractor.php';
 require __DIR__ . '/lib/link_checker.php';
+require __DIR__ . '/lib/link_editor.php';
 
 // conn.php's db_resolve_key() falls through to the shared "db" cookie for an
 // unknown key - that would quietly connect this tool to some other tool's

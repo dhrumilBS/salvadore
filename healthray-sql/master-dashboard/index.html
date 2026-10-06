@@ -4,7 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark light">
     <title>Master Dashboard</title>
+    <!-- Apply the saved theme before first paint, so a light-theme user never sees a dark flash -->
+    <script>try { var t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.setAttribute('data-theme', t); } catch (e) { }</script>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237c6cf6' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='9' rx='1.5'/%3E%3Crect x='14' y='3' width='7' height='5' rx='1.5'/%3E%3Crect x='14' y='12' width='7' height='9' rx='1.5'/%3E%3Crect x='3' y='16' width='7' height='5' rx='1.5'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -23,22 +27,30 @@
             </span>
             <div>
                 <div class="page-title">Master Dashboard</div>
-                <div class="page-sub">Content, links &amp; UTM, redirects and bulk updates. Nothing is written until you Save and confirm.</div>
+                <div class="page-sub">Content, links, link fixing, redirects and bulk updates. Nothing is written until you confirm.</div>
             </div>
         </div>
 
-        <div class="tab-group view-tab-group" id="viewTabs">
-            <button type="button" class="tab view-tab active" data-view="content">Content</button>
-            <button type="button" class="tab view-tab" data-view="links">Links &amp; UTM</button>
-            <button type="button" class="tab view-tab" data-view="redirects">Redirects</button>
-            <button type="button" class="tab view-tab" data-view="bulk">Bulk URL Update</button>
+        <div class="tab-group view-tab-group" id="viewTabs" role="tablist">
+            <button type="button" class="tab view-tab active" data-view="content" role="tab" title="Content (g c)">Content</button>
+            <button type="button" class="tab view-tab" data-view="links" role="tab" title="Links &amp; UTM (g l)">Links &amp; UTM</button>
+            <button type="button" class="tab view-tab" data-view="fixer" role="tab" title="Link Fixer — edit, fix and unlink links in post content (g f)">Link Fixer</button>
+            <button type="button" class="tab view-tab" data-view="redirects" role="tab" title="Redirects (g r)">Redirects</button>
+            <button type="button" class="tab view-tab" data-view="bulk" role="tab" title="Bulk URL Update (g b)">Bulk URL Update</button>
         </div>
 
         <div class="topbar-end">
             <div class="db-switch">
                 <label for="dbSelector">Site</label>
                 <select id="dbSelector" title="Switch which site's database this tool reads/writes"></select>
+                <span class="live-flag" id="dbLiveFlag" hidden title="This is the production site — every save goes live">LIVE</span>
             </div>
+            <button type="button" class="hist-btn" id="historyBtn" title="Link changes on this site — with undo (h)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg>
+                <span class="hist-btn-label">History</span>
+                <span class="hist-count" id="historyCount">0</span>
+            </button>
+            <button type="button" class="theme-toggle" id="helpBtn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><span aria-hidden="true" style="font-weight:700;font-size:13px">?</span></button>
             <button type="button" class="theme-toggle" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">
                 <svg id="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
@@ -336,6 +348,209 @@
             </div>
         </div>
 
+        <!-- ══════════════════ LINK FIXER VIEW (js/fixer.js) ══════════════════ -->
+        <div id="fixerView" style="display:none">
+
+            <!-- Scan bar: what to scan + run the check -->
+            <section class="card-panel fx-scanbar" id="fx-scanbar" aria-label="Scan">
+                <div class="fx-scan-row">
+                    <div class="fx-pt-select" id="fx-pt-select">
+                        <button type="button" class="fx-pt-trigger" id="fx-pt-trigger" aria-haspopup="true" aria-expanded="false">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
+                            <span class="fx-pt-text"><span class="fx-pt-cap">Content</span><span id="fx-pt-label">Post types</span></span>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" class="fx-pt-caret" aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
+                        </button>
+                        <div class="fx-pt-panel" role="dialog" aria-label="Choose content types">
+                            <div class="fx-pt-head">
+                                <span>Scan these content types</span>
+                                <span class="fx-pt-actions">
+                                    <button type="button" class="fx-pt-mini" id="fx-pt-all">All</button>
+                                    <button type="button" class="fx-pt-mini" id="fx-pt-none">None</button>
+                                </span>
+                            </div>
+                            <div class="fx-pt-options" id="fx-pt-options"><div class="fx-pt-empty">Loading…</div></div>
+                            <button type="button" class="btn primary small fx-pt-apply" id="fx-pt-apply">Apply &amp; reload</button>
+                        </div>
+                    </div>
+
+                    <select id="fx-status" title="Post status to scan"></select>
+                    <select id="fx-order" title="Which posts come first (decides what's on each page)">
+                        <option value="id_asc">Oldest ID first</option>
+                        <option value="id_desc">Newest ID first</option>
+                        <option value="date_desc">Recently published</option>
+                        <option value="modified_desc">Recently modified</option>
+                    </select>
+
+                    <div class="fx-find" id="fx-find-wrap" title="Search the whole site (all pages) for posts linking to a URL — then fix them all at once (f)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                        <input type="search" id="fx-find" placeholder="Find links site-wide… (URL or part of one, Enter)" autocomplete="off" spellcheck="false" aria-label="Find links containing">
+                        <button type="button" class="fx-find-clear" id="fx-find-clear" title="Clear find (Esc)" aria-label="Clear find">×</button>
+                        <button type="button" class="btn small" id="fx-find-go">Find</button>
+                    </div>
+                </div>
+
+                <div class="fx-scan-row">
+                    <button type="button" class="btn" id="fx-btn-load" title="Reload this page of posts from the database (r)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+                        Reload
+                    </button>
+                    <button type="button" class="btn primary" id="fx-btn-check" title="Check the status of every link in view (c)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+                        <span id="fx-check-label">Check links</span>
+                    </button>
+                    <label class="fx-switch" title="Check new links automatically every time a page of posts loads">
+                        <input type="checkbox" id="fx-autocheck">
+                        <span class="fx-switch-track"></span>
+                        <span class="fx-switch-label">Auto-check</span>
+                    </label>
+                    <a class="fx-site-url" id="fx-site-url" target="_blank" rel="noopener" title="Open the site"></a>
+
+                    <div class="fx-scan-end">
+                        <div class="fx-scan-meta" id="fx-scan-meta"></div>
+                        <div class="fx-progress" role="status" aria-live="polite">
+                            <div class="fx-progress-top">
+                                <span class="spinner"></span>
+                                <span id="fx-progress-text">Checking…</span>
+                                <button type="button" class="btn small" id="fx-btn-cancel">Stop</button>
+                            </div>
+                            <div class="fx-progress-bg"><div class="fx-progress-fill" id="fx-progress-fill"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Overview: health + status filters -->
+            <section class="fx-overview" aria-label="Overview">
+                <div class="fx-health" id="fx-health">
+                    <div class="fx-health-top">
+                        <span class="fx-health-label">Link health</span>
+                        <span class="fx-health-score" id="fx-health-score">—</span>
+                    </div>
+                    <div class="fx-health-bar" aria-hidden="true">
+                        <span class="fx-hb fx-hb-ok" id="fx-hb-ok"></span>
+                        <span class="fx-hb fx-hb-rd" id="fx-hb-rd"></span>
+                        <span class="fx-hb fx-hb-err" id="fx-hb-err"></span>
+                    </div>
+                    <div class="fx-health-foot" id="fx-health-foot">Nothing checked yet</div>
+                </div>
+
+                <div class="fx-stats" id="fx-stats" role="group" aria-label="Filter links by status">
+                    <button type="button" class="fx-stat s-all active" data-filter="all" title="Show every link (1)">
+                        <span class="sl">Total links</span><span class="sv" id="fx-stat-total">–</span><span class="sh" id="fx-stat-total-sub">&nbsp;</span>
+                    </button>
+                    <button type="button" class="fx-stat s-ok" data-filter="ok" title="Links that returned 2xx (2)">
+                        <span class="sl"><i class="dot"></i>OK</span><span class="sv" id="fx-stat-ok">–</span><span class="meter"><i id="fx-meter-ok"></i></span>
+                    </button>
+                    <button type="button" class="fx-stat s-rd" data-filter="redirect" title="Links that return a 3xx redirect (3)">
+                        <span class="sl"><i class="dot"></i>Redirects</span><span class="sv" id="fx-stat-rd">–</span><span class="meter"><i id="fx-meter-rd"></i></span>
+                    </button>
+                    <button type="button" class="fx-stat s-err" data-filter="error" title="Broken links, timeouts and server errors (4)">
+                        <span class="sl"><i class="dot"></i>Broken</span><span class="sv" id="fx-stat-err">–</span><span class="meter"><i id="fx-meter-err"></i></span>
+                    </button>
+                    <button type="button" class="fx-stat s-pend" data-filter="pending" title="Not checked yet (5)">
+                        <span class="sl"><i class="dot"></i>Unchecked</span><span class="sv" id="fx-stat-pend">–</span><span class="meter"><i id="fx-meter-pend"></i></span>
+                    </button>
+                    <button type="button" class="fx-stat s-dup" data-filter="duplicate" title="The same link more than once inside one post (6)">
+                        <span class="sl"><i class="dot"></i>Duplicates</span><span class="sv" id="fx-stat-dup">–</span><span class="meter"><i id="fx-meter-dup"></i></span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Filter bar (client-side, within the loaded page) -->
+            <section class="card-panel fx-filterbar" aria-label="Filters">
+                <div class="fx-seg" id="fx-type-tabs" role="group" aria-label="Filter by link type">
+                    <button type="button" class="fx-seg-btn active" data-type="all">All <span class="fc">0</span></button>
+                    <button type="button" class="fx-seg-btn" data-type="internal">Internal <span class="fc">0</span></button>
+                    <button type="button" class="fx-seg-btn" data-type="external">External <span class="fc">0</span></button>
+                    <button type="button" class="fx-seg-btn" data-type="utm" title="Links with utm_ tracking parameters">UTM <span class="fc">0</span></button>
+                    <button type="button" class="fx-seg-btn" data-type="faq" title="Links inside ACF FAQ answer fields">FAQ <span class="fc">0</span></button>
+                </div>
+
+                <div class="fx-searchbox" id="fx-searchbox">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7.5" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                    <input type="text" id="fx-search" placeholder="Filter this page: URLs, anchor text, post titles…" aria-label="Filter links on this page" autocomplete="off" spellcheck="false">
+                    <span class="fx-search-count" id="fx-search-count"></span>
+                    <button type="button" class="fx-search-clear" id="fx-search-clear" title="Clear (Esc)" aria-label="Clear search">×</button>
+                    <select class="fx-search-scope" id="fx-search-scope" title="Which field to search" aria-label="Search field">
+                        <option value="all">All fields</option>
+                        <option value="url">URL</option>
+                        <option value="anchor">Anchor</option>
+                        <option value="title">Post title</option>
+                    </select>
+                    <span class="fx-kbd" aria-hidden="true">/</span>
+                </div>
+
+                <div class="fx-filterbar-end">
+                    <span class="fx-filter-note" id="fx-filter-note"></span>
+                    <select id="fx-sort" title="Sort post groups on this page">
+                        <option value="id-asc">Post ID ↑</option>
+                        <option value="id-desc">Post ID ↓</option>
+                        <option value="title-asc">Title A–Z</option>
+                        <option value="issues">Issues first</option>
+                        <option value="links-desc">Most links</option>
+                    </select>
+                    <button type="button" class="btn small" id="fx-btn-toggle-all" title="Collapse or expand every post group (e)">Collapse all</button>
+                    <div class="fx-menu" id="fx-menu">
+                        <button type="button" class="btn small" id="fx-btn-menu" aria-haspopup="menu" aria-expanded="false" title="More options" aria-label="More options">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
+                        </button>
+                        <div class="fx-menu-panel" role="menu">
+                            <button type="button" class="fx-menu-item" role="menuitemcheckbox" data-menu="compact" aria-checked="false"><span class="fx-menu-check" aria-hidden="true"></span>Compact rows <span class="fx-kbd">D</span></button>
+                            <div class="fx-menu-sep"></div>
+                            <button type="button" class="fx-menu-item" role="menuitem" data-menu="copy"><span class="fx-menu-ico" aria-hidden="true">⧉</span>Copy URLs in view</button>
+                            <button type="button" class="fx-menu-item" role="menuitem" data-menu="csv"><span class="fx-menu-ico" aria-hidden="true">⤓</span>Export view as CSV</button>
+                            <div class="fx-menu-sep"></div>
+                            <button type="button" class="fx-menu-item" role="menuitem" data-menu="clear"><span class="fx-menu-ico" aria-hidden="true">↺</span>Forget check results (all tabs)</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Table -->
+            <div class="table-wrap fx-table-wrap" id="fx-table-wrap">
+                <table class="fx-table">
+                    <colgroup>
+                        <col class="fx-col-check">
+                        <col class="fx-col-anchor">
+                        <col>
+                        <col class="fx-col-status">
+                        <col class="fx-col-actions">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="fx-col-check"><input type="checkbox" id="fx-select-all" title="Select every link in view" aria-label="Select all links in view"></th>
+                            <th class="fx-hide-mob">Anchor text</th>
+                            <th>URL <span class="fx-th-sub">→ redirect target</span></th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fx-tbody"></tbody>
+                </table>
+            </div>
+
+            <!-- Footer / pagination -->
+            <footer class="pagination fx-footer">
+                <span id="fx-footer-info">—</span>
+                <div class="pager-btns">
+                    <label class="fx-field">Posts / page
+                        <select id="fx-perpage">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                            <option value="500">500</option>
+                        </select>
+                    </label>
+                    <label class="fx-field">Page
+                        <input type="number" class="fx-page-input" id="fx-page" value="1" min="1" title="Type a page number and press Enter">
+                        <span id="fx-page-total">/ 1</span>
+                    </label>
+                </div>
+                <nav class="fx-pagination" id="fx-pagination" aria-label="Pages"></nav>
+            </footer>
+        </div>
+
         <!-- ══════════════════ REDIRECTS VIEW ══════════════════ -->
         <div id="redirectsView" style="display:none">
 
@@ -543,11 +758,149 @@
         </div>
     </div>
 
+    <!-- ══ Link Fixer: floating bulk action bar ══ -->
+    <div class="fx-bulk-bar" id="fx-bulk-bar" role="region" aria-label="Bulk actions">
+        <span class="fx-bulk-info" id="fx-bulk-count"><span class="fx-bulk-pill">0</span> selected</span>
+        <button type="button" class="btn small warn" id="fx-bulk-redir" disabled>Fix redirects</button>
+        <button type="button" class="btn small danger" id="fx-bulk-remove" title="Unlink: keeps the visible text, drops the link">Unlink</button>
+        <span class="fx-bulk-sep" aria-hidden="true"></span>
+        <div class="fx-bulk-replace">
+            <select id="fx-bulk-mode" title="Replace the whole URL, or find and replace part of each URL (e.g. an old domain)">
+                <option value="whole">Replace URL with</option>
+                <option value="part">Find in URL</option>
+            </select>
+            <input type="text" id="fx-bulk-find" placeholder="Find… e.g. http://old.com" autocomplete="off" spellcheck="false" aria-label="Text to find in each URL" hidden>
+            <input type="text" id="fx-bulk-new" placeholder="New URL for all selected…" autocomplete="off" spellcheck="false" aria-label="Replacement">
+            <button type="button" class="btn small ok" id="fx-bulk-replace">Replace</button>
+        </div>
+        <button type="button" class="fx-bulk-close" id="fx-bulk-clear" title="Clear selection (Esc)" aria-label="Clear selection">×</button>
+    </div>
+
+    <!-- ══ Link Fixer: edit modal ══ -->
+    <div class="fx-modal-overlay" id="fx-edit-modal" role="dialog" aria-modal="true" aria-labelledby="fx-modal-title">
+        <div class="fx-modal-box">
+            <div class="fx-modal-head">
+                <h3 id="fx-modal-title">Edit link</h3>
+                <span class="fx-modal-sub" id="fx-modal-sub"></span>
+                <button type="button" class="modal-close" id="fx-modal-close" title="Close (Esc)" aria-label="Close">×</button>
+            </div>
+            <div class="fx-modal-scroll">
+                <div class="fx-modal-meta" id="fx-modal-meta"></div>
+                <div class="fx-modal-anchor" id="fx-modal-anchor"></div>
+                <div class="fx-modal-field">
+                    <div class="fx-modal-field-head">
+                        <label for="fx-modal-old">Current URL</label>
+                        <span class="fx-modal-field-actions">
+                            <button type="button" class="btn small" id="fx-modal-copy-old" title="Copy the current URL">Copy</button>
+                            <a class="btn small" id="fx-modal-open-old" target="_blank" rel="noopener" title="Open the current URL in a new tab">Open ↗</a>
+                        </span>
+                    </div>
+                    <textarea class="fx-url-input" id="fx-modal-old" rows="2" readonly spellcheck="false"></textarea>
+                </div>
+                <div class="fx-modal-field">
+                    <div class="fx-modal-field-head">
+                        <label for="fx-modal-new">New URL</label>
+                        <span class="fx-modal-field-actions">
+                            <button type="button" class="btn small" id="fx-modal-use-redirect" hidden title="Fill in the redirect target found by the checker">Use redirect target</button>
+                            <button type="button" class="btn small" id="fx-modal-start-current" title="Start from the current URL and edit it">Start from current</button>
+                        </span>
+                    </div>
+                    <textarea class="fx-url-input" id="fx-modal-new" rows="2" placeholder="https://…" spellcheck="false"></textarea>
+                    <div class="fx-modal-hint" id="fx-modal-hint"></div>
+                </div>
+                <label class="fx-modal-check">
+                    <input type="checkbox" id="fx-modal-unlink">
+                    <span><strong>Unlink instead</strong> — remove the link and keep the anchor text as plain text</span>
+                </label>
+            </div>
+            <div class="fx-modal-actions">
+                <span class="fx-kbd-hint"><span class="fx-kbd">↵</span> to save</span>
+                <button type="button" class="btn" id="fx-modal-cancel">Cancel</button>
+                <button type="button" class="btn primary" id="fx-modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ Confirm dialog (previews every database write, every tab) ══ -->
+    <div class="fx-modal-overlay confirm-overlay" id="confirmModal" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMsg">
+        <div class="fx-modal-box fx-modal-confirm">
+            <div class="fx-modal-head">
+                <h3 id="confirmTitle">Confirm</h3>
+                <button type="button" class="modal-close" data-confirm="cancel" title="Cancel (Esc)" aria-label="Cancel">×</button>
+            </div>
+            <div class="fx-modal-scroll">
+                <p class="confirm-msg" id="confirmMsg"></p>
+                <ol class="change-list" id="confirmList"></ol>
+            </div>
+            <div class="fx-modal-actions">
+                <span class="confirm-db" id="confirmDb"></span>
+                <button type="button" class="btn" id="confirmCancel" data-confirm="cancel">Cancel</button>
+                <button type="button" class="btn primary" id="confirmOk">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ Keyboard shortcuts ══ -->
+    <div class="fx-modal-overlay" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+        <div class="fx-modal-box fx-modal-narrow">
+            <div class="fx-modal-head">
+                <h3 id="helpTitle">Keyboard shortcuts</h3>
+                <button type="button" class="modal-close" id="helpClose" title="Close (Esc)" aria-label="Close">×</button>
+            </div>
+            <div class="fx-modal-scroll">
+                <div class="shortcut-list">
+                    <div class="help-section-title">Everywhere</div>
+                    <div class="keys"><span class="fx-kbd">?</span></div><div>This list</div>
+                    <div class="keys"><span class="fx-kbd">/</span></div><div>Focus the current tab's search</div>
+                    <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">c</span> <span class="fx-kbd">l</span> <span class="fx-kbd">f</span> <span class="fx-kbd">r</span> <span class="fx-kbd">b</span></div><div>Go to Content / Links / Fixer / Redirects / Bulk</div>
+                    <div class="keys"><span class="fx-kbd">h</span></div><div>Open link-change history</div>
+                    <div class="keys"><span class="fx-kbd">Esc</span></div><div>Close dialogs, clear search or selection</div>
+
+                    <div class="help-section-title">Link Fixer</div>
+                    <div class="keys"><span class="fx-kbd">f</span></div><div>Find links site-wide</div>
+                    <div class="keys"><span class="fx-kbd">c</span></div><div>Check links in the current view</div>
+                    <div class="keys"><span class="fx-kbd">r</span></div><div>Reload posts</div>
+                    <div class="keys"><span class="fx-kbd">e</span></div><div>Collapse / expand all post groups</div>
+                    <div class="keys"><span class="fx-kbd">d</span></div><div>Toggle compact rows</div>
+                    <div class="keys"><span class="fx-kbd">←</span> <span class="fx-kbd">→</span></div><div>Previous / next page of posts</div>
+                    <div class="keys"><span class="fx-kbd">1</span>…<span class="fx-kbd">6</span></div><div>All / OK / Redirects / Broken / Unchecked / Duplicates</div>
+                    <div class="keys"><span class="fx-kbd">↵</span></div><div>Save, in the edit dialog</div>
+                </div>
+            </div>
+            <div class="fx-modal-actions">
+                <button type="button" class="btn primary" id="helpOk">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ History drawer (js/history.js) ══ -->
+    <div class="drawer-scrim" id="drawerScrim"></div>
+    <aside class="drawer" id="historyDrawer" aria-label="Link changes on this site" aria-hidden="true">
+        <div class="drawer-head">
+            <div>
+                <h3>Link change history</h3>
+                <span class="drawer-sub">Every Link Fixer edit, fix and unlink on this site — undo any of them</span>
+            </div>
+            <button type="button" class="modal-close" id="historyClose" title="Close (Esc)" aria-label="Close">×</button>
+        </div>
+        <div class="drawer-tools">
+            <input type="search" id="historySearch" placeholder="Filter by post, title or URL…" autocomplete="off">
+            <button type="button" class="btn small" id="historyReload" title="Reload">↻</button>
+        </div>
+        <div class="drawer-body" id="historyList"></div>
+        <div class="drawer-foot">
+            <span class="col-note">Saved on the server in backups/</span>
+            <button type="button" class="btn primary small" id="historyCsv">Export CSV</button>
+        </div>
+    </aside>
+
     <div id="toast" aria-live="polite"></div>
 
     <script src="js/common.js"></script>
     <script src="js/content.js"></script>
     <script src="js/links.js"></script>
+    <script src="js/fixer.js"></script>
+    <script src="js/history.js"></script>
     <script src="js/redirects.js"></script>
     <script src="js/bulk.js"></script>
     <script src="js/app.js"></script>

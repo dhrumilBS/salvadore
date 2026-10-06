@@ -1,7 +1,7 @@
 /* ══════════════════════════════════════════════════════════
    Master Dashboard — shared helpers (loaded first, used by every tab)
    Plain globals, no bundler: utils, URL cells, toasts, copy buttons,
-   theme, site switcher, filter options, the one live link-status
+   confirm dialog, theme, site switcher, filter options, the one live link-status
    checker, and the "trashed -> add a 410?" redirect prompts.
    ══════════════════════════════════════════════════════════ */
 
@@ -69,15 +69,102 @@ function statusBadge(status) {
     return `<span class="badge badge-${escapeHtml(status)}">${escapeHtml(status)}</span>`;
 }
 
-function toast(msg, kind = '') {
+const TOAST_ICON = { ok: '✓', err: '!', warn: '!', '': 'i' };
+
+/** kind: '' (info) | ok | err | warn. Errors stay up longer and can always be dismissed. */
+function toast(msg, kind = '', ms = 3200) {
     const box = document.getElementById('toast');
     if (!box) return;
+    while (box.children.length >= 4) box.firstElementChild.remove();
     const el = document.createElement('div');
     el.className = 'toast-item' + (kind ? ' ' + kind : '');
-    el.textContent = msg;
+    el.setAttribute('role', kind === 'err' ? 'alert' : 'status');
+    el.innerHTML = `<span class="toast-icon">${TOAST_ICON[kind] || 'i'}</span><span class="toast-msg"></span><button type="button" class="toast-close" aria-label="Dismiss">×</button>`;
+    el.querySelector('.toast-msg').textContent = msg;
+    const dismiss = () => { el.classList.add('leaving'); setTimeout(() => el.remove(), 180); };
+    el.querySelector('.toast-close').addEventListener('click', dismiss);
     box.appendChild(el);
-    setTimeout(() => el.remove(), 2600);
+    setTimeout(dismiss, kind === 'err' ? Math.max(ms, 6500) : ms);
 }
+
+/* ══════════════════════════ Confirm dialog ══════════════════════════
+ * Every database write in every tab is previewed here before it happens
+ * (the tool's "nothing is written until you confirm" rule) - a styled modal
+ * that lists exactly what will change, instead of a native confirm() that
+ * truncates long lists and can't show URLs side by side.
+ *   changes: [{ post, from, to }] - rendered as before -> after rows (to === '' = "unlinked")
+ *   lines:   ['plain text row', ...]
+ * Resolves true (confirmed) / false (cancelled / Esc / backdrop). */
+let confirmResolve = null;
+
+function confirmDialog({ title, message = '', changes = [], lines = [], okLabel = 'Confirm', cancelLabel = 'Cancel', tone = 'primary', writes = true } = {}) {
+    if (confirmResolve) closeConfirm(false); // never stack two
+    const $m = document.getElementById('confirmModal');
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMsg').textContent = message;
+
+    const MAX = 80;
+    const items = changes.length
+        ? changes.slice(0, MAX).map(c => `<li>
+            ${c.post ? `<div class="cl-post">${escapeHtml(c.post)}</div>` : ''}
+            ${c.from !== undefined ? `<div class="cl-from">${escapeHtml(c.from)}</div>` : ''}
+            <div class="cl-to">${c.to ? escapeHtml(c.to) : `<em>${escapeHtml(c.toLabel || 'link removed — anchor text kept')}</em>`}</div>
+        </li>`)
+        : lines.slice(0, MAX).map(l => `<li class="cl-line">${escapeHtml(l)}</li>`);
+    const total = changes.length || lines.length;
+    const list = document.getElementById('confirmList');
+    list.innerHTML = items.join('') + (total > MAX ? `<li class="cl-more">…and ${(total - MAX).toLocaleString()} more</li>` : '');
+    list.hidden = !total;
+
+    const label = siteList.find(d => d.key === SITE)?.label || 'the database';
+    document.getElementById('confirmDb').textContent = writes ? `Writes to ${label}` : '';
+    const ok = document.getElementById('confirmOk');
+    ok.textContent = okLabel;
+    ok.className = `btn ${tone}`;
+    const cancel = document.getElementById('confirmCancel');
+    cancel.textContent = cancelLabel;
+    cancel.hidden = cancelLabel === null;
+
+    $m.classList.add('open');
+    setTimeout(() => ok.focus(), 40);
+    return new Promise(resolve => { confirmResolve = resolve; });
+}
+
+/** One-button notice in the same modal (replaces alert()). */
+function alertDialog(title, message, lines = []) {
+    return confirmDialog({ title, message, lines, okLabel: 'OK', cancelLabel: null, writes: false });
+}
+
+function closeConfirm(result) {
+    if (!confirmResolve) return;
+    document.getElementById('confirmModal').classList.remove('open');
+    const resolve = confirmResolve;
+    confirmResolve = null;
+    resolve(result);
+}
+
+function bindConfirmDialog() {
+    const $m = document.getElementById('confirmModal');
+    $m.addEventListener('click', e => {
+        if (e.target === $m || e.target.closest('[data-confirm="cancel"]')) closeConfirm(false);
+    });
+    document.getElementById('confirmOk').addEventListener('click', () => closeConfirm(true));
+}
+
+const isConfirmOpen = () => !!confirmResolve;
+
+/** Click handler for an export <a>: when the export will live-check every URL, ask first. */
+async function confirmSlowExport(e, message, needed) {
+    if (!needed) return;
+    e.preventDefault();
+    const href = e.currentTarget.href;
+    const ok = await confirmDialog({ title: 'Run a live-checked export?', message, okLabel: 'Start export', writes: false });
+    if (ok) window.location.href = href;
+}
+
+/* Small numeric helpers shared by the tabs */
+const fmtNum = n => Number(n || 0).toLocaleString();
+const pluralize = (n, word) => `${fmtNum(n)} ${word}${n === 1 ? '' : 's'}`;
 
 /** Show/hide a secondary toolbar row and reflect that on its trigger button. */
 function bindPanelToggle(btnId, panelId) {
@@ -162,11 +249,51 @@ function urlCellHtml(href, text = null, emptyLabel = '—') {
  * is already there on the others. Any element carrying
  * data-status-url="<url>" is re-rendered when that URL's result changes.
  * Single checks hit api/check_url_status.php; "Check all" batches go to
- * api/check_links_bulk.php (server-side curl_multi, 250 URLs per call). */
+ * api/check_links_bulk.php (server-side curl_multi, two batches in flight).
+ * Finished results are kept in sessionStorage per site for CHECK_TTL, so a
+ * reload or paging back never re-checks what's already known. */
 
 const LinkStatus = (() => {
-    const cache = {}; // url -> {checking} | {error} | {status_code, bucket, redirect_url}
+    const cache = {}; // url -> {checking} | {error} | {status_code, bucket, redirect_url, is_redirect, t}
     const listeners = [];
+    const CHECK_TTL = 30 * 60 * 1000;
+    const storeKey = () => 'md_checks.' + (SITE || 'default');
+
+    /** Restore this site's still-fresh results - call once SITE is pinned. */
+    function restore() {
+        let saved = {};
+        try { saved = JSON.parse(sessionStorage.getItem(storeKey()) || '{}') || {}; } catch (e) { /* blocked/corrupt */ }
+        const now = Date.now();
+        Object.entries(saved).forEach(([u, r]) => {
+            if (r && r.bucket && now - (r.t || 0) < CHECK_TTL) cache[u] = r;
+        });
+    }
+
+    let persistTimer = null;
+    function persist() {
+        clearTimeout(persistTimer);
+        persistTimer = setTimeout(() => {
+            const done = {};
+            Object.entries(cache).forEach(([u, r]) => { if (r.bucket) done[u] = r; });
+            try { sessionStorage.setItem(storeKey(), JSON.stringify(done)); } catch (e) { /* quota/private mode */ }
+        }, 400);
+    }
+
+    function store(url, info) {
+        cache[url] = {
+            status_code: info.status_code,
+            bucket: info.bucket,
+            redirect_url: info.redirect_url || null,
+            is_redirect: info.status_code >= 300 && info.status_code < 400,
+            t: Date.now(),
+        };
+    }
+
+    /** Finished result for a URL, or null while unchecked/checking/failed. */
+    function get(url) {
+        const s = cache[url];
+        return s && s.bucket ? s : null;
+    }
 
     function bucket(url) {
         const s = cache[url];
@@ -221,14 +348,14 @@ const LinkStatus = (() => {
         refresh(url);
         try {
             const json = await api('check_url_status.php', { params: { url } });
-            cache[url] = json.success
-                ? { status_code: json.status_code, bucket: json.bucket, redirect_url: json.redirect_url }
-                : { error: json.msg || 'Check failed' };
+            if (json.success) store(url, json);
+            else cache[url] = { error: json.msg || 'Check failed' };
         } catch (err) {
             console.error(err);
             cache[url] = { error: 'Network error' };
         }
         refresh(url);
+        persist();
         notify();
     }
 
@@ -236,11 +363,13 @@ const LinkStatus = (() => {
      * Check many URLs via the bulk endpoint. `skipChecked` leaves URLs that
      * already have a non-error result alone (Content/Redirects "check all"),
      * otherwise everything is re-checked (Links tab, where a fresh sweep is
-     * the point).
+     * the point). `onBatch(batchUrls)` fires as each batch lands, for tabs
+     * that paint their own rows.
      */
-    async function checkMany(urls, { onProgress = null, skipChecked = false, isCancelled = () => false } = {}) {
+    async function checkMany(urls, { onProgress = null, onBatch = null, skipChecked = false, isCancelled = () => false } = {}) {
         // Small batches so Cancel takes effect quickly (the server caps one call at 300).
-        const CHUNK = 50;
+        const CHUNK = 40;
+        const PARALLEL = 2;
         let unique = [...new Set(urls.filter(Boolean))];
         if (skipChecked) unique = unique.filter(u => !cache[u] || cache[u].error || cache[u].bucket === 'blocked');
         if (!unique.length) return 0;
@@ -248,40 +377,55 @@ const LinkStatus = (() => {
         unique.forEach(u => { cache[u] = { checking: true }; });
         refreshMany(unique);
 
-        let done = 0;
-        for (let i = 0; i < unique.length; i += CHUNK) {
-            if (isCancelled()) {
-                // Never sent: back to "unchecked" rather than a spinner forever.
-                const skipped = unique.slice(i);
-                skipped.forEach(u => { delete cache[u]; });
-                refreshMany(skipped);
-                break;
-            }
-            const batch = unique.slice(i, i + CHUNK);
-            try {
-                const fd = new FormData();
-                fd.append('urls', JSON.stringify(batch));
-                const json = await api('check_links_bulk.php', { method: 'POST', body: fd });
-                if (json.success) {
-                    batch.forEach(u => {
-                        const info = json.results[u];
-                        cache[u] = info
-                            ? { status_code: info.status_code, bucket: info.bucket, redirect_url: info.redirect_url }
-                            : { error: 'No result' };
-                    });
-                } else {
-                    batch.forEach(u => { cache[u] = { error: json.msg || 'Check failed' }; });
+        const batches = [];
+        for (let i = 0; i < unique.length; i += CHUNK) batches.push(unique.slice(i, i + CHUNK));
+
+        let next = 0, done = 0;
+        async function worker() {
+            while (next < batches.length && !isCancelled()) {
+                const batch = batches[next++];
+                try {
+                    const fd = new FormData();
+                    fd.append('urls', JSON.stringify(batch));
+                    const json = await api('check_links_bulk.php', { method: 'POST', body: fd });
+                    if (json.success) {
+                        batch.forEach(u => {
+                            const info = json.results[u];
+                            if (info) store(u, info);
+                            else cache[u] = { error: 'No result' };
+                        });
+                    } else {
+                        batch.forEach(u => { cache[u] = { error: json.msg || 'Check failed' }; });
+                    }
+                } catch (err) {
+                    console.error(err);
+                    batch.forEach(u => { cache[u] = { error: 'Network error' }; });
                 }
-            } catch (err) {
-                console.error(err);
-                batch.forEach(u => { cache[u] = { error: 'Network error' }; });
+                refreshMany(batch);
+                done += batch.length;
+                persist();
+                if (onBatch) onBatch(batch);
+                if (onProgress) onProgress(done, unique.length);
             }
-            refreshMany(batch);
-            done += batch.length;
-            if (onProgress) onProgress(done, unique.length);
         }
+        await Promise.all(Array.from({ length: Math.min(PARALLEL, batches.length) }, worker));
+
+        // Cancelled: never-sent URLs go back to "unchecked" rather than a spinner forever.
+        const skipped = batches.slice(next).flat();
+        skipped.forEach(u => { delete cache[u]; });
+        refreshMany(skipped);
+
         notify();
         return done;
+    }
+
+    /** Forget every result (the "Forget check results" action). */
+    function clear() {
+        const urls = Object.keys(cache).filter(u => !cache[u].checking);
+        urls.forEach(u => { delete cache[u]; });
+        persist();
+        refreshMany(urls);
+        notify();
     }
 
     const running = new WeakMap(); // button -> { cancel }
@@ -339,7 +483,7 @@ const LinkStatus = (() => {
         });
         gone.forEach(u => { delete cache[u]; });
         refreshMany(gone);
-        if (gone.length) notify();
+        if (gone.length) { persist(); notify(); }
     }
 
     /** One delegated handler: every "Check" / "↻" button on the page. */
@@ -350,7 +494,7 @@ const LinkStatus = (() => {
         });
     }
 
-    return { cache, bucket, badge, cell, checkOne, checkMany, checkManyWithButton, isRunning, stats, forgetPath, bind, onChange: fn => listeners.push(fn) };
+    return { cache, get, bucket, badge, cell, checkOne, checkMany, checkManyWithButton, isRunning, stats, forgetPath, clear, restore, bind, onChange: fn => listeners.push(fn) };
 })();
 
 /* ══════════════════════════ Theme ══════════════════════════ */
@@ -406,24 +550,37 @@ async function initSite() {
         console.error('Failed to load database list', err);
     }
     renderDatabaseSwitcher();
+    LinkStatus.restore();
     const label = siteList.find(d => d.key === SITE)?.label;
     if (label) document.title = `${label} · Master Dashboard`; // tells two open tabs apart
 }
+
+/** A site whose label says "Live" is production - flagged in the top bar so every write is made knowingly. */
+const isLiveSite = () => /\blive\b/i.test(siteList.find(d => d.key === SITE)?.label || '');
 
 function renderDatabaseSwitcher() {
     document.getElementById('dbSelector').innerHTML = siteList.map(d =>
         `<option value="${escapeHtml(d.key)}"${d.key === SITE ? ' selected' : ''}>${escapeHtml(d.label)}</option>`
     ).join('');
+    const live = isLiveSite();
+    document.querySelector('.db-switch').classList.toggle('is-live', live);
+    document.getElementById('dbLiveFlag').hidden = !live;
 }
 
 function bindDatabaseSwitcher() {
-    document.getElementById('dbSelector').addEventListener('change', e => {
-        if (hasUnsavedContentEdits() && !confirm('You have unsaved Content edits. Switching site discards them. Continue?')) {
-            renderDatabaseSwitcher(); // put the dropdown back
-            return;
+    document.getElementById('dbSelector').addEventListener('change', async e => {
+        const next = e.target.value;
+        if (hasUnsavedContentEdits()) {
+            renderDatabaseSwitcher(); // put the dropdown back while asking
+            const ok = await confirmDialog({
+                title: 'Discard unsaved edits?',
+                message: 'You have unsaved Content edits. Switching site discards them.',
+                okLabel: 'Switch site', tone: 'danger', writes: false,
+            });
+            if (!ok) return;
         }
         contentDirty = {}; // already confirmed above - don't let beforeunload ask a second time
-        document.cookie = `md_db=${encodeURIComponent(e.target.value)}; path=${cookieDir()}; max-age=${60 * 60 * 24 * 365}`;
+        document.cookie = `md_db=${encodeURIComponent(next)}; path=${cookieDir()}; max-age=${60 * 60 * 24 * 365}`;
         location.reload();
     });
 }
@@ -445,7 +602,7 @@ function loadFilterOptions() {
 /* ══════════════════ "Trashed a post -> add a 410?" prompts ══════════════════
  * Shared by the Content tab's status save (single row + bulk save) and the
  * Bulk URL Update tab's status apply. Nothing is written to the Yoast
- * redirect store without an explicit confirm(), the same "ask first"
+ * redirect store without an explicit confirmDialog(), the same "ask first"
  * convention as every other write in this tool. */
 
 /** POST to add_redirect.php and return the parsed JSON, or null on a network failure. */
@@ -466,7 +623,12 @@ async function submitRedirectRaw(origin, type, target, replace = false) {
 
 /** Single-post prompt (Content tab): confirm, add a 410, offer to replace an existing conflicting rule. */
 async function offerTrashRedirect(id, path) {
-    const ok = confirm(`Post #${id} was just trashed.\n\nAdd a 410 (Gone) redirect for its old URL?\n\n/${path}/`);
+    const ok = await confirmDialog({
+        title: 'Add a 410 redirect?',
+        message: `Post #${id} was just trashed. Add a 410 (Gone) redirect for its old URL?`,
+        changes: [{ from: `/${path}/`, to: '410 Gone' }],
+        okLabel: 'Add 410', cancelLabel: 'No thanks',
+    });
     if (!ok) return;
 
     const json = await submitRedirectRaw(path, 410, '');
@@ -477,9 +639,12 @@ async function offerTrashRedirect(id, path) {
 
     if (json.status === 'duplicate') {
         const existing = json.existing;
-        const okReplace = confirm(
-            `/${path}/ already has a redirect configured (type ${existing.type}${existing.url ? ' → /' + existing.url + '/' : ''}).\n\nReplace it with a 410?`
-        );
+        const okReplace = await confirmDialog({
+            title: 'Replace existing redirect?',
+            message: `/${path}/ already has a redirect configured. Replace it with a 410?`,
+            changes: [{ post: `Currently: ${existing.type}`, from: existing.url ? `/${existing.url}/` : `/${path}/`, to: '410 Gone' }],
+            okLabel: 'Replace with 410', tone: 'danger', cancelLabel: 'Keep existing',
+        });
         if (!okReplace) {
             toast('Redirect left unchanged', '');
             return;
@@ -499,9 +664,12 @@ async function offerBulkTrashRedirects(rows) {
     rows = rows.filter(r => r.path);
     if (!rows.length) return;
 
-    const preview = rows.slice(0, 8).map(r => `• /${r.path}/`).join('\n');
-    const more = rows.length > 8 ? `\n…and ${rows.length - 8} more` : '';
-    const ok = confirm(`${rows.length} post${rows.length === 1 ? '' : 's'} just trashed.\n\nAdd a 410 (Gone) redirect for each old URL?\n\n${preview}${more}`);
+    const ok = await confirmDialog({
+        title: `Add ${pluralize(rows.length, '410 redirect')}?`,
+        message: `${pluralize(rows.length, 'post')} just trashed. Add a 410 (Gone) redirect for each old URL?`,
+        changes: rows.map(r => ({ from: `/${r.path}/`, to: '410 Gone' })),
+        okLabel: `Add ${pluralize(rows.length, 'redirect')}`, cancelLabel: 'No thanks',
+    });
     if (!ok) return;
 
     let added = 0;
@@ -515,9 +683,12 @@ async function offerBulkTrashRedirects(rows) {
     if (added) toast(`Added ${added} redirect${added === 1 ? '' : 's'}`, 'ok');
 
     if (duplicates.length) {
-        const dPreview = duplicates.slice(0, 8).map(r => `• /${r.path}/`).join('\n');
-        const dMore = duplicates.length > 8 ? `\n…and ${duplicates.length - 8} more` : '';
-        const okReplace = confirm(`${duplicates.length} of those already have a different redirect configured.\n\nReplace ${duplicates.length === 1 ? 'it' : 'them'} with a 410?\n\n${dPreview}${dMore}`);
+        const okReplace = await confirmDialog({
+            title: 'Replace existing redirects?',
+            message: `${duplicates.length} of those already have a different redirect configured. Replace ${duplicates.length === 1 ? 'it' : 'them'} with a 410?`,
+            changes: duplicates.map(r => ({ from: `/${r.path}/`, to: '410 Gone' })),
+            okLabel: `Replace ${duplicates.length}`, tone: 'danger', cancelLabel: 'Keep existing',
+        });
         if (okReplace) {
             let replaced = 0;
             for (const r of duplicates) {

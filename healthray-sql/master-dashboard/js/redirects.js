@@ -164,11 +164,9 @@ function bindRedirectsTab() {
         });
     });
 
-    document.getElementById('redirectsExportCsv').addEventListener('click', e => {
-        if (!redirectsState.link_status) return;
-        const ok = confirm('This export will live-check every matching redirect\'s origin URL before including it - it can take a while for large result sets. Continue?');
-        if (!ok) e.preventDefault();
-    });
+    document.getElementById('redirectsExportCsv').addEventListener('click', e => confirmSlowExport(e,
+        'This export will live-check every matching redirect\'s origin URL before including it — it can take a while for large result sets.',
+        !!redirectsState.link_status));
 
     document.getElementById('rClearFiltersBtn').addEventListener('click', () => {
         Object.assign(redirectsState, { search: '', type: '', format: '', match: '', page: 1 });

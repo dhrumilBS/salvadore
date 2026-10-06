@@ -239,7 +239,8 @@ function openDetailModal(id) {
                     <div class="link-card-status" data-status-url="${escapeHtml(l.url)}">${LinkStatus.badge(l.url)}</div>
                 </div>
                 ${l.anchor ? `<div class="link-anchor">↳ ${escapeHtml(l.anchor)}</div>` : ''}
-                <div class="domain-tag">${l.is_internal ? 'Internal' : 'External'} · ${escapeHtml(l.domain || '—')}</div>
+                <div class="domain-tag">${l.is_internal ? 'Internal' : 'External'} · ${escapeHtml(l.domain || '—')}
+                    <button type="button" class="btn small btn-fix-link" data-fix-url="${escapeHtml(l.url)}" title="Open Link Fixer with every post on the site that links here — edit, fix or unlink it">Fix in Link Fixer →</button></div>
                 ${l.is_utm ? `<div class="utm-params">${l.utm_params.map(p => `<span class="utm-param-tag">${escapeHtml(p)}</span>`).join('')}</div>` : ''}
             </div>`).join('');
 
@@ -314,6 +315,12 @@ function bindLinksTab() {
     document.getElementById('detailClose').addEventListener('click', closeDetailModal);
     document.getElementById('detailModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeDetailModal(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetailModal(); });
+    document.getElementById('detailLinkCards').addEventListener('click', e => {
+        const btn = e.target.closest('.btn-fix-link');
+        if (!btn) return;
+        closeDetailModal();
+        openFixerFor(btn.dataset.fixUrl);
+    });
     document.getElementById('detailCheckAllBtn').addEventListener('click', e => {
         const row = linksAllRows.find(r => r.id === detailPostId);
         if (row && row.links.length) LinkStatus.checkManyWithButton(row.links.map(l => l.url), e.currentTarget);

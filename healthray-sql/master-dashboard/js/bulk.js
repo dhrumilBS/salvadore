@@ -83,18 +83,19 @@ function runBulkSearch() {
         });
 }
 
-function applyBulkStatusUpdate() {
+async function applyBulkStatusUpdate() {
     const ids = Array.from(bulkSelected);
     if (!ids.length) return;
 
     const status = document.getElementById('bulkStatusSelect').value;
-    const preview = bulkMatched
-        .filter(r => bulkSelected.has(r.id))
-        .slice(0, 8)
-        .map(r => `• #${r.id} ${truncate(r.title, 50)} (${r.status} → ${status})`)
-        .join('\n');
-    const more = ids.length > 8 ? `\n…and ${ids.length - 8} more post(s)` : '';
-    const ok = confirm(`Set status to "${status}" for ${ids.length} post${ids.length === 1 ? '' : 's'}?\n\n${preview}${more}`);
+    const ok = await confirmDialog({
+        title: `Set status to "${status}" for ${pluralize(ids.length, 'post')}?`,
+        changes: bulkMatched.filter(r => bulkSelected.has(r.id)).map(r => ({
+            post: `#${r.id} · ${truncate(r.title, 70)}`, from: r.status, to: status,
+        })),
+        okLabel: `Update ${pluralize(ids.length, 'post')}`,
+        tone: status === 'trash' ? 'danger' : 'primary',
+    });
     if (!ok) return;
 
     const btn = document.getElementById('bulkApplyBtn');

@@ -1,13 +1,14 @@
-# Master Dashboard — Content, Links & UTM, Redirects, Bulk URL Update
+# Master Dashboard — Content, Links & UTM, Link Fixer, Redirects, Bulk URL Update
 
 One standalone PHP + vanilla-JS tool (no WordPress hooks, no build step) that
 talks to one or more WordPress databases directly over `mysqli`. It replaces
-two former sibling tools that duplicated most of their plumbing:
+three former sibling tools that duplicated most of their plumbing:
 
 | Former tool | Became |
 |---|---|
 | `../datewise/` (Content, Redirects, Bulk URL Update tabs) | same three tabs here |
 | `../link-checker/` (Link & UTM Checker) | the **Links & UTM** tab |
+| `../post-content/` (Link Checker / fixer) | the **Link Fixer** tab |
 
 Don't fork this per site: a new WordPress site is a new `$DATABASES` entry in
 `../conn.php` + its `.env` vars, and it shows up in the Site dropdown.
@@ -51,20 +52,44 @@ Don't fork this per site: a new WordPress site is a new `$DATABASES` entry in
 ## Layout
 
 ```
-index.html          one page, 4 views toggled by #viewTabs (hash: #content #links #redirects #bulk)
-style.css           datewise base + Links-tab-only components (stat cards, modal, link cards, export menu)
-js/common.js        shared helpers + LinkStatus
+index.html          one page, 5 views toggled by #viewTabs (hash: #content #links #fixer #redirects #bulk;
+                    Link Fixer keeps its filters after a "?": #fixer?page=2&status=error&find=...)
+style.css           datewise base, Links-tab components, then shared dialogs/drawer + fx- Link Fixer styles
+js/common.js        shared helpers, confirmDialog()/alertDialog(), toast(), LinkStatus
 js/content.js       Content tab (staged edits, confirmed saves)
-js/links.js         Links & UTM tab (client-side utm/domain/status filters, detail modal)
+js/links.js         Links & UTM tab (client-side utm/domain/status filters, detail modal -> "Fix in Link Fixer")
+js/fixer.js         Link Fixer tab: edit / fix-redirect / unlink / find-replace links in post_content + FAQ fields
+js/history.js       History drawer: the server-side Link Fixer journal, with Undo
 js/redirects.js     Redirects tab
 js/bulk.js          Bulk URL Update tab
-js/app.js           view switching, lazy loading, cross-tab staleness, init
-api/                endpoints (below); api/lib/ shared PHP
-backups/            Yoast redirect-option backups written before every redirect write (.htaccess denies web access)
+js/app.js           view switching, lazy loading, cross-tab staleness, global keyboard shortcuts, init
+api/                endpoints (below); api/lib/ shared PHP (lib/link_editor.php = Link Fixer)
+backups/            Yoast redirect-option backups (before every redirect write) and
+                    link-changes-<site>.jsonl, the Link Fixer journal (.htaccess denies web access)
 ```
 
-Links-tab element IDs are `l`-prefixed (`lStatus`, `lTableBody`, ...) so they
-never collide with the Content tab's.
+Links-tab element IDs are `l`-prefixed (`lStatus`, `lTableBody`, ...) and Link
+Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
+
+## Link Fixer (former `../post-content/`)
+
+- **Writes match the raw `href`**, never the displayed `url`. Extraction
+  (`dw_fx_extract_links()`) is regex-based on purpose so every link keeps the
+  exact stored bytes (`&amp;`, relative paths) next to its decoded absolute
+  `url` (used for display + live checks). Rewrites only touch `<a>` tags'
+  `href` (never `data-href`); unlink keeps the inner HTML.
+- **FAQ fields** = postmeta keys matching `DW_FX_FAQ_KEY_REGEX` that don't
+  start with `_`; `dw_fx_is_faq_key()` guards every write - the client can't
+  name an arbitrary meta key.
+- New URLs must pass `dw_fx_valid_new_url()` (http(s)://, /, #, mailto:, tel:).
+- **Every write is journaled** (`dw_fx_journal_append()`) with the field's full
+  previous value. `dw_fx_undo()` restores it only while the field's sha1 still
+  equals what that write produced - otherwise `conflict`, never a clobber. Each
+  write is its own transaction with the row locked (`FOR UPDATE`).
+- Site-wide find (`link=`) searches every spelling a URL can have in stored HTML
+  (`dw_fx_needle_variants()`: as typed, `&amp;`, root-relative for own-site URLs).
+- Check results come from the shared `LinkStatus` (persisted per site in
+  sessionStorage for 30 min); HEAD answers 403/405/501 are re-checked with GET.
 
 ## Rules that must survive changes
 
@@ -87,9 +112,11 @@ never collide with the Content tab's.
 - **`api/_test_store.php` is CLI-only** (404 over the web).
 
 - **Nothing auto-saves.** Content edits stage locally (`contentDirty`), show an
-  amber outline, and need Save + `confirm()` listing exactly what changes. Bulk
-  status apply and every redirect write also `confirm()` first. Explicit
-  product requirement - don't reintroduce save-on-change.
+  amber outline, and need Save + `confirmDialog()` listing exactly what changes.
+  Bulk status apply, every redirect write and every Link Fixer write also go
+  through `confirmDialog()` first (it names the site being written). Explicit
+  product requirement - don't reintroduce save-on-change, and don't swap the
+  dialog back to native `confirm()` (it truncates long change lists).
 - **Trash -> 410 prompt** fires only when a save moves a post *into* `trash`
   (Content save or Bulk apply). It only adds/replaces a redirect, never removes.
   "Moved into trash" is decided by the server (`update_post.php` returns
@@ -104,8 +131,9 @@ never collide with the Content tab's.
 - **Redirect live check targets the origin URL** (does the rule fire?).
 - Links tab caps one load at `dw_links_row_cap()` (3000 posts) and shows a
   banner when capped.
-- Cross-tab freshness: a write calls `onPostsChanged()` / `onRedirectsChanged()`
-  (`js/app.js`), which reloads the visible affected tab or marks it stale.
+- Cross-tab freshness: a write calls `onPostsChanged()` / `onLinksChanged()` /
+  `onRedirectsChanged()` (`js/app.js`), which reloads the visible affected tab
+  or marks it stale.
 
 ## Endpoints (`api/`)
 
@@ -124,6 +152,10 @@ never collide with the Content tab's.
 | `add_redirect.php` | POST | upsert one Yoast redirect (backup first) |
 | `bulk_find_posts.php` | POST | resolve pasted slugs/URLs to posts |
 | `bulk_update_status.php` | POST | one status for many post IDs |
+| `fixer_list.php` | GET | Link Fixer: one page of posts + every link (content + FAQ), `link=` site-wide find |
+| `fixer_write.php` | POST | `op=replace|unlink`, `items=` JSON (max 1000) - each journaled |
+| `fixer_history.php` | GET | this site's Link Fixer journal, newest first |
+| `fixer_undo.php` | POST | undo one journal entry (refused if the field changed since) |
 | `_test_store.php` | CLI | redirect-store self test |
 
 ## Extension pointers

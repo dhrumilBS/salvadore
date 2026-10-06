@@ -137,8 +137,24 @@ function dw_bucket_for_code($code)
     return 'error';
 }
 
-/** curl options shared by the single-check and concurrent-check paths. $pin = a dw_check_plan() CURLOPT_RESOLVE entry. */
-function dw_curl_opts($timeoutSec, $pin = '')
+/**
+ * Status codes some servers/CDNs answer a HEAD request with even though the
+ * page is fine for a real browser (GET) - those URLs are re-checked with GET
+ * before being reported, or they'd show up as false "broken" links.
+ */
+function dw_head_retry_codes()
+{
+    return [403, 405, 501];
+}
+
+/**
+ * curl options shared by the single-check and concurrent-check paths. $pin = a
+ * dw_check_plan() CURLOPT_RESOLVE entry. $method 'GET' is the fallback for
+ * servers that reject HEAD: it asks for one byte and aborts the transfer after
+ * the first chunk regardless, so a server that ignores Range can't stream a
+ * whole page into memory.
+ */
+function dw_curl_opts($timeoutSec, $pin = '', $method = 'HEAD')
 {
     $opts = [
         CURLOPT_RETURNTRANSFER => true,
@@ -151,6 +167,12 @@ function dw_curl_opts($timeoutSec, $pin = '')
         CURLOPT_SSL_VERIFYHOST => false,
         CURLOPT_PROTOCOLS      => CURLPROTO_HTTP | CURLPROTO_HTTPS,
     ];
+    if ($method === 'GET') {
+        $opts[CURLOPT_NOBODY]        = false;
+        $opts[CURLOPT_HTTPGET]       = true;
+        $opts[CURLOPT_RANGE]         = '0-0';
+        $opts[CURLOPT_WRITEFUNCTION] = fn($ch, $data) => 0; // status line + headers are already in; stop here
+    }
     if ($pin !== '') {
         $opts[CURLOPT_RESOLVE] = [$pin];
     }
@@ -188,12 +210,17 @@ function dw_status_result($code, $redirectUrl)
 /** One-off HEAD check of a single URL. Caller must have vetted it with dw_check_plan() and pass its pin. */
 function dw_check_url_once($url, $timeoutSec = 8, $pin = '')
 {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, dw_curl_opts($timeoutSec, $pin));
-    curl_exec($ch);
-    $code     = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $redirect = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
-    curl_close($ch);
+    foreach (['HEAD', 'GET'] as $method) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, dw_curl_opts($timeoutSec, $pin, $method));
+        curl_exec($ch);
+        $code     = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $redirect = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+        curl_close($ch);
+        if (!in_array($code, dw_head_retry_codes(), true)) {
+            break;
+        }
+    }
 
     return dw_status_result($code, dw_resolve_redirect($url, $redirect));
 }
@@ -207,15 +234,28 @@ function dw_check_url_once($url, $timeoutSec = 8, $pin = '')
  */
 function dw_check_urls_concurrent(array $urls, $concurrency = 20, $timeoutSec = 6, array $pins = [])
 {
+    $results = dw_check_urls_pass(array_values(array_unique($urls)), $concurrency, $timeoutSec, $pins, 'HEAD');
+
+    // Second pass, GET, only for the URLs whose server refused the HEAD.
+    $retry = array_keys(array_filter($results, fn($r) => in_array($r['code'], dw_head_retry_codes(), true)));
+    if ($retry) {
+        $results = array_replace($results, dw_check_urls_pass($retry, $concurrency, $timeoutSec, $pins, 'GET'));
+    }
+    return $results;
+}
+
+/** One curl_multi pass of dw_check_urls_concurrent() with a single request method. */
+function dw_check_urls_pass(array $urls, $concurrency, $timeoutSec, array $pins, $method)
+{
     $results = [];
-    $queue   = array_values(array_unique($urls));
+    $queue   = $urls;
     $mh      = curl_multi_init();
     $handles = []; // (int) curl handle id => ['ch'=>..., 'url'=>...]
 
-    $startNext = function () use (&$queue, &$handles, $mh, $timeoutSec, $pins) {
+    $startNext = function () use (&$queue, &$handles, $mh, $timeoutSec, $pins, $method) {
         $url = array_shift($queue);
         $ch = curl_init($url);
-        curl_setopt_array($ch, dw_curl_opts($timeoutSec, $pins[$url] ?? ''));
+        curl_setopt_array($ch, dw_curl_opts($timeoutSec, $pins[$url] ?? '', $method));
         curl_multi_add_handle($mh, $ch);
         $handles[(int) $ch] = ['ch' => $ch, 'url' => $url];
     };
