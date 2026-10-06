@@ -1,27 +1,31 @@
 /* ═══════════════════════════════════════════════════════════
-   Internal Link Checker — main.js (v3)
+   Link Checker — main.js (v4)
 
-   UI rewrite notes:
    · URLs are never truncated. Every URL (and every redirect target) is
-     rendered in full, in a monospace face, split into scheme / host / path
-     so it can be read, compared and copied at a glance.
+     rendered in full, in a monospace face, split into scheme / host / path.
    · Redirect targets are diffed against the source URL — the shared prefix
      is dimmed, the part that actually changed is highlighted.
-   · Search supports multiple space-separated terms (AND), an optional field
-     scope, and highlights every match in place.
-   · Row rendering uses event delegation + data attributes instead of inline
-     onclick handlers, so URLs containing quotes/ampersands can't break out.
-   The API contract (api.php actions + payload shapes) is unchanged.
+   · Links are checked in batches (api.php?action=check_batch, curl_multi on
+     the server) and results are cached per site for the browser session, so
+     paging back and forth never re-checks what's already known.
+   · Large pages render in windows of rows; more are added as you scroll.
+   · Every database write is previewed in a confirm dialog and recorded in
+     the session change log.
    ═══════════════════════════════════════════════════════════ */
 
 const API = 'api.php';
-const CONCURRENCY = 5;
+const CHECK_BATCH = 8;            // URLs per check_batch request (checked in parallel server-side)
+const CHECK_PARALLEL = 2;         // check_batch requests in flight at once
+const ROW_WINDOW = 300;           // link rows rendered per chunk
+const CHECK_TTL = 30 * 60 * 1000; // cached check results stay valid for 30 minutes
 
 /* ── State ─────────────────────────────────────────────────── */
 const state = {
     links: [],            // flat array from API
+    linkIndex: new Map(), // linkKey → link
     groups: [],           // [{ postId, title, type, links[] }] — array, so sort order sticks
-    checked: {},          // { url: { status_code, is_redirect, redirect_url } }
+    view: [],             // filtered + sorted groups from the last render
+    checked: {},          // { url: { status_code, is_redirect, redirect_url, t } }
     filter: 'all',        // all | ok | redirect | error | pending | duplicate
     linkType: 'all',      // all | internal | external
     search: '',
@@ -30,9 +34,11 @@ const state = {
     sort: 'id-asc',
     selected: new Set(),  // linkKey(link)
     collapsed: new Set(), // collapsed post IDs
+    rowLimit: ROW_WINDOW,
     isLoading: false,
     isChecking: false,
     cancelCheck: false,
+    checkAgain: false,    // a page loaded mid-check — run auto-check once it ends
     checkProgress: 0,
     checkTotal: 0,
     page: 1,
@@ -40,9 +46,12 @@ const state = {
     totalPosts: 0,
     postCount: 0,         // posts on the current page that actually have links
     siteUrl: '',
+    dbKey: '',
+    dbLabel: '',
     postTypes: [],
     availablePostTypes: [],
     draftPostTypes: new Set(),
+    activity: [],
 };
 
 const POST_TYPE_LABELS = {
@@ -66,6 +75,11 @@ const LS = {
     density: 'linkChecker.density',
     sort: 'linkChecker.sort',
     scope: 'linkChecker.searchScope',
+    theme: 'linkChecker.theme',
+};
+const SS = {
+    checked: 'linkChecker.checked.',  // + db key
+    activity: 'linkChecker.activity',
 };
 
 function lsGet(key, fallback) {
@@ -76,6 +90,12 @@ function lsGet(key, fallback) {
 }
 function lsSet(key, value) {
     try { localStorage.setItem(key, value); } catch { /* private mode — non-fatal */ }
+}
+function ssGetJson(key, fallback) {
+    try { return JSON.parse(sessionStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; }
+}
+function ssSetJson(key, value) {
+    try { sessionStorage.setItem(key, JSON.stringify(value)); } catch { /* quota / private mode — non-fatal */ }
 }
 
 function postTypeLabel(type) {
@@ -94,7 +114,8 @@ const $tableWrap = $('table-wrap');
 const $bulkBar = $('bulk-bar');
 const $bulkCount = $('bulk-count');
 const $bulkNewUrl = $('bulk-new-url');
-const $progressWrap = $('progress-wrap');
+const $scanbar = document.querySelector('.scanbar');
+const $scanMeta = $('scan-meta');
 const $progressFill = $('progress-fill');
 const $progressText = $('progress-text');
 const $pagination = $('pagination');
@@ -109,6 +130,7 @@ const $footerInfo = $('footer-info');
 const $pageTotal = $('page-total');
 const $inpPage = $('inp-page');
 const $inpPerPage = $('inp-perpage');
+const $menu = $('view-menu');
 
 const $modal = $('edit-modal');
 const $modalOldUrl = $('modal-old-url');
@@ -117,10 +139,12 @@ const $modalPostId = $('modal-post-id');
 const $modalRemoveLink = $('modal-remove-link');
 const $modalHint = $('modal-hint');
 const $modalMeta = $('modal-meta');
+const $modalAnchor = $('modal-anchor');
 const $modalSub = $('modal-sub');
 const $modalUseRedirect = $('btn-modal-use-redirect');
 const $modalOpenOld = $('btn-modal-open-old');
 const $helpModal = $('help-modal');
+const $confirm = $('confirm-modal');
 
 const $ptSelect = $('pt-select');
 const $ptTrigger = $('pt-trigger');
@@ -140,6 +164,19 @@ function escAttr(s) {
 }
 function fmt(n) { return Number(n || 0).toLocaleString(); }
 function plural(n, word) { return `${fmt(n)} ${word}${n === 1 ? '' : 's'}`; }
+function pct(n, total) { return total > 0 ? (n / total) * 100 : 0; }
+function chunk(arr, size) {
+    const out = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+}
+function trunc(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
+function timeAgo(t) {
+    const s = Math.round((Date.now() - t) / 1000);
+    if (s < 45) return 'just now';
+    if (s < 3600) return `${Math.round(s / 60)} min ago`;
+    return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
 /* Escape + wrap every search-term hit in <mark>. */
 function hl(text, terms) {
@@ -162,13 +199,45 @@ function hl(text, terms) {
     return out + esc(s.slice(pos));
 }
 
+async function postJson(action, body) {
+    const res = await fetch(`${API}?action=${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    return res.json();
+}
+
+/* ── Icons ─────────────────────────────────────────────────── */
+const ICON = {
+    refresh: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
+    copy: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+    check: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+    pencil: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+    chevron: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+    wp: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`,
+    sun: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>`,
+    moon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>`,
+    link: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+    search: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7.5"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+    alert: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+};
+
 /* ── Toast ─────────────────────────────────────────────────── */
+const TOAST_ICON = { success: '✓', error: '!', info: 'i' };
+
 function showToast(msg, type = 'info', ms = 3600) {
+    while ($toast.children.length >= 4) $toast.firstElementChild.remove();
     const el = document.createElement('div');
     el.className = `toast-item toast-${type}`;
-    el.textContent = msg;
+    el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    el.innerHTML = `<span class="toast-icon">${TOAST_ICON[type] || 'i'}</span><span class="toast-msg"></span>
+        <button class="toast-close" aria-label="Dismiss">×</button>`;
+    el.querySelector('.toast-msg').textContent = msg;
+    const dismiss = () => { el.classList.add('leaving'); setTimeout(() => el.remove(), 200); };
+    el.querySelector('.toast-close').addEventListener('click', dismiss);
     $toast.appendChild(el);
-    setTimeout(() => el.remove(), ms);
+    setTimeout(dismiss, type === 'error' ? Math.max(ms, 6000) : ms);
 }
 
 /* ── Clipboard (with a fallback for non-secure origins) ────── */
@@ -277,11 +346,12 @@ function redirectNote(fromUrl, toUrl) {
 async function loadLinks() {
     if (state.isLoading) return;
     state.isLoading = true;
-    setTableLoading('Loading posts…');
+    setTableLoading();
 
-    let page = Math.max(1, parseInt($inpPage.value, 10) || 1);
+    const page = Math.max(1, parseInt($inpPage.value, 10) || 1);
     const perPage = Math.max(1, parseInt($inpPerPage.value, 10) || 50);
     $inpPage.value = page;
+    let loaded = false;
 
     try {
         const types = encodeURIComponent(state.postTypes.join(','));
@@ -306,9 +376,9 @@ async function loadLinks() {
 
         state.page = data.page || page;
         state.links = data.links || [];
-        state.checked = {};
         state.selected.clear();
         state.collapsed.clear();
+        state.rowLimit = ROW_WINDOW;
 
         state.siteUrl = data.site_url || '';
         const $siteLabel = $('site-url-label');
@@ -319,15 +389,24 @@ async function loadLinks() {
         updateStats();
         renderTable();
         renderPagination();
-        showToast(`Loaded ${plural(data.link_count, 'link')} from page ${data.page}`, 'success');
+        updateScanMeta();
+        loaded = true;
     } catch (e) {
         showToast('Failed to load: ' + e.message, 'error');
         setTableEmpty('Failed to reach the API.', e.message);
     } finally {
         state.isLoading = false;
-        $selectAll.checked = false;
-        $selectAll.indeterminate = false;
     }
+
+    if (loaded && $('chk-autocheck').checked) {
+        if (state.isChecking) state.checkAgain = true;
+        else checkAllLinks({ recheckIfDone: false });
+    }
+}
+
+function updateScanMeta() {
+    $scanMeta.innerHTML = `Page <strong>${fmt(state.page)}</strong> of <strong>${fmt(state.totalPages)}</strong>
+        · <strong>${fmt(state.totalPosts)}</strong> published`;
 }
 
 /* ── Database switcher ─────────────────────────────────────────
@@ -344,6 +423,8 @@ async function loadDatabaseSwitcher() {
         sel.innerHTML = (data.databases || []).map(d =>
             `<option value="${escAttr(d.key)}"${d.key === data.current ? ' selected' : ''}>${esc(d.label)}</option>`
         ).join('');
+        state.dbKey = data.current || '';
+        state.dbLabel = (data.databases || []).find(d => d.key === data.current)?.label || state.dbKey;
     } catch (e) {
         console.error('Failed to load database list', e);
     }
@@ -363,7 +444,7 @@ function linkKey(link) {
     return `${link.post_id}||${link.url}||${link.source || 'content'}||${link.meta_key || ''}`;
 }
 function findLinkByKey(key) {
-    return state.links.find(l => linkKey(l) === key);
+    return state.linkIndex.get(key);
 }
 
 /* ── Post type picker ──────────────────────────────────────── */
@@ -408,9 +489,9 @@ function renderPostTypeOptions() {
 
 function updatePostTypeTriggerLabel() {
     const n = state.postTypes.length;
-    if (n === 0) $ptTriggerLabel.textContent = 'Post Types';
+    if (n === 0) $ptTriggerLabel.textContent = 'Post types';
     else if (n <= 2) $ptTriggerLabel.textContent = state.postTypes.map(postTypeLabel).join(', ');
-    else $ptTriggerLabel.textContent = `${n} Types Selected`;
+    else $ptTriggerLabel.textContent = `${n} types selected`;
     $ptTrigger.title = n ? 'Scanning: ' + state.postTypes.map(postTypeLabel).join(', ') : 'Choose content types to scan';
 }
 
@@ -446,7 +527,9 @@ function applyPostTypes() {
 /* ── Grouping ──────────────────────────────────────────────── */
 function buildGroups() {
     const map = new Map();
+    state.linkIndex = new Map();
     for (const link of state.links) {
+        state.linkIndex.set(linkKey(link), link);
         const id = String(link.post_id);
         if (!map.has(id)) map.set(id, { postId: id, title: link.post_title, type: link.post_type, links: [] });
         map.get(id).links.push(link);
@@ -486,20 +569,20 @@ function matchesStatus(link) {
 }
 
 /* Links matching the type tab + search only (ignores the status filter) —
-   used to scope "Check Links" to what the user is actually looking at. */
+   used to scope "Check links" to what the user is actually looking at. */
 function typeFilteredLinks() {
     return state.links.filter(l => matchesType(l) && matchesSearch(l));
 }
 
 function groupStats(links) {
-    let redirects = 0, errors = 0;
+    let redirects = 0, errors = 0, pending = 0;
     for (const l of links) {
         const c = state.checked[l.url];
-        if (!c) continue;
+        if (!c) { pending++; continue; }
         if (c.is_redirect && c.redirect_url) redirects++;
         else if (c.status_code === 0 || c.status_code >= 400) errors++;
     }
-    return { redirects, errors };
+    return { redirects, errors, pending };
 }
 
 /* Filtered groups, in the requested sort order (array — object key order
@@ -524,88 +607,160 @@ function filteredGroups() {
     }
     return out;
 }
+/* Every link that passes the filters — including rows not yet rendered by
+   the row window, so "select all" / export cover the whole view. */
 function visibleLinks() {
-    return filteredGroups().flatMap(g => g.links);
+    return state.view.flatMap(g => g.links);
 }
 
 /* ═══════════════════════════════════════════════════════════
    Checking
    ═══════════════════════════════════════════════════════════ */
-async function checkAllLinks() {
-    if (state.isChecking) return;
-    const unchecked = typeFilteredLinks().filter(l => !state.checked[l.url]);
-    if (!unchecked.length) { showToast('Every link in this view is already checked', 'info'); return; }
+function checkedCacheKey() { return SS.checked + (state.dbKey || 'default'); }
 
-    // The same URL can appear on many posts — check each distinct URL once.
-    const urls = [...new Set(unchecked.map(l => l.url))];
+function loadCheckedCache() {
+    const raw = ssGetJson(checkedCacheKey(), {});
+    const now = Date.now();
+    state.checked = {};
+    for (const [url, r] of Object.entries(raw)) {
+        if (r && now - (r.t || 0) < CHECK_TTL) state.checked[url] = r;
+    }
+}
+
+let cacheTimer = null;
+function saveCheckedCache() {
+    clearTimeout(cacheTimer);
+    cacheTimer = setTimeout(() => ssSetJson(checkedCacheKey(), state.checked), 400);
+}
+
+function setChecked(url, result) {
+    state.checked[url] = { ...result, t: Date.now() };
+    saveCheckedCache();
+}
+
+const FAILED_CHECK = { status_code: 0, is_redirect: false, redirect_url: null };
+
+/* Check a handful of URLs in one request — the server runs them in
+   parallel with curl_multi. */
+async function checkUrls(urls) {
+    try {
+        const data = await postJson('check_batch', { urls });
+        if (data.status !== 'success') throw new Error(data.message || 'check failed');
+        for (const u of urls) setChecked(u, data.results?.[u] || FAILED_CHECK);
+    } catch {
+        for (const u of urls) setChecked(u, FAILED_CHECK);
+    }
+}
+
+async function checkAllLinks({ recheckIfDone = true } = {}) {
+    if (state.isChecking || state.isLoading) return;
+    const inView = typeFilteredLinks();
+
+    // Check each distinct URL once — the same URL often appears on many posts.
+    let urls = [...new Set(inView.filter(l => !state.checked[l.url]).map(l => l.url))];
+    if (!urls.length) {
+        if (!recheckIfDone) return;
+        // Everything in view is already checked — the button reads
+        // "Re-check", so re-check it all.
+        urls = [...new Set(inView.map(l => l.url))];
+    }
+    if (!urls.length) { showToast('No links in this view to check', 'info'); return; }
 
     state.isChecking = true;
     state.cancelCheck = false;
     state.checkTotal = urls.length;
     state.checkProgress = 0;
-    $progressWrap.classList.add('visible');
+    $scanbar.classList.add('is-checking');
     updateProgress();
     setCheckAllBusy(true);
 
     // Repainting the whole table after every batch gets expensive on big
     // pages, so live feedback is throttled — the final render happens once
     // the run finishes either way.
-    let lastPaint = 0;
-    for (let i = 0; i < urls.length; i += CONCURRENCY) {
-        if (state.cancelCheck) break;
-        const batch = urls.slice(i, i + CONCURRENCY);
-        await Promise.all(batch.map(u => checkSingleUrl(u)));
-        state.checkProgress += batch.length;
-        updateProgress();
-        if (Date.now() - lastPaint > 400) {
-            updateStats();
-            renderTable();
-            lastPaint = Date.now();
+    const batches = chunk(urls, CHECK_BATCH);
+    let next = 0, lastPaint = 0;
+    const worker = async () => {
+        while (next < batches.length && !state.cancelCheck) {
+            const batch = batches[next++];
+            await checkUrls(batch);
+            state.checkProgress += batch.length;
+            updateProgress();
+            if (Date.now() - lastPaint > 500) {
+                updateStats();
+                renderTable();
+                lastPaint = Date.now();
+            }
         }
-    }
+    };
+    await Promise.all(Array.from({ length: CHECK_PARALLEL }, worker));
 
     const cancelled = state.cancelCheck;
     state.isChecking = false;
     state.cancelCheck = false;
-    $progressWrap.classList.remove('visible');
+    $scanbar.classList.remove('is-checking');
     setCheckAllBusy(false);
     updateStats();
     renderTable();
-    showToast(cancelled ? `Stopped after ${fmt(state.checkProgress)} URLs` : 'All links checked', cancelled ? 'info' : 'success');
+
+    if (cancelled) {
+        showToast(`Stopped after ${plural(state.checkProgress, 'URL')}`, 'info');
+    } else {
+        const broken = urls.filter(u => { const c = state.checked[u]; return c && (c.status_code === 0 || c.status_code >= 400); }).length;
+        const redirects = urls.filter(u => state.checked[u]?.is_redirect).length;
+        const bits = [];
+        if (broken) bits.push(plural(broken, 'broken link'));
+        if (redirects) bits.push(plural(redirects, 'redirect'));
+        showToast(`Checked ${plural(urls.length, 'URL')}${bits.length ? ' — ' + bits.join(', ') : ' — all OK'}`,
+            broken ? 'error' : 'success');
+    }
+
+    if (state.checkAgain) {
+        state.checkAgain = false;
+        checkAllLinks({ recheckIfDone: false });
+    }
 }
 
 function setCheckAllBusy(busy) {
     const btn = $('btn-check-all');
     btn.disabled = busy;
+    $('btn-cancel-check').disabled = false;
     if (busy) $('check-all-label').textContent = 'Checking…';
     else updateCheckAllLabel();
 }
 
-async function checkSingleUrl(url) {
-    try {
-        const res = await fetch(`${API}?action=check_status&url=${encodeURIComponent(url)}`);
-        state.checked[url] = await res.json();
-    } catch {
-        state.checked[url] = { status_code: 0, is_redirect: false, redirect_url: null };
-    }
-}
-
 async function checkRowLink(url, btn) {
     btn.disabled = true;
-    const prev = btn.innerHTML;
     btn.innerHTML = '<span class="spin spin-dark"></span>';
-    await checkSingleUrl(url);
+    await checkUrls([url]);
     updateStats();
     renderTable();
-    // renderTable() replaces the button, so only restore it if it survived
-    // (e.g. the row got filtered out and the node is detached).
-    if (btn.isConnected) { btn.disabled = false; btn.innerHTML = prev; }
+}
+
+async function checkGroup(postId, btn) {
+    const g = state.view.find(x => x.postId === String(postId));
+    if (!g) return;
+    const urls = [...new Set(g.links.filter(l => !state.checked[l.url]).map(l => l.url))];
+    if (!urls.length) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin spin-dark"></span>';
+    await Promise.all(chunk(urls, CHECK_BATCH).map(checkUrls));
+    updateStats();
+    renderTable();
 }
 
 function updateProgress() {
-    const pct = state.checkTotal > 0 ? Math.round((state.checkProgress / state.checkTotal) * 100) : 0;
-    $progressFill.style.width = pct + '%';
-    $progressText.textContent = `Checking ${fmt(state.checkProgress)} of ${fmt(state.checkTotal)} URLs — ${pct}%`;
+    const p = Math.round(pct(state.checkProgress, state.checkTotal));
+    $progressFill.style.width = p + '%';
+    $progressText.textContent = `Checking ${fmt(state.checkProgress)} of ${fmt(state.checkTotal)} URLs · ${p}%`;
+}
+
+function forgetCheckResults() {
+    if (state.isChecking) { showToast('Stop the running check first', 'error'); return; }
+    state.checked = {};
+    ssSetJson(checkedCacheKey(), {});
+    updateStats();
+    renderTable();
+    showToast('Check results cleared', 'info', 2400);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -622,15 +777,37 @@ function updateStats() {
         link.is_internal ? internal++ : external++;
         if (link.occurrence_count > 1) dupe++;
     }
+    const total = state.links.length;
+    const checked = ok + rd + err;
 
-    $('stat-total').textContent = fmt(state.links.length);
+    $('stat-total').textContent = fmt(total);
+    $('stat-total-sub').textContent = `in ${plural(state.postCount, 'post')}`;
     $('stat-ok').textContent = fmt(ok);
     $('stat-rd').textContent = fmt(rd);
     $('stat-err').textContent = fmt(err);
     $('stat-pend').textContent = fmt(pend);
     $('stat-dup').textContent = fmt(dupe);
+    $('meter-ok').style.width = pct(ok, total) + '%';
+    $('meter-rd').style.width = pct(rd, total) + '%';
+    $('meter-err').style.width = pct(err, total) + '%';
+    $('meter-pend').style.width = pct(pend, total) + '%';
+    $('meter-dup').style.width = pct(dupe, total) + '%';
 
-    const typeCounts = { all: state.links.length, internal, external };
+    // Health = share of checked links that resolve cleanly (2xx).
+    const $card = $('health-card');
+    const score = checked ? Math.round(pct(ok, checked)) : null;
+    $('health-score').textContent = score === null ? '—' : score + '%';
+    $card.classList.toggle('is-good', score !== null && score >= 90);
+    $card.classList.toggle('is-fair', score !== null && score >= 70 && score < 90);
+    $card.classList.toggle('is-poor', score !== null && score < 70);
+    $('hb-ok').style.width = pct(ok, total) + '%';
+    $('hb-rd').style.width = pct(rd, total) + '%';
+    $('hb-err').style.width = pct(err, total) + '%';
+    $('health-foot').innerHTML = !total ? 'No links on this page'
+        : checked ? `<strong>${fmt(checked)}</strong> of <strong>${fmt(total)}</strong> checked${err ? ` · <strong>${fmt(err)}</strong> broken` : ''}`
+            : 'Run a check to score this page';
+
+    const typeCounts = { all: total, internal, external };
     document.querySelectorAll('#type-tabs .seg-btn').forEach(btn => {
         const fc = btn.querySelector('.fc');
         if (fc) fc.textContent = fmt(typeCounts[btn.dataset.type] ?? 0);
@@ -642,7 +819,7 @@ function updateStats() {
 function updateCheckAllLabel() {
     if (state.isChecking) return;
     const pending = new Set(typeFilteredLinks().filter(l => !state.checked[l.url]).map(l => l.url)).size;
-    const typeName = state.linkType === 'internal' ? 'Internal' : state.linkType === 'external' ? 'External' : 'All';
+    const typeName = state.linkType === 'internal' ? 'internal' : state.linkType === 'external' ? 'external' : 'links';
     const el = $('check-all-label');
     if (el) el.textContent = pending ? `Check ${typeName} (${fmt(pending)})` : `Re-check ${typeName}`;
 }
@@ -652,12 +829,12 @@ function updateCounters(shownLinks, shownGroups) {
     const filtered = state.filter !== 'all' || state.linkType !== 'all' || state.searchTerms.length > 0;
 
     $filterNote.innerHTML = filtered
-        ? `Showing <strong>${fmt(shownLinks)}</strong> of <strong>${fmt(total)}</strong> links
-           <button class="btn btn-quiet btn-sm" id="btn-reset-filters" style="margin-left:4px">Reset filters</button>`
-        : `<strong>${fmt(total)}</strong> links across <strong>${fmt(state.postCount)}</strong> posts`;
+        ? `Showing <strong>${fmt(shownLinks)}</strong> of <strong>${fmt(total)}</strong>
+           <button class="link-btn" data-reset-filters>Reset</button>`
+        : '';
 
-    $footerInfo.innerHTML = `<strong>${fmt(shownGroups)}</strong> post${shownGroups === 1 ? '' : 's'} in view ·
-        <strong>${fmt(state.totalPosts)}</strong> published posts scanned`;
+    $footerInfo.innerHTML = `<strong>${fmt(shownGroups)}</strong> post${shownGroups === 1 ? '' : 's'} ·
+        <strong>${fmt(shownLinks)}</strong> link${shownLinks === 1 ? '' : 's'} in view`;
 
     $searchCount.textContent = state.searchTerms.length ? `${fmt(shownLinks)} match${shownLinks === 1 ? '' : 'es'}` : '';
     $searchBox.classList.toggle('has-value', !!state.search);
@@ -666,39 +843,38 @@ function updateCounters(shownLinks, shownGroups) {
 /* ═══════════════════════════════════════════════════════════
    Rendering
    ═══════════════════════════════════════════════════════════ */
-const ICON = {
-    refresh: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
-    copy: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
-    check: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
-    pencil: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
-    chevron: `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
-    wp: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`,
-};
-
 function renderTable() {
-    const scrollTop = $tableWrap ? $tableWrap.scrollTop : 0;
+    const scrollTop = $tableWrap.scrollTop;
     const groups = filteredGroups();
+    state.view = groups;
     const shownLinks = groups.reduce((n, g) => n + g.links.length, 0);
 
     if (!groups.length) {
         $tbody.innerHTML = `<tr><td colspan="5">${emptyStateHtml()}</td></tr>`;
+        observeMoreRow();
         updateCounters(0, 0);
         updateBulkBar();
-        syncSelectAll(0);
+        syncSelectAll();
+        updateToggleAllLabel();
+        writeHash();
         return;
     }
 
     const terms = state.searchTerms;
     const parts = [];
+    let rows = 0, truncated = false;
 
     for (const g of groups) {
+        // Only ever stop between groups, so a post is never half-rendered.
+        if (rows >= state.rowLimit) { truncated = true; break; }
+
         const collapsed = state.collapsed.has(g.postId);
-        const { redirects, errors } = groupStats(g.links);
+        const { redirects, errors, pending } = groupStats(g.links);
         const allSel = g.links.every(l => state.selected.has(linkKey(l)));
 
-        const metaBits = [`${plural(g.links.length, 'link')}`];
-        if (redirects) metaBits.push(`<span class="group-redir-count">${plural(redirects, 'redirect')}</span>`);
-        if (errors) metaBits.push(`<span class="group-err-count">${plural(errors, 'error')}</span>`);
+        const metaBits = [`<span>${plural(g.links.length, 'link')}</span>`];
+        if (redirects) metaBits.push(`<span class="gm-pill gm-rd">${plural(redirects, 'redirect')}</span>`);
+        if (errors) metaBits.push(`<span class="gm-pill gm-err">${fmt(errors)} broken</span>`);
 
         const viewUrl = state.siteUrl ? `${state.siteUrl}/?p=${encodeURIComponent(g.postId)}` : '';
         const editUrl = state.siteUrl ? `${state.siteUrl}/wp-admin/post.php?post=${encodeURIComponent(g.postId)}&action=edit` : '';
@@ -707,19 +883,21 @@ function renderTable() {
           <td colspan="5">
             <div class="group-row-inner">
               <button class="group-toggle" data-act="toggle" data-post-id="${escAttr(g.postId)}"
-                      title="${collapsed ? 'Expand' : 'Collapse'} this post" aria-label="Toggle post group">${ICON.chevron}</button>
+                      title="${collapsed ? 'Expand' : 'Collapse'} this post" aria-label="Toggle post group" aria-expanded="${!collapsed}">${ICON.chevron}</button>
               <span class="type-badge ${postTypeBadgeClass(g.type)}">${esc(postTypeLabel(g.type))}</span>
               ${viewUrl
                 ? `<a class="group-title" href="${escAttr(viewUrl)}" target="_blank" rel="noopener" title="${escAttr(g.title)} — open on the site">${hl(g.title, terms)}</a>`
                 : `<span class="group-title" title="${escAttr(g.title)}">${hl(g.title, terms)}</span>`}
               <span class="group-post-id">#${esc(g.postId)}</span>
-              <span class="group-meta">${metaBits.join(' · ')}</span>
+              <span class="group-meta">${metaBits.join('')}</span>
               <span class="group-actions">
-                ${redirects ? `<button class="btn btn-warning btn-sm" data-act="fixgroup" data-post-id="${escAttr(g.postId)}"
-                        title="Replace every redirecting URL in this post with its target">Fix ${redirects}</button>` : ''}
+                ${pending ? `<button class="btn btn-ghost btn-xs" data-act="checkgroup" data-post-id="${escAttr(g.postId)}"
+                        title="Check the ${fmt(pending)} unchecked link(s) in this post">Check ${fmt(pending)}</button>` : ''}
+                ${redirects ? `<button class="btn btn-warning btn-xs" data-act="fixgroup" data-post-id="${escAttr(g.postId)}"
+                        title="Replace every redirecting URL in this post with its target">Fix ${fmt(redirects)}</button>` : ''}
                 ${editUrl ? `<a class="icon-btn" href="${escAttr(editUrl)}" target="_blank" rel="noopener" title="Open in the WordPress editor">${ICON.wp}</a>` : ''}
                 <label class="group-select-all" title="Select every link shown for this post">
-                  <input type="checkbox" class="group-check" data-post-id="${escAttr(g.postId)}" ${allSel ? 'checked' : ''}> All
+                  <input type="checkbox" class="group-check" data-post-id="${escAttr(g.postId)}" ${allSel ? 'checked' : ''}> <span>All</span>
                 </label>
               </span>
             </div>
@@ -733,15 +911,48 @@ function renderTable() {
             const c = state.checked[link.url];
             const sel = state.selected.has(key);
             parts.push(`<tr class="link-row${sel ? ' selected' : ''}${rowStateClass(c)}" data-key="${escAttr(key)}">${linkRowInner(link, c, key, sel)}</tr>`);
+            rows++;
         }
     }
 
+    if (truncated) {
+        const remaining = shownLinks - rows;
+        parts.push(`<tr class="more-row"><td colspan="5">
+            <button class="btn btn-ghost btn-sm" data-act="more">Show ${fmt(Math.min(remaining, ROW_WINDOW))} more</button>
+            <span>&nbsp;· ${fmt(remaining)} links not shown yet</span></td></tr>`);
+    }
+
     $tbody.innerHTML = parts.join('');
-    if ($tableWrap) $tableWrap.scrollTop = scrollTop;
+    $tableWrap.scrollTop = scrollTop;
+    observeMoreRow();
 
     updateCounters(shownLinks, groups.length);
     updateBulkBar();
-    syncSelectAll(shownLinks);
+    syncSelectAll();
+    updateToggleAllLabel();
+    writeHash();
+}
+
+/* Grow the row window automatically as the "Show more" row scrolls into view. */
+const moreObserver = 'IntersectionObserver' in window
+    ? new IntersectionObserver(entries => {
+        if (entries.some(e => e.isIntersecting)) showMoreRows();
+    }, { root: window.matchMedia('(max-width: 768px)').matches ? null : $tableWrap, rootMargin: '400px 0px' })
+    : null;
+
+function observeMoreRow() {
+    if (!moreObserver) return;
+    moreObserver.disconnect();
+    const row = $tbody.querySelector('.more-row');
+    if (row) moreObserver.observe(row);
+}
+function showMoreRows() {
+    state.rowLimit += ROW_WINDOW;
+    renderTable();
+}
+function resetWindow() {
+    state.rowLimit = ROW_WINDOW;
+    $tableWrap.scrollTop = 0;
 }
 
 function rowStateClass(c) {
@@ -753,14 +964,17 @@ function rowStateClass(c) {
 
 function emptyStateHtml() {
     if (!state.links.length) {
-        return `<div class="empty-state"><div class="icon">🔗</div>
-            <p>No links found on this page of posts.</p>
+        return `<div class="empty-state"><div class="es-icon">${ICON.link}</div>
+            <p>No links found on this page of posts</p>
             <div class="sub">Try another page, a larger page size, or more content types.</div></div>`;
     }
-    return `<div class="empty-state"><div class="icon">🔍</div>
-        <p>No links match the current filters.</p>
+    const msg = state.filter === 'error' ? 'No broken links here — nice.'
+        : state.filter === 'redirect' ? 'No redirects in this view.'
+            : 'No links match the current filters';
+    return `<div class="empty-state"><div class="es-icon">${ICON.search}</div>
+        <p>${msg}</p>
         <div class="sub">${state.searchTerms.length ? `Search: “${esc(state.search)}”` : 'Adjust the status or link-type filter.'}</div>
-        <button class="btn btn-ghost btn-sm" id="btn-reset-filters-empty">Reset filters</button></div>`;
+        <button class="btn btn-ghost btn-sm" data-reset-filters>Reset filters</button></div>`;
 }
 
 function linkRowInner(link, c, key, sel) {
@@ -805,44 +1019,151 @@ function linkRowInner(link, c, key, sel) {
       <td>${statusBadge(c)}</td>
       <td>
         <div class="row-actions">
-          ${!c
-            ? `<button class="btn btn-ghost btn-sm" data-act="check" data-url="${escAttr(link.url)}" title="Check this URL now">Check</button>`
-            : `<button class="icon-btn" data-act="check" data-url="${escAttr(link.url)}" title="Re-check this URL">${ICON.refresh}</button>`}
           ${c?.is_redirect && c.redirect_url
-            ? `<button class="btn btn-warning btn-sm" data-act="fix" data-key="${escAttr(key)}" title="Replace this URL with its redirect target">Fix</button>`
+            ? `<button class="btn btn-warning btn-xs" data-act="fix" data-key="${escAttr(key)}" title="Replace this URL with its redirect target">Fix</button>`
             : ''}
+          ${!c
+            ? `<button class="btn btn-ghost btn-xs" data-act="check" data-url="${escAttr(link.url)}" title="Check this URL now">Check</button>`
+            : `<button class="icon-btn" data-act="check" data-url="${escAttr(link.url)}" title="Re-check this URL (checked ${escAttr(timeAgo(c.t || Date.now()))})">${ICON.refresh}</button>`}
           <button class="icon-btn" data-act="edit" data-key="${escAttr(key)}" title="Edit or unlink this link">${ICON.pencil}</button>
         </div>
       </td>`;
 }
 
 function statusBadge(c) {
-    if (!c) return `<span class="sbadge s-pend">Pending</span>`;
+    if (!c) return `<span class="sbadge s-pend">Unchecked</span>`;
     const code = c.status_code;
     if (code === 0) return `<span class="sbadge s-4xx" title="No response — timeout, DNS failure or blocked request">Timeout</span>`;
-    if (code >= 200 && code < 300) return `<span class="sbadge s-200" title="HTTP ${code} — reachable">✓ ${code}</span>`;
-    if (code >= 300 && code < 400) return `<span class="sbadge s-3xx" title="HTTP ${code} — redirects to another URL">⇒ ${code}</span>`;
-    return `<span class="sbadge s-4xx" title="HTTP ${code} — broken or unavailable">✗ ${code}</span>`;
+    if (code >= 200 && code < 300) return `<span class="sbadge s-200" title="HTTP ${code} — reachable">${code} OK</span>`;
+    if (code >= 300 && code < 400) return `<span class="sbadge s-3xx" title="HTTP ${code} — redirects to another URL">${code}</span>`;
+    return `<span class="sbadge s-4xx" title="HTTP ${code} — broken or unavailable">${code}</span>`;
 }
 
 /* ── Collapse / expand ─────────────────────────────────────── */
 function toggleGroup(postId) {
     state.collapsed.has(postId) ? state.collapsed.delete(postId) : state.collapsed.add(postId);
     renderTable();
-    updateToggleAllLabel();
 }
 function toggleAllGroups() {
-    const groups = filteredGroups();
-    const anyOpen = groups.some(g => !state.collapsed.has(g.postId));
-    if (anyOpen) groups.forEach(g => state.collapsed.add(g.postId));
-    else groups.forEach(g => state.collapsed.delete(g.postId));
+    const anyOpen = state.view.some(g => !state.collapsed.has(g.postId));
+    if (anyOpen) state.view.forEach(g => state.collapsed.add(g.postId));
+    else state.view.forEach(g => state.collapsed.delete(g.postId));
     renderTable();
-    updateToggleAllLabel();
 }
 function updateToggleAllLabel() {
-    const groups = filteredGroups();
-    const anyOpen = groups.some(g => !state.collapsed.has(g.postId));
+    const anyOpen = state.view.some(g => !state.collapsed.has(g.postId));
     $('btn-toggle-all').textContent = anyOpen ? 'Collapse all' : 'Expand all';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Confirm dialog — every DB write is previewed here first
+   ═══════════════════════════════════════════════════════════ */
+let confirmResolve = null;
+
+/* changes: [{ post, from, to }] — to === '' means "unlinked". */
+function confirmDialog({ title, message = '', changes = [], okLabel = 'Confirm', tone = 'primary' }) {
+    $('confirm-title').textContent = title;
+    $('confirm-msg').textContent = message;
+
+    const MAX = 60;
+    const list = $('confirm-list');
+    list.innerHTML = changes.slice(0, MAX).map(c => `<li>
+        <div class="cl-post">${esc(c.post)}</div>
+        <div class="cl-from">${esc(c.from)}</div>
+        <div class="cl-to">${c.to ? esc(c.to) : '<em>link removed — anchor text kept</em>'}</div>
+    </li>`).join('') + (changes.length > MAX ? `<li class="cl-more">…and ${fmt(changes.length - MAX)} more</li>` : '');
+    list.hidden = !changes.length;
+
+    $('confirm-db').textContent = `Writes to ${state.dbLabel || 'the database'}`;
+    const ok = $('confirm-ok');
+    ok.textContent = okLabel;
+    ok.className = `btn btn-${tone}`;
+
+    $confirm.classList.add('open');
+    setTimeout(() => ok.focus(), 40);
+    return new Promise(resolve => { confirmResolve = resolve; });
+}
+
+function closeConfirm(result) {
+    if (!confirmResolve) return;
+    $confirm.classList.remove('open');
+    const resolve = confirmResolve;
+    confirmResolve = null;
+    resolve(result);
+}
+
+function postLabel(link) {
+    return `#${link.post_id} · ${trunc(link.post_title || '', 70)}${link.source === 'faq' ? ` · FAQ (${link.meta_key})` : ''}`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Change log (session)
+   ═══════════════════════════════════════════════════════════ */
+function logActivity(entries) {
+    if (!entries.length) return;
+    const t = Date.now();
+    state.activity.unshift(...entries.map(e => ({ ...e, t, db: state.dbLabel })));
+    state.activity = state.activity.slice(0, 1000);
+    ssSetJson(SS.activity, state.activity);
+    renderActivityCount();
+    if (document.body.classList.contains('drawer-open')) renderActivity();
+}
+
+function activityEntry(link, to) {
+    return {
+        action: to ? 'update' : 'unlink',
+        postId: link.post_id,
+        title: link.post_title || '',
+        source: link.source === 'faq' ? `FAQ (${link.meta_key || ''})` : 'Post content',
+        from: link.url,
+        to: to || '',
+    };
+}
+
+function renderActivityCount() {
+    const n = state.activity.length;
+    const el = $('activity-count');
+    el.textContent = fmt(n);
+    el.classList.toggle('has-items', n > 0);
+}
+
+function renderActivity() {
+    const list = $('activity-list');
+    if (!state.activity.length) {
+        list.innerHTML = `<div class="act-empty">No changes yet this session.<br>Edits, fixes and unlinks will be listed here.</div>`;
+        return;
+    }
+    list.innerHTML = state.activity.map(a => `<div class="act-item">
+        <div class="act-head">
+            <span class="sbadge no-dot ${a.action === 'unlink' ? 's-4xx' : 's-200'}">${a.action === 'unlink' ? 'Unlinked' : 'Updated'}</span>
+            <span class="act-title" title="${escAttr(a.title)}">#${esc(a.postId)} · ${esc(a.title)}</span>
+            <span class="act-time" title="${escAttr(new Date(a.t).toLocaleString())}">${esc(timeAgo(a.t))}</span>
+        </div>
+        <div class="act-urls">
+            <div class="cl-from">${esc(a.from)}</div>
+            <div class="cl-to">${a.to ? esc(a.to) : '<em>link removed — anchor text kept</em>'}</div>
+        </div>
+        <div class="act-db">${esc(a.source)} · ${esc(a.db || '')}</div>
+    </div>`).join('');
+}
+
+function openDrawer() {
+    renderActivity();
+    document.body.classList.add('drawer-open');
+    $('activity-drawer').setAttribute('aria-hidden', 'false');
+    $('drawer-close').focus();
+}
+function closeDrawer() {
+    document.body.classList.remove('drawer-open');
+    $('activity-drawer').setAttribute('aria-hidden', 'true');
+}
+
+function exportActivityCsv() {
+    if (!state.activity.length) { showToast('No changes to export', 'info'); return; }
+    downloadCsv('link-changes', [
+        ['Time', 'Site', 'Action', 'Post ID', 'Post Title', 'Source', 'Old URL', 'New URL'],
+        ...state.activity.map(a => [new Date(a.t).toLocaleString(), a.db, a.action, a.postId, a.title, a.source, a.from, a.to]),
+    ]);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -852,18 +1173,19 @@ async function fixGroupRedirects(postId) {
     const group = state.groups.find(g => g.postId === String(postId));
     if (!group) return;
 
-    const updates = group.links
-        .filter(l => state.checked[l.url]?.is_redirect && state.checked[l.url]?.redirect_url)
-        .map(l => ({
-            post_id: parseInt(postId, 10), old_url: l.url,
-            new_url: state.checked[l.url].redirect_url,
-            source: l.source || 'content', meta_key: l.meta_key || null,
-        }));
+    const links = group.links.filter(l => state.checked[l.url]?.is_redirect && state.checked[l.url]?.redirect_url);
+    if (!links.length) { showToast('No redirecting links in this post', 'error'); return; }
 
-    if (!updates.length) { showToast('No redirecting links in this post', 'error'); return; }
-    if (!confirm(`Fix ${updates.length} redirect(s) in "${group.title}"?\n\nEach URL is replaced with its redirect target.`)) return;
+    const ok = await confirmDialog({
+        title: `Fix ${plural(links.length, 'redirect')}`,
+        message: `Each URL in “${group.title}” is replaced with the target it redirects to.`,
+        changes: links.map(l => ({ post: postLabel(l), from: l.url, to: state.checked[l.url].redirect_url })),
+        okLabel: `Fix ${plural(links.length, 'link')}`,
+        tone: 'warning',
+    });
+    if (!ok) return;
 
-    await runBulkUpdate(updates, true);
+    await runBulkUpdate(links.map(l => [l, state.checked[l.url].redirect_url]));
 }
 
 async function fixSingleRedirect(key, btn) {
@@ -872,65 +1194,71 @@ async function fixSingleRedirect(key, btn) {
     const newUrl = state.checked[link.url]?.redirect_url;
     if (!newUrl) { showToast('No redirect target found — check the link first', 'error'); return; }
 
-    const { post_id: postId, url: oldUrl, source = 'content', meta_key: metaKey = null } = link;
-    if (!confirm(`Replace:\n${oldUrl}\n\nWith:\n${newUrl}`)) return;
+    const ok = await confirmDialog({
+        title: 'Fix redirect',
+        message: 'Replace this URL with the target it redirects to?',
+        changes: [{ post: postLabel(link), from: link.url, to: newUrl }],
+        okLabel: 'Replace URL',
+        tone: 'warning',
+    });
+    if (!ok) return;
 
     btn.disabled = true;
     btn.innerHTML = '<span class="spin"></span>';
+    await saveLinkUpdate(link, newUrl);
+}
 
+/* Write one URL change and sync state. Shared by Fix and the edit modal. */
+async function saveLinkUpdate(link, newUrl) {
+    const { post_id: postId, url: oldUrl, source = 'content', meta_key: metaKey = null } = link;
     try {
-        const res = await fetch(`${API}?action=update_link`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ post_id: postId, old_url: oldUrl, new_url: newUrl, source, meta_key: metaKey }),
-        });
-        const data = await res.json();
+        const data = await postJson('update_link', { post_id: postId, old_url: oldUrl, new_url: newUrl, source, meta_key: metaKey });
 
-        if (data.status === 'success' || data.status === 'no_change') {
+        if (data.status === 'success') {
+            logActivity([activityEntry(link, newUrl)]);
             updateLinkInState(postId, oldUrl, newUrl, source, metaKey);
-            showToast(data.status === 'success' ? 'Link updated' : 'No change in DB', data.status === 'success' ? 'success' : 'info');
-            await checkSingleUrl(newUrl);
+            showToast('Link updated', 'success');
+            if (!state.checked[newUrl] || state.checked[newUrl].is_redirect) await checkUrls([newUrl]);
             buildGroups();
             updateStats();
             renderTable();
+            return true;
+        }
+        if (data.status === 'no_change') {
+            showToast('URL not found in ' + (source === 'faq' ? 'the FAQ field' : 'the post content') + ' — reload posts', 'info');
         } else {
             showToast('Error: ' + data.message, 'error');
-            if (btn.isConnected) { btn.disabled = false; btn.textContent = 'Fix'; }
         }
     } catch (e) {
         showToast('Save failed: ' + e.message, 'error');
-        if (btn.isConnected) { btn.disabled = false; btn.textContent = 'Fix'; }
     }
+    renderTable();
+    return false;
 }
 
-async function runBulkUpdate(updates, recheckAfter = true) {
+/* pairs: [[link, newUrl], …] */
+async function runBulkUpdate(pairs) {
+    const updates = pairs.map(([l, to]) => ({
+        post_id: l.post_id, old_url: l.url, new_url: to,
+        source: l.source || 'content', meta_key: l.meta_key || null,
+    }));
     try {
-        const res = await fetch(`${API}?action=bulk_update`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ updates }),
-        });
-        const data = await res.json();
-        showToast(`Updated ${fmt(data.updated)} of ${fmt(data.total)} link(s)`, data.updated ? 'success' : 'info');
+        const data = await postJson('bulk_update', { updates });
+        if (data.status !== 'success') { showToast('Bulk update failed: ' + (data.message || ''), 'error'); return; }
+        showToast(`Updated ${fmt(data.updated)} of ${plural(data.total, 'link')}`, data.updated ? 'success' : 'info');
 
-        if (recheckAfter) {
-            for (const u of updates) {
-                const usrc = u.source || 'content', umeta = u.meta_key || null;
-                if (data.results?.find(r => r.post_id === u.post_id && r.status === 'updated' &&
-                    (r.source || 'content') === usrc && (r.meta_key || null) === umeta)) {
-                    updateLinkInState(u.post_id, u.old_url, u.new_url, usrc, umeta);
-                }
-            }
-            const newUrls = [...new Set(updates.map(u => u.new_url))];
-            showToast(`Re-checking ${plural(newUrls.length, 'URL')}…`, 'info', 2200);
-            await Promise.all(newUrls.map(u => checkSingleUrl(u)));
-        }
+        // The API returns exactly one result per update, in order.
+        const done = pairs.filter((_, i) => data.results?.[i]?.status === 'updated');
+        logActivity(done.map(([l, to]) => activityEntry(l, to)));
+        for (const [l, to] of done) updateLinkInState(l.post_id, l.url, to, l.source || 'content', l.meta_key || null);
+
+        const recheck = [...new Set(done.map(([, to]) => to))].filter(u => !state.checked[u] || state.checked[u].is_redirect);
+        if (recheck.length) await Promise.all(chunk(recheck, CHECK_BATCH).map(checkUrls));
 
         state.selected.clear();
         buildGroups();
         updateStats();
         renderTable();
-        return data;
     } catch (e) {
         showToast('Bulk update failed: ' + e.message, 'error');
     }
@@ -956,43 +1284,41 @@ function updateLinkInState(postId, oldUrl, newUrl, source = 'content', metaKey =
             link.is_internal = isInternalUrl(newUrl);
         }
     }
-    if (state.checked[oldUrl]) {
-        if (!state.checked[newUrl]) state.checked[newUrl] = state.checked[oldUrl];
-        if (!state.links.some(l => l.url === oldUrl)) delete state.checked[oldUrl];
-    }
 }
 
 function removeLinkFromState(postId, url, source = 'content', metaKey = null) {
     state.links = state.links.filter(l => !(String(l.post_id) === String(postId) && l.url === url &&
         (l.source || 'content') === (source || 'content') && (l.meta_key || null) === (metaKey || null)));
-    if (!state.links.some(l => l.url === url)) delete state.checked[url];
     state.selected.delete(`${postId}||${url}||${source || 'content'}||${metaKey || ''}`);
 }
 
 /* ═══════════════════════════════════════════════════════════
    Selection & bulk bar
    ═══════════════════════════════════════════════════════════ */
-function syncSelectAll(shownCount) {
-    const selectedVisible = visibleLinks().filter(l => state.selected.has(linkKey(l))).length;
-    $selectAll.checked = shownCount > 0 && selectedVisible === shownCount;
-    $selectAll.indeterminate = selectedVisible > 0 && selectedVisible < shownCount;
+function syncSelectAll() {
+    const all = visibleLinks();
+    const selectedVisible = all.filter(l => state.selected.has(linkKey(l))).length;
+    $selectAll.checked = all.length > 0 && selectedVisible === all.length;
+    $selectAll.indeterminate = selectedVisible > 0 && selectedVisible < all.length;
+}
+
+function selectedLinks() {
+    return [...state.selected].map(findLinkByKey).filter(Boolean);
 }
 
 function updateBulkBar() {
     const n = state.selected.size;
-    if (!n) { $bulkBar.classList.remove('show'); return; }
+    $bulkBar.classList.toggle('show', n > 0);
+    document.body.classList.toggle('has-bulk', n > 0);
+    if (!n) return;
 
-    $bulkBar.classList.add('show');
-    $bulkCount.innerHTML = `<span class="bulk-pill">${fmt(n)}</span> link${n === 1 ? '' : 's'} selected`;
+    $bulkCount.innerHTML = `<span class="bulk-pill">${fmt(n)}</span> selected`;
 
-    const redirCount = [...state.selected].filter(key => {
-        const link = findLinkByKey(key);
-        return link && state.checked[link.url]?.is_redirect && state.checked[link.url]?.redirect_url;
-    }).length;
-
+    const redirCount = selectedLinks().filter(l => state.checked[l.url]?.is_redirect && state.checked[l.url]?.redirect_url).length;
     const btn = $('btn-bulk-redir');
-    btn.textContent = redirCount ? `⇒ Fix ${redirCount} Redirect${redirCount === 1 ? '' : 's'}` : '⇒ Fix Redirects';
+    btn.textContent = redirCount ? `Fix ${plural(redirCount, 'redirect')}` : 'Fix redirects';
     btn.disabled = redirCount === 0;
+    btn.title = redirCount ? 'Replace each selected redirecting URL with its target' : 'None of the selected links redirect (run a check first)';
 }
 
 function clearSelection() {
@@ -1001,79 +1327,77 @@ function clearSelection() {
 }
 
 async function bulkFixRedirects() {
-    const updates = [];
-    for (const key of state.selected) {
-        const link = findLinkByKey(key);
-        if (!link) continue;
-        const c = state.checked[link.url];
-        if (!c?.is_redirect || !c.redirect_url) continue;
-        updates.push({
-            post_id: link.post_id, old_url: link.url, new_url: c.redirect_url,
-            source: link.source || 'content', meta_key: link.meta_key || null,
-        });
-    }
-    if (!updates.length) { showToast('No redirecting links in the selection (run Check first)', 'error'); return; }
-    if (!confirm(`Fix ${updates.length} redirect URL(s)?\n\nEach one is replaced with its redirect target.`)) return;
+    const links = selectedLinks().filter(l => state.checked[l.url]?.is_redirect && state.checked[l.url]?.redirect_url);
+    if (!links.length) { showToast('No redirecting links in the selection (run a check first)', 'error'); return; }
+
+    const ok = await confirmDialog({
+        title: `Fix ${plural(links.length, 'redirect')}`,
+        message: 'Each selected URL is replaced with the target it redirects to.',
+        changes: links.map(l => ({ post: postLabel(l), from: l.url, to: state.checked[l.url].redirect_url })),
+        okLabel: `Fix ${plural(links.length, 'link')}`,
+        tone: 'warning',
+    });
+    if (!ok) return;
 
     const btn = $('btn-bulk-redir');
     btn.disabled = true;
     btn.innerHTML = '<span class="spin"></span> Fixing…';
-    await runBulkUpdate(updates, true);
-    btn.disabled = false;
-    btn.textContent = '⇒ Fix Redirects';
+    await runBulkUpdate(links.map(l => [l, state.checked[l.url].redirect_url]));
+    updateBulkBar();
 }
 
 async function bulkApplyCustom() {
     const newUrl = normalizeUrl($bulkNewUrl.value);
-    if (!newUrl) { showToast('Type the replacement URL first', 'error'); return; }
-    if (!state.selected.size) { showToast('Select links first', 'error'); return; }
-    if (!confirm(`Replace ${state.selected.size} selected URL(s) with:\n${newUrl}`)) return;
+    if (!newUrl) { showToast('Type the replacement URL first', 'error'); $bulkNewUrl.focus(); return; }
+    if (!/^(https?:\/\/|\/)/i.test(newUrl)) { showToast('The replacement URL should start with https:// or /', 'error'); return; }
+    const links = selectedLinks();
+    if (!links.length) { showToast('Select links first', 'error'); return; }
 
-    const updates = [...state.selected].map(findLinkByKey).filter(Boolean)
-        .map(link => ({
-            post_id: link.post_id, old_url: link.url, new_url: newUrl,
-            source: link.source || 'content', meta_key: link.meta_key || null,
-        }));
+    const ok = await confirmDialog({
+        title: `Replace ${plural(links.length, 'link')}`,
+        message: 'Every selected URL is replaced with the same new URL.',
+        changes: links.map(l => ({ post: postLabel(l), from: l.url, to: newUrl })),
+        okLabel: `Replace ${plural(links.length, 'link')}`,
+        tone: 'success',
+    });
+    if (!ok) return;
 
     const btn = $('btn-bulk-custom');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spin"></span> Applying…';
-    await runBulkUpdate(updates, true);
+    btn.innerHTML = '<span class="spin"></span>';
+    await runBulkUpdate(links.map(l => [l, newUrl]));
     $bulkNewUrl.value = '';
     btn.disabled = false;
-    btn.textContent = 'Apply';
+    btn.textContent = 'Replace';
 }
 
 async function bulkRemoveLinks() {
-    if (!state.selected.size) { showToast('Select links first', 'error'); return; }
+    const links = selectedLinks();
+    if (!links.length) { showToast('Select links first', 'error'); return; }
 
-    const items = [...state.selected].map(findLinkByKey).filter(Boolean)
-        .map(link => ({
-            post_id: link.post_id, url: link.url,
-            source: link.source || 'content', meta_key: link.meta_key || null,
-        }));
-    if (!items.length) { showToast('Nothing to unlink', 'error'); return; }
-    if (!confirm(`Unlink ${items.length} selected link(s)?\n\nThe visible text stays, the href is removed.`)) return;
+    const ok = await confirmDialog({
+        title: `Unlink ${plural(links.length, 'link')}`,
+        message: 'The <a> tags are removed. The visible anchor text stays in the post as plain text.',
+        changes: links.map(l => ({ post: postLabel(l), from: l.url, to: '' })),
+        okLabel: `Unlink ${plural(links.length, 'link')}`,
+        tone: 'danger',
+    });
+    if (!ok) return;
 
     const btn = $('btn-bulk-remove');
     btn.disabled = true;
     btn.innerHTML = '<span class="spin"></span> Unlinking…';
 
+    const items = links.map(l => ({ post_id: l.post_id, url: l.url, source: l.source || 'content', meta_key: l.meta_key || null }));
     try {
-        const res = await fetch(`${API}?action=bulk_remove`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items }),
-        });
-        const data = await res.json();
-        showToast(`Unlinked ${fmt(data.removed)} of ${fmt(data.total)} link(s)`, data.removed ? 'success' : 'info');
+        const data = await postJson('bulk_remove', { items });
+        if (data.status !== 'success') throw new Error(data.message || 'unknown error');
+        showToast(`Unlinked ${fmt(data.removed)} of ${plural(data.total, 'link')}`, data.removed ? 'success' : 'info');
 
-        for (const it of items) {
-            const removed = data.results?.find(r => r.post_id === it.post_id && r.url === it.url &&
-                (r.source || 'content') === (it.source || 'content') && (r.meta_key || null) === (it.meta_key || null) &&
-                r.status === 'removed');
-            if (removed) removeLinkFromState(it.post_id, it.url, it.source, it.meta_key);
-        }
+        // The API returns exactly one result per item, in order.
+        const done = links.filter((_, i) => data.results?.[i]?.status === 'removed');
+        logActivity(done.map(l => activityEntry(l, '')));
+        for (const l of done) removeLinkFromState(l.post_id, l.url, l.source || 'content', l.meta_key || null);
 
         state.selected.clear();
         buildGroups();
@@ -1083,7 +1407,7 @@ async function bulkRemoveLinks() {
         showToast('Bulk unlink failed: ' + e.message, 'error');
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '✕ Unlink';
+        btn.textContent = 'Unlink';
     }
 }
 
@@ -1101,9 +1425,9 @@ function renderPagination() {
 
     const btn = (label, page, opts = {}) =>
         `<button class="page-btn${opts.active ? ' active' : ''}" data-page="${page}" ${opts.disabled ? 'disabled' : ''}
-                 ${opts.title ? `title="${escAttr(opts.title)}"` : ''}>${label}</button>`;
+                 ${opts.active ? 'aria-current="page"' : ''} ${opts.title ? `title="${escAttr(opts.title)}"` : ''}>${label}</button>`;
 
-    let html = btn('‹', current - 1, { disabled: current === 1, title: 'Previous page' });
+    let html = btn('‹', current - 1, { disabled: current === 1, title: 'Previous page (←)' });
     const s = Math.max(1, current - 2), e = Math.min(total, current + 2);
     if (s > 1) {
         html += btn('1', 1);
@@ -1114,16 +1438,16 @@ function renderPagination() {
         if (e < total - 1) html += `<span class="page-gap">…</span>`;
         html += btn(String(total), total);
     }
-    html += btn('›', current + 1, { disabled: current === total, title: 'Next page' });
+    html += btn('›', current + 1, { disabled: current === total, title: 'Next page (→)' });
     $pagination.innerHTML = html;
 }
 
 function changePage(p) {
     p = Math.min(Math.max(1, p), state.totalPages || p);
-    if (p === state.page) return;
+    if (p === state.page) { $inpPage.value = p; return; }
     $inpPage.value = p;
+    $tableWrap.scrollTop = 0;
     loadLinks();
-    if ($tableWrap) $tableWrap.scrollTop = 0;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1147,7 +1471,7 @@ function openEditModal(key) {
 
     const bits = [
         `<span class="type-badge ${postTypeBadgeClass(modalLink.post_type)}">${esc(postTypeLabel(modalLink.post_type))}</span>`,
-        `<span class="sbadge s-pend" title="${escAttr(modalLink.post_title || '')}">${esc(trunc(modalLink.post_title || '', 46))}</span>`,
+        `<span class="sbadge s-ext" title="${escAttr(modalLink.post_title || '')}">${esc(trunc(modalLink.post_title || '', 50))}</span>`,
         modalLink.source === 'faq'
             ? `<span class="sbadge s-faq" title="Stored in postmeta key ${escAttr(modalLink.meta_key || '')}">FAQ · ${esc(modalLink.meta_key || '')}</span>`
             : `<span class="sbadge s-ext">Post content</span>`,
@@ -1157,12 +1481,14 @@ function openEditModal(key) {
     ].filter(Boolean);
     $modalMeta.innerHTML = bits.join('');
 
+    const anchor = (modalLink.anchor_text || '').trim();
+    $modalAnchor.innerHTML = `Anchor text: <strong>${esc(anchor || '(no text)')}</strong>`;
+
     const target = c?.is_redirect ? c.redirect_url : '';
     $modalUseRedirect.hidden = !target;
     $modalUseRedirect.dataset.url = target || '';
 
     updateModalRemoveMode();
-    updateModalHint();
     $modal.classList.add('open');
     setTimeout(() => $modalNewUrl.focus(), 60);
 }
@@ -1190,7 +1516,7 @@ function updateModalHint() {
         $modalHint.className = 'modal-hint';
         $modalHint.textContent = modalLink?.occurrence_count > 1
             ? `This URL appears ${modalLink.occurrence_count}× in the post — all occurrences are updated together.`
-            : 'Paste or edit the full URL, including https://';
+            : 'Paste or type the full URL, including https://';
         return;
     }
     if (v === $modalOldUrl.value.trim()) {
@@ -1204,16 +1530,17 @@ function updateModalHint() {
         return;
     }
     $modalHint.className = 'modal-hint good';
-    $modalHint.textContent = isInternalUrl(v) ? 'Internal link on this site.' : 'External link — points to another domain.';
+    $modalHint.textContent = isInternalUrl(v) ? '✓ Internal link on this site.' : '✓ External link — points to another domain.';
 }
 
 async function saveModal() {
     if (!modalLink) { showToast('Link not found — reload posts', 'error'); return; }
-    const { post_id: postId, source = 'content', meta_key: metaKey = null } = modalLink;
-    const oldUrl = $modalOldUrl.value.trim();
+    const link = modalLink;
+    const { post_id: postId, source = 'content', meta_key: metaKey = null } = link;
+    const oldUrl = link.url;
     const removing = $modalRemoveLink.checked;
     const newUrl = normalizeUrl($modalNewUrl.value);
-    if (!removing && !newUrl) { showToast('Enter the new URL', 'error'); return; }
+    if (!removing && !newUrl) { showToast('Enter the new URL', 'error'); $modalNewUrl.focus(); return; }
     if (!removing && newUrl === oldUrl) { showToast('New URL is the same as the current one', 'info'); return; }
 
     const btn = $('modal-save-btn');
@@ -1221,37 +1548,24 @@ async function saveModal() {
     btn.innerHTML = `<span class="spin"></span> ${removing ? 'Unlinking…' : 'Saving…'}`;
 
     try {
-        const res = await fetch(`${API}?action=${removing ? 'remove_link' : 'update_link'}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(removing
-                ? { post_id: postId, url: oldUrl, source, meta_key: metaKey }
-                : { post_id: postId, old_url: oldUrl, new_url: newUrl, source, meta_key: metaKey }),
-        });
-        const data = await res.json();
-
-        if (data.status === 'success' && removing) {
+        if (removing) {
+            const data = await postJson('remove_link', { post_id: postId, url: oldUrl, source, meta_key: metaKey });
+            if (data.status === 'success') {
+                closeModal();
+                logActivity([activityEntry(link, '')]);
+                removeLinkFromState(postId, oldUrl, source, metaKey);
+                showToast('Link removed — now plain text', 'success');
+                buildGroups();
+                updateStats();
+                renderTable();
+            } else if (data.status === 'no_change') {
+                showToast('URL not found in ' + (source === 'faq' ? 'the FAQ field' : 'the post content'), 'info');
+            } else {
+                showToast('Error: ' + data.message, 'error');
+            }
+        } else if (await saveLinkUpdate(link, newUrl)) {
             closeModal();
-            removeLinkFromState(postId, oldUrl, source, metaKey);
-            showToast('Link removed — now plain text', 'success');
-            buildGroups();
-            updateStats();
-            renderTable();
-        } else if (data.status === 'success') {
-            closeModal();
-            updateLinkInState(postId, oldUrl, newUrl, source, metaKey);
-            showToast('Saved — re-checking the new URL…', 'success');
-            await checkSingleUrl(newUrl);
-            buildGroups();
-            updateStats();
-            renderTable();
-        } else if (data.status === 'no_change') {
-            showToast('URL not found in ' + (source === 'faq' ? 'the FAQ field' : 'the post content'), 'info');
-        } else {
-            showToast('Error: ' + data.message, 'error');
         }
-    } catch (e) {
-        showToast('Save failed: ' + e.message, 'error');
     } finally {
         btn.disabled = false;
         updateModalRemoveMode();
@@ -1261,12 +1575,22 @@ async function saveModal() {
 /* ═══════════════════════════════════════════════════════════
    Export
    ═══════════════════════════════════════════════════════════ */
-function exportCsv() {
-    const groups = filteredGroups();
-    if (!groups.length) { showToast('Nothing to export in this view', 'error'); return; }
+function downloadCsv(name, rows) {
+    const csv = '﻿' + rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })),
+        download: `${name}-${stamp}.csv`,
+    });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    showToast(`Exported ${plural(rows.length - 1, 'row')}`, 'success');
+}
 
+function exportCsv() {
+    if (!state.view.length) { showToast('Nothing to export in this view', 'error'); return; }
     const rows = [['Post ID', 'Post Type', 'Post Title', 'Source', 'Link Type', 'Anchor Text', 'URL', 'Status', 'Redirect Target', 'Occurrences']];
-    for (const g of groups) {
+    for (const g of state.view) {
         for (const link of g.links) {
             const c = state.checked[link.url];
             rows.push([
@@ -1274,20 +1598,12 @@ function exportCsv() {
                 link.source === 'faq' ? `FAQ (${link.meta_key || ''})` : 'Post content',
                 link.is_internal ? 'Internal' : 'External',
                 link.anchor_text, link.url,
-                c ? c.status_code : 'pending', c?.redirect_url || '',
+                c ? c.status_code : 'unchecked', c?.redirect_url || '',
                 link.occurrence_count || 1,
             ]);
         }
     }
-    const csv = '\uFEFF' + rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-    const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })),
-        download: `link-checker-${stamp}.csv`,
-    });
-    a.click();
-    URL.revokeObjectURL(a.href);
-    showToast(`Exported ${plural(rows.length - 1, 'row')}`, 'success');
+    downloadCsv('link-checker', rows);
 }
 
 async function copyVisibleUrls() {
@@ -1300,38 +1616,96 @@ async function copyVisibleUrls() {
 /* ═══════════════════════════════════════════════════════════
    Filters & view controls
    ═══════════════════════════════════════════════════════════ */
+function syncFilterUi() {
+    document.querySelectorAll('#stats-row .stat-card').forEach(c => c.classList.toggle('active', c.dataset.filter === state.filter));
+    document.querySelectorAll('#type-tabs .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.type === state.linkType));
+}
 function setStatusFilter(f) {
     state.filter = f;
-    document.querySelectorAll('#stats-row .stat-card').forEach(c => c.classList.toggle('active', c.dataset.filter === f));
+    syncFilterUi();
+    resetWindow();
     renderTable();
-    updateToggleAllLabel();
 }
 function setLinkType(t) {
     state.linkType = t;
-    document.querySelectorAll('#type-tabs .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.type === t));
+    syncFilterUi();
+    resetWindow();
     renderTable();
     updateCheckAllLabel();
-    updateToggleAllLabel();
 }
 function resetFilters() {
     state.search = '';
     state.searchTerms = [];
     $search.value = '';
-    setLinkType('all');
-    setStatusFilter('all');
+    state.filter = 'all';
+    state.linkType = 'all';
+    syncFilterUi();
+    resetWindow();
+    renderTable();
+    updateCheckAllLabel();
 }
 function applySearch(value) {
     state.search = value;
     state.searchTerms = value.toLowerCase().split(/\s+/).filter(Boolean);
+    resetWindow();
     renderTable();
     updateCheckAllLabel();
 }
 function setDensity(compact) {
     document.body.classList.toggle('density-compact', compact);
-    const btn = $('btn-density');
-    btn.textContent = compact ? 'Comfortable' : 'Compact';
-    btn.classList.toggle('btn-on', compact);
+    document.querySelector('[data-menu="compact"]').setAttribute('aria-checked', String(compact));
     lsSet(LS.density, compact ? 'compact' : 'comfortable');
+}
+
+/* Theme: an explicit choice is stored; otherwise follow the OS. */
+function effectiveTheme() {
+    return document.documentElement.dataset.theme
+        || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
+function updateThemeButton() {
+    const dark = effectiveTheme() === 'dark';
+    const btn = $('btn-theme');
+    btn.innerHTML = dark ? ICON.sun : ICON.moon;
+    btn.title = dark ? 'Switch to light theme' : 'Switch to dark theme';
+}
+function toggleTheme() {
+    const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    lsSet(LS.theme, next);
+    updateThemeButton();
+}
+
+function toggleMenu(open = !$menu.classList.contains('open')) {
+    $menu.classList.toggle('open', open);
+    $('btn-menu').setAttribute('aria-expanded', String(open));
+    if (open) $menu.querySelector('.menu-item')?.focus();
+}
+
+/* Page + filters live in the URL hash, so a refresh (or a shared link)
+   lands on the same view. */
+function writeHash() {
+    const p = new URLSearchParams();
+    if (state.page > 1) p.set('page', state.page);
+    if (state.filter !== 'all') p.set('status', state.filter);
+    if (state.linkType !== 'all') p.set('type', state.linkType);
+    if (state.search) p.set('q', state.search);
+    const h = p.toString();
+    const target = h ? '#' + h : location.pathname + location.search;
+    if (('#' + h) !== location.hash && (h || location.hash)) history.replaceState(null, '', target);
+}
+function readHash() {
+    const p = new URLSearchParams(location.hash.slice(1));
+    const page = parseInt(p.get('page'), 10);
+    if (page > 0) $inpPage.value = page;
+    if (['ok', 'redirect', 'error', 'pending', 'duplicate'].includes(p.get('status'))) state.filter = p.get('status');
+    if (['internal', 'external'].includes(p.get('type'))) state.linkType = p.get('type');
+    const q = p.get('q');
+    if (q) {
+        $search.value = q;
+        state.search = q;
+        state.searchTerms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    }
+    syncFilterUi();
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1339,7 +1713,21 @@ function setDensity(compact) {
    ═══════════════════════════════════════════════════════════ */
 function bindEvents() {
 
-    /* Toolbar */
+    /* Header */
+    $('btn-theme').addEventListener('click', toggleTheme);
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', updateThemeButton);
+    $('btn-activity').addEventListener('click', openDrawer);
+    $('drawer-close').addEventListener('click', closeDrawer);
+    $('drawer-scrim').addEventListener('click', closeDrawer);
+    $('btn-activity-csv').addEventListener('click', exportActivityCsv);
+    $('btn-activity-clear').addEventListener('click', () => {
+        state.activity = [];
+        ssSetJson(SS.activity, []);
+        renderActivityCount();
+        renderActivity();
+    });
+
+    /* Post type picker */
     $ptTrigger.addEventListener('click', togglePostTypePanel);
     $('btn-pt-all').addEventListener('click', () => setDraftPostTypes(true));
     $('btn-pt-none').addEventListener('click', () => setDraftPostTypes(false));
@@ -1350,17 +1738,21 @@ function bindEvents() {
     });
     document.addEventListener('click', e => {
         if ($ptSelect.classList.contains('open') && !$ptSelect.contains(e.target)) closePostTypePanel();
+        if ($menu.classList.contains('open') && !$menu.contains(e.target)) toggleMenu(false);
     });
 
+    /* Scan bar */
     $('btn-load').addEventListener('click', () => loadLinks());
     $('btn-check-all').addEventListener('click', () => checkAllLinks());
     $('btn-cancel-check').addEventListener('click', () => {
         state.cancelCheck = true;
         $('btn-cancel-check').disabled = true;
-        setTimeout(() => { $('btn-cancel-check').disabled = false; }, 1200);
     });
-    $('btn-csv').addEventListener('click', exportCsv);
-    $('btn-copy-urls').addEventListener('click', copyVisibleUrls);
+    $('chk-autocheck').addEventListener('change', e => {
+        lsSet(LS.autoCheck, e.target.checked ? '1' : '0');
+        showToast(e.target.checked ? 'New links will be checked automatically after each load' : 'Auto-check off', 'info', 2400);
+        if (e.target.checked) checkAllLinks({ recheckIfDone: false });
+    });
 
     /* Search */
     let searchTimer = null;
@@ -1368,7 +1760,7 @@ function bindEvents() {
         const v = e.target.value;
         $searchBox.classList.toggle('has-value', !!v);
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => applySearch(v), 130);
+        searchTimer = setTimeout(() => applySearch(v), 140);
     });
     $('btn-search-clear').addEventListener('click', () => {
         $search.value = '';
@@ -1378,36 +1770,51 @@ function bindEvents() {
     $searchScope.addEventListener('change', e => {
         state.searchScope = e.target.value;
         lsSet(LS.scope, e.target.value);
+        resetWindow();
         renderTable();
         updateCheckAllLabel();
-    });
-
-    /* Auto-check preference */
-    $('chk-autocheck').addEventListener('change', e => {
-        lsSet(LS.autoCheck, e.target.checked ? '1' : '0');
-        showToast(e.target.checked ? 'Links will be checked automatically after loading' : 'Auto-check off', 'info', 2400);
     });
 
     /* Status filter cards */
     $('stats-row').addEventListener('click', e => {
         const card = e.target.closest('.stat-card');
-        if (card) setStatusFilter(card.dataset.filter);
+        if (!card) return;
+        // Clicking the active card again goes back to "all".
+        setStatusFilter(card.dataset.filter === state.filter && state.filter !== 'all' ? 'all' : card.dataset.filter);
     });
 
-    /* Link type segments + reset-filters button */
-    document.querySelector('.viewbar').addEventListener('click', e => {
-        const seg = e.target.closest('#type-tabs .seg-btn');
-        if (seg) { setLinkType(seg.dataset.type); return; }
-        if (e.target.closest('#btn-reset-filters')) resetFilters();
+    /* Link type segments */
+    $('type-tabs').addEventListener('click', e => {
+        const seg = e.target.closest('.seg-btn');
+        if (seg) setLinkType(seg.dataset.type);
+    });
+
+    /* Any "reset filters" button, wherever it's rendered */
+    document.addEventListener('click', e => {
+        if (e.target.closest('[data-reset-filters]')) resetFilters();
     });
 
     $('sel-sort').addEventListener('change', e => {
         state.sort = e.target.value;
         lsSet(LS.sort, e.target.value);
+        resetWindow();
         renderTable();
     });
     $('btn-toggle-all').addEventListener('click', toggleAllGroups);
-    $('btn-density').addEventListener('click', () => setDensity(!document.body.classList.contains('density-compact')));
+
+    /* ⋯ menu */
+    $('btn-menu').addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
+    $menu.querySelector('.menu-panel').addEventListener('click', e => {
+        const item = e.target.closest('[data-menu]');
+        if (!item) return;
+        toggleMenu(false);
+        switch (item.dataset.menu) {
+            case 'compact': setDensity(!document.body.classList.contains('density-compact')); break;
+            case 'copy': copyVisibleUrls(); break;
+            case 'csv': exportCsv(); break;
+            case 'clear': forgetCheckResults(); break;
+        }
+    });
 
     /* Bulk bar */
     $('btn-bulk-redir').addEventListener('click', bulkFixRedirects);
@@ -1432,10 +1839,12 @@ function bindEvents() {
             return;
         }
         if (act === 'check') { checkRowLink(el.dataset.url, el); return; }
+        if (act === 'checkgroup') { checkGroup(el.dataset.postId, el); return; }
         if (act === 'fix') { fixSingleRedirect(el.dataset.key, el); return; }
         if (act === 'edit') { openEditModal(el.dataset.key); return; }
         if (act === 'toggle') { toggleGroup(el.dataset.postId); return; }
         if (act === 'fixgroup') { fixGroupRedirects(el.dataset.postId); return; }
+        if (act === 'more') { showMoreRows(); return; }
     });
 
     /* Table — checkbox changes */
@@ -1446,11 +1855,11 @@ function bindEvents() {
             t.checked ? state.selected.add(key) : state.selected.delete(key);
             t.closest('tr').classList.toggle('selected', t.checked);
             updateBulkBar();
-            syncSelectAll(visibleLinks().length);
+            syncSelectAll();
             return;
         }
         if (t.classList.contains('group-check')) {
-            const g = filteredGroups().find(x => x.postId === t.dataset.postId);
+            const g = state.view.find(x => x.postId === t.dataset.postId);
             if (!g) return;
             g.links.forEach(l => {
                 const k = linkKey(l);
@@ -1458,11 +1867,6 @@ function bindEvents() {
             });
             renderTable();
         }
-    });
-
-    /* Reset-filters button inside the empty state */
-    $tbody.addEventListener('click', e => {
-        if (e.target.closest('#btn-reset-filters-empty')) resetFilters();
     });
 
     /* Select all visible */
@@ -1489,15 +1893,14 @@ function bindEvents() {
         loadLinks();
     });
 
-    /* Modal */
+    /* Edit modal */
     $('modal-close').addEventListener('click', closeModal);
     $('modal-cancel-btn').addEventListener('click', closeModal);
     $('modal-save-btn').addEventListener('click', saveModal);
     $modalRemoveLink.addEventListener('change', updateModalRemoveMode);
     $modalNewUrl.addEventListener('input', updateModalHint);
     $modalNewUrl.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveModal(); }
-        else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveModal(); }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveModal(); }
     });
     $('btn-modal-copy-old').addEventListener('click', async () => {
         const ok = await copyText($modalOldUrl.value);
@@ -1515,6 +1918,12 @@ function bindEvents() {
     });
     $modal.addEventListener('click', e => { if (e.target === $modal) closeModal(); });
 
+    /* Confirm modal */
+    $confirm.addEventListener('click', e => {
+        if (e.target === $confirm || e.target.closest('[data-confirm="cancel"]')) closeConfirm(false);
+    });
+    $('confirm-ok').addEventListener('click', () => closeConfirm(true));
+
     /* Help modal */
     $('btn-help').addEventListener('click', () => $helpModal.classList.add('open'));
     $('help-close').addEventListener('click', () => $helpModal.classList.remove('open'));
@@ -1526,16 +1935,23 @@ function bindEvents() {
 }
 
 function onGlobalKey(e) {
+    if ($confirm.classList.contains('open')) {
+        if (e.key === 'Escape') { e.preventDefault(); closeConfirm(false); }
+        return;
+    }
     const modalOpen = $modal.classList.contains('open') || $helpModal.classList.contains('open');
+    const drawerOpen = document.body.classList.contains('drawer-open');
 
     if (e.key === 'Escape') {
         if (modalOpen) { closeModal(); $helpModal.classList.remove('open'); return; }
+        if (drawerOpen) { closeDrawer(); return; }
+        if ($menu.classList.contains('open')) { toggleMenu(false); $('btn-menu').focus(); return; }
         if ($ptSelect.classList.contains('open')) { closePostTypePanel(); return; }
-        if (state.search) { $search.value = ''; applySearch(''); return; }
+        if (state.search) { $search.value = ''; applySearch(''); $search.blur(); return; }
         if (state.selected.size) clearSelection();
         return;
     }
-    if (modalOpen) return;
+    if (modalOpen || drawerOpen) return;
 
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1549,6 +1965,7 @@ function onGlobalKey(e) {
         case 'r': e.preventDefault(); loadLinks(); break;
         case 'e': e.preventDefault(); toggleAllGroups(); break;
         case 'd': e.preventDefault(); setDensity(!document.body.classList.contains('density-compact')); break;
+        case 'l': e.preventDefault(); openDrawer(); break;
         case 'arrowleft': if (state.page > 1) changePage(state.page - 1); break;
         case 'arrowright': if (state.page < state.totalPages) changePage(state.page + 1); break;
         case '1': setStatusFilter('all'); break;
@@ -1563,14 +1980,20 @@ function onGlobalKey(e) {
 /* ═══════════════════════════════════════════════════════════
    Misc helpers
    ═══════════════════════════════════════════════════════════ */
-function setTableLoading(msg) {
-    $tbody.innerHTML = `<tr><td colspan="5"><div class="skeleton-cell"><span class="spin spin-dark"></span>${esc(msg)}</div></td></tr>`;
+function setTableLoading() {
+    const widths = [[62, 88], [48, 72], [70, 94], [40, 66], [56, 80], [66, 90], [44, 70], [58, 84]];
+    $tbody.innerHTML = widths.map(([a, u]) => `<tr class="skel-row">
+        <td><span class="skel" style="width:14px;height:14px;border-radius:4px"></span></td>
+        <td class="hide-mob"><span class="skel" style="width:${a}%"></span></td>
+        <td><span class="skel" style="width:${u}%"></span></td>
+        <td><span class="skel" style="width:56px"></span></td>
+        <td><span class="skel" style="width:72px"></span></td></tr>`).join('');
 }
 function setTableEmpty(msg, sub) {
-    $tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="icon">⚠️</div>
-        <p>${esc(msg)}</p>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div></td></tr>`;
+    $tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state is-error"><div class="es-icon">${ICON.alert}</div>
+        <p>${esc(msg)}</p>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="loadLinks()">Try again</button></div></td></tr>`;
 }
-function trunc(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
 
 /* ═══════════════════════════════════════════════════════════
    Init
@@ -1579,10 +2002,10 @@ function restorePrefs() {
     const perPage = lsGet(LS.perPage, '50');
     if ([...$inpPerPage.options].some(o => o.value === perPage)) $inpPerPage.value = perPage;
 
-    const autoCheck = lsGet(LS.autoCheck, '1') === '1';
-    $('chk-autocheck').checked = autoCheck;
+    $('chk-autocheck').checked = lsGet(LS.autoCheck, '1') === '1';
 
     setDensity(lsGet(LS.density, 'comfortable') === 'compact');
+    updateThemeButton();
 
     const sort = lsGet(LS.sort, 'id-asc');
     if ([...$('sel-sort').options].some(o => o.value === sort)) {
@@ -1595,15 +2018,19 @@ function restorePrefs() {
         $searchScope.value = scope;
         state.searchScope = scope;
     }
+
+    state.activity = ssGetJson(SS.activity, []);
+    renderActivityCount();
 }
 
 (async function init() {
+    setTableLoading();
     restorePrefs();
+    readHash();
     bindEvents();
     bindDatabaseSwitcher();
-    await loadDatabaseSwitcher();
-    await loadPostTypes();
+    // Independent lookups — fetch them side by side.
+    await Promise.all([loadDatabaseSwitcher(), loadPostTypes()]);
+    loadCheckedCache();
     await loadLinks();
-    updateToggleAllLabel();
-    if ($('chk-autocheck').checked) checkAllLinks();
 })();

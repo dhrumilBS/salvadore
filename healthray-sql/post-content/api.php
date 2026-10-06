@@ -4,6 +4,12 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
 header('Access-Control-Allow-Headers: Content-Type');
 
+// get_links payloads for big pages run to megabytes of JSON — compress them
+// whenever the browser accepts it (ob_gzhandler checks Accept-Encoding).
+if (!ini_get('zlib.output_compression') && extension_loaded('zlib')) {
+    ob_start('ob_gzhandler');
+}
+
 /*
  * Which site's database this request should use - its own "pc_db" cookie,
  * deliberately separate from the "db" cookie other tools under
@@ -289,7 +295,91 @@ function save_link_source($conn, $postId, $source, $metaKey, $newContent)
     return $affected;
 }
 
-// ─── ACTION: CHECK LINK STATUS ────────────────────────────────────────────────
+// ─── LINK CHECKING ────────────────────────────────────────────────────────────
+// One curl handle per URL. HEAD by default; GET is the fallback for servers
+// that reject HEAD (405/501) — it asks for a single byte via Range.
+function link_check_handle($url, $method)
+{
+    $ch   = curl_init($url);
+    $opts = [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => false,   // Don't follow - we want the raw 3xx
+        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_CONNECTTIMEOUT => 6,
+        CURLOPT_USERAGENT      => 'Mozilla/5.0 (compatible; LinkChecker/1.0)',
+        CURLOPT_SSL_VERIFYPEER => false,
+        // Hrefs come from post content — never let one reach file://, gopher:// etc.
+        CURLOPT_PROTOCOLS      => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+    ];
+    if ($method === 'HEAD') {
+        $opts[CURLOPT_NOBODY] = true;
+    } else {
+        $opts[CURLOPT_HTTPGET] = true;
+        $opts[CURLOPT_RANGE]   = '0-0';
+    }
+    curl_setopt_array($ch, $opts);
+    return $ch;
+}
+
+function link_check_result($url, $ch)
+{
+    $statusCode  = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $redirectUrl = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+
+    // If redirect URL is relative, resolve it against the source URL's origin
+    if ($redirectUrl && !preg_match('/^https?:\/\//i', $redirectUrl)) {
+        $parsed      = parse_url($url);
+        $redirectUrl = ($parsed['scheme'] ?? 'https') . '://' . ($parsed['host'] ?? '')
+            . (isset($parsed['port']) ? ':' . $parsed['port'] : '') . $redirectUrl;
+    }
+
+    return [
+        'url'          => $url,
+        'status_code'  => $statusCode,
+        'is_redirect'  => ($statusCode >= 300 && $statusCode < 400),
+        'redirect_url' => $redirectUrl ?: null,
+    ];
+}
+
+// Check many URLs in parallel (curl_multi) — returns [url => result].
+function check_urls(array $urls)
+{
+    $results = [];
+    $pending = array_fill_keys($urls, 'HEAD');
+
+    while ($pending) {
+        $mh      = curl_multi_init();
+        $handles = [];
+        foreach ($pending as $url => $method) {
+            $ch = link_check_handle((string) $url, $method);
+            curl_multi_add_handle($mh, $ch);
+            $handles[$url] = [$ch, $method];
+        }
+
+        do {
+            $status = curl_multi_exec($mh, $running);
+            if ($running && curl_multi_select($mh, 1.0) === -1) {
+                usleep(10000);
+            }
+        } while ($running && $status === CURLM_OK);
+
+        $pending = [];
+        foreach ($handles as $url => [$ch, $method]) {
+            $result = link_check_result((string) $url, $ch);
+            curl_multi_remove_handle($mh, $ch);
+            if ($method === 'HEAD' && in_array($result['status_code'], [405, 501], true)) {
+                $pending[$url] = 'GET';
+                continue;
+            }
+            $results[(string) $url] = $result;
+        }
+        curl_multi_close($mh);
+    }
+
+    return $results;
+}
+
+// ─── ACTION: CHECK LINK STATUS (single URL) ───────────────────────────────────
 if ($action === 'check_status') {
     $url = trim($_GET['url'] ?? '');
 
@@ -298,32 +388,29 @@ if ($action === 'check_status') {
         exit;
     }
 
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => false,   // Don't follow - we want the raw 3xx
-        CURLOPT_NOBODY         => true,    // HEAD request
-        CURLOPT_TIMEOUT        => 10,
-        CURLOPT_USERAGENT      => 'Mozilla/5.0 (compatible; LinkChecker/1.0)',
-        CURLOPT_SSL_VERIFYPEER => false,
-    ]);
+    echo json_encode(check_urls([$url])[$url], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
 
-    curl_exec($ch);
-    $statusCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $redirectUrl = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
-    curl_close($ch);
+// ─── ACTION: CHECK MANY URLS AT ONCE ──────────────────────────────────────────
+if ($action === 'check_batch' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $body = json_decode(file_get_contents('php://input'), true);
+    $urls = array_values(array_unique(array_filter(
+        array_map(fn($u) => trim((string) $u), (array) ($body['urls'] ?? [])),
+        'strlen'
+    )));
 
-    // If redirect URL is relative, resolve it
-    if ($redirectUrl && !preg_match('/^https?:\/\//', $redirectUrl)) {
-        $parsed      = parse_url($url);
-        $redirectUrl = $parsed['scheme'] . '://' . $parsed['host'] . $redirectUrl;
+    if (!$urls) {
+        echo json_encode(['status' => 'error', 'message' => 'No URLs provided']);
+        exit;
     }
 
+    // Keep each request bounded — the UI sends small batches anyway.
+    $urls = array_slice($urls, 0, 25);
+
     echo json_encode([
-        'url'          => $url,
-        'status_code'  => $statusCode,
-        'is_redirect'  => ($statusCode >= 300 && $statusCode < 400),
-        'redirect_url' => $redirectUrl ?: null,
+        'status'  => 'success',
+        'results' => check_urls($urls),
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
