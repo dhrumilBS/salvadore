@@ -1,5 +1,5 @@
-# Security baseline for everything under /salvadore (applies to all subfolders).
-# This server is reachable from the internet, and none of these tools have a login.
+# /salvadore - security baseline and old-URL redirects (applies to all subfolders).
+# This server is reachable from the internet, and most of these tools have no login.
 
 # Secrets and local data are read from disk by PHP - never serve them to anyone.
 <FilesMatch "(^\.env.*|service-account.*\.json|access-history\.json|\.sql|composer\.(json|lock)|package(-lock)?\.json)$">
@@ -14,3 +14,30 @@
 
 # No directory listings.
 Options -Indexes
+
+# ── Old URLs (before the October 2026 restructure) -> new locations ──
+# 308 = permanent and keeps the request method, so POSTs from external pages
+# (e.g. lead tracking) still arrive. Remove a line once nothing uses that URL.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /salvadore/
+
+    RewriteRule ^healthray-sql/post-content(/.*)?$  tools/healthray/master-dashboard/#fixer [R=308,NE,L]
+    RewriteRule ^healthray-sql(/.*)?$        tools/healthray$1             [R=308,L]
+    RewriteRule ^botphonic-sql(/.*)?$        tools/botphonic$1             [R=308,L]
+    RewriteRule ^bigscal-section(/.*)?$      tools/bigscal$1               [R=308,L]
+    RewriteRule ^redirection(/.*)?$          tools/redirection$1           [R=308,L]
+    RewriteRule ^html-css-js(/.*)?$          tools/browser-snippets$1      [R=308,L]
+    RewriteRule ^timestamp(/.*)?$            tools/timestamp$1             [R=308,L]
+    RewriteRule ^phonr(/.*)?$                tools/phone-validator$1       [R=308,L]
+    RewriteRule ^img/arrigo(/.*)?$           templates/arrigo$1            [R=308,L]
+    RewriteRule ^img(/.*)?$                  tools/image-downloader$1      [R=308,L]
+    RewriteRule ^box2(/.*)?$                 playground/bingo$1            [R=308,L]
+    RewriteRule ^canvas(/.*)?$               playground/canvas$1           [R=308,L]
+    RewriteRule ^check-line(/.*)?$           playground/check-line$1       [R=308,L]
+    RewriteRule ^sidebar-demo(/.*)?$         playground/sidebar-demo$1     [R=308,L]
+    RewriteRule ^easy-responsive-tab(/.*)?$  playground/responsive-tabs$1  [R=308,L]
+    RewriteRule ^php(/.*)?$                  playground/code-editor$1      [R=308,L]
+    RewriteRule ^bringer(/.*)?$              templates/bringer$1           [R=308,L]
+    RewriteRule ^company(/.*)?$              assets/brand$1                [R=308,L]
+</IfModule>
