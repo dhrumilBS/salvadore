@@ -1,7 +1,7 @@
 <?php
 /*
  * Salvadore home: a launcher for every tool in this folder.
- * Tools are listed in registry.php; any folder under tools/, playground/ or
+ * Tools are listed in registry.php; any folder under tools/ or
  * templates/ that isn't listed is still shown (under "Unlisted").
  * Read-only: this page never creates, edits or deletes anything.
  */
@@ -15,7 +15,7 @@ foreach ($groups as $g) {
     }
 }
 $unlisted = [];
-foreach (['tools', 'playground', 'templates'] as $root) {
+foreach (['tools', 'templates'] as $root) {
     foreach (glob(__DIR__ . "/$root/*", GLOB_ONLYDIR) ?: [] as $dir) {
         $rel = $root . '/' . basename($dir);
         $known = isset($listed[$rel]) || array_filter(array_keys($listed), fn($p) => str_starts_with($p, $rel . '/'));
@@ -211,7 +211,7 @@ $e = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
         <?php endforeach; ?>
 
         <p class="empty" id="empty">No tools match “<span id="emptyQ"></span>”.</p>
-        <footer>Add a tool: put it under <code>tools/</code>, <code>playground/</code> or <code>templates/</code> and list it in <code>registry.php</code>. Old URLs redirect automatically (<code>.htaccess</code>).</footer>
+        <footer>Add a tool: put it under <code>tools/</code> or <code>templates/</code> and list it in <code>registry.php</code>. Old URLs redirect automatically (<code>.htaccess</code>).</footer>
     </main>
 
     <script>

@@ -1,6 +1,0 @@
-/* Page-specific tweaks for the Folder Manager (salvadore/index.php).
-   Shared layout/theme comes from /assets/site.css. */
-
-.file-card .inputCheckbox {
-	flex-shrink: 0;
-}

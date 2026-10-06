@@ -19,10 +19,8 @@ salvadore/
 │   ├── bigscal/       Directory viewer + box/ (Node blog content builder)
 │   ├── redirection/  image-downloader/  browser-snippets/
 │   └── timestamp/  phone-validator/
-├── playground/        Demos and experiments (bingo, canvas, code-editor, …)
 ├── templates/         HTML templates and their assets (bringer, arrigo)
-├── assets/brand/      Company logos and favicon
-└── _archive/          Retired code kept for reference — blocked from the web
+└── assets/brand/      Company logos and favicon
 ```
 
 ## Setup on a new machine
@@ -49,7 +47,7 @@ committed (see `.gitignore`).
   `$_SERVER['DOCUMENT_ROOT'] . '/salvadore/...'`, so folders can move.
 - **This server is reachable from the internet and most tools have no login.**
   `.htaccess` blocks `.env`/keys/SQL dumps for everyone and limits the
-  dangerous endpoints (code runner, image downloader, folder delete) to this PC
+  dangerous endpoints (image downloader, file listing) to this PC
   and `192.168.x.x`. A new endpoint that writes files, runs code or fetches
   arbitrary URLs must be added to that LAN-only list.
 - Database tools that write ask for confirmation first; Master Dashboard also
@@ -57,13 +55,13 @@ committed (see `.gitignore`).
 
 ## Adding a tool
 
-Put it under `tools/` (real tools), `playground/` (demos) or `templates/`, then
+Put it under `tools/` or `templates/`, then
 add an entry to `registry.php`. Until you do, it still appears on the dashboard
 under **Unlisted**.
 
 ## Old URLs
 
 Everything moved in October 2026; the old addresses (`/salvadore/healthray-sql/…`,
-`/salvadore/img/…`, `/salvadore/box2/…`, …) permanently redirect (HTTP 308, POSTs
+`/salvadore/img/…`, `/salvadore/bringer/…`, …) permanently redirect (HTTP 308, POSTs
 kept) to the new ones — see the bottom of `.htaccess`. `post-content/` was merged
 into Master Dashboard's **Link Fixer** tab.

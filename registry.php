@@ -8,7 +8,7 @@
  *          PC + office LAN - see .htaccess), api (no page; used by other tools),
  *          node (needs `node server.js` running), multi (switches between sites)
  *
- * A folder under tools/, playground/ or templates/ that isn't listed here still
+ * A folder under tools/ or templates/ that isn't listed here still
  * shows up on the dashboard under "Unlisted", so nothing goes missing.
  */
 
@@ -61,21 +61,6 @@ return [
                 'desc' => 'Unix timestamps ⇄ dates.'],
             ['name' => 'Phone Number Validation', 'path' => 'tools/phone-validator/', 'tags' => [],
                 'desc' => 'Validate phone numbers.'],
-        ],
-    ],
-    'playground' => [
-        'label' => 'Playground — demos & experiments',
-        'items' => [
-            ['name' => 'Code Editor', 'path' => 'playground/code-editor/', 'tags' => ['lan'],
-                'desc' => 'HTML / CSS / JS / PHP scratchpad. Runs PHP on this machine - office network only.'],
-            ['name' => 'Multiplayer Bingo', 'path' => 'playground/bingo/', 'tags' => [], 'desc' => '5×5 bingo game.'],
-            ['name' => 'Canvas Draw', 'path' => 'playground/canvas/draw.html', 'tags' => [], 'desc' => 'Canvas colour drawing.'],
-            ['name' => 'Canvas: Dots', 'path' => 'playground/canvas/dot-canvas/', 'tags' => [], 'desc' => 'Dot animation.'],
-            ['name' => 'Canvas: Motion', 'path' => 'playground/canvas/motion/', 'tags' => [], 'desc' => 'Botphonic AI canvas animation.'],
-            ['name' => 'Canvas: Bot', 'path' => 'playground/canvas/botCanvas/', 'tags' => [], 'desc' => 'Bot canvas experiment.'],
-            ['name' => '5×5 Array Match', 'path' => 'playground/check-line/', 'tags' => [], 'desc' => 'Line-match puzzle.'],
-            ['name' => 'Sidebar Demo', 'path' => 'playground/sidebar-demo/', 'tags' => [], 'desc' => 'Sidebar layout + calculator popup.'],
-            ['name' => 'Responsive Tabs', 'path' => 'playground/responsive-tabs/', 'tags' => [], 'desc' => 'Tabs that collapse into an accordion.'],
         ],
     ],
     'templates' => [

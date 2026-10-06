@@ -6,9 +6,9 @@
     Require all denied
 </FilesMatch>
 
-# Endpoints that delete folders, list the disk, run arbitrary PHP or fetch any
-# URL and save it to disk: this PC and the office LAN only.
-<FilesMatch "^(deleteFolder|list_files|process_selection|run|editor|download2?)\.php$">
+# Endpoints that list files on disk or fetch any URL and save it to disk
+# (File Browser, Image Downloader): this PC and the office LAN only.
+<FilesMatch "^(list_files|download)\.php$">
     Require ip 127.0.0.1 ::1 192.168.0.0/16
 </FilesMatch>
 
@@ -32,12 +32,6 @@ Options -Indexes
     RewriteRule ^phonr(/.*)?$                tools/phone-validator$1       [R=308,L]
     RewriteRule ^img/arrigo(/.*)?$           templates/arrigo$1            [R=308,L]
     RewriteRule ^img(/.*)?$                  tools/image-downloader$1      [R=308,L]
-    RewriteRule ^box2(/.*)?$                 playground/bingo$1            [R=308,L]
-    RewriteRule ^canvas(/.*)?$               playground/canvas$1           [R=308,L]
-    RewriteRule ^check-line(/.*)?$           playground/check-line$1       [R=308,L]
-    RewriteRule ^sidebar-demo(/.*)?$         playground/sidebar-demo$1     [R=308,L]
-    RewriteRule ^easy-responsive-tab(/.*)?$  playground/responsive-tabs$1  [R=308,L]
-    RewriteRule ^php(/.*)?$                  playground/code-editor$1      [R=308,L]
     RewriteRule ^bringer(/.*)?$              templates/bringer$1           [R=308,L]
     RewriteRule ^company(/.*)?$              assets/brand$1                [R=308,L]
 </IfModule>
