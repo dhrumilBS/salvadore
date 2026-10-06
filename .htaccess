@@ -6,9 +6,9 @@
     Require all denied
 </FilesMatch>
 
-# Endpoints that delete folders, list the disk or run arbitrary PHP:
-# this PC and the office LAN only.
-<FilesMatch "^(deleteFolder|list_files|process_selection|run|editor)\.php$">
+# Endpoints that delete folders, list the disk, run arbitrary PHP or fetch any
+# URL and save it to disk: this PC and the office LAN only.
+<FilesMatch "^(deleteFolder|list_files|process_selection|run|editor|download2?)\.php$">
     Require ip 127.0.0.1 ::1 192.168.0.0/16
 </FilesMatch>
 

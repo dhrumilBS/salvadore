@@ -1,8 +1,21 @@
-*/.vs
-*/node_*
-*/*/node_*
-*/*/*/node_*
-*/*/*/*/node_*
-bigscal-section/box/service-account.json
-bigscal-section/box/__service-account.json
-healthray-sql/lead/access-history.json
+# ── Dependencies: reinstall with `composer install` / `npm install` ──
+node_modules/
+vendor/
+
+# ── Secrets: copy .env.example to .env and fill it in, never commit it ──
+.env
+.env.*
+!.env.example
+**/service-account*.json
+**/__service-account*.json
+
+# ── Runtime data written by the tools ──
+access-history.json
+**/backups/*
+!**/backups/.htaccess
+
+# ── Editor / OS ──
+.vs/
+.claude/settings.local.json
+Thumbs.db
+.DS_Store
