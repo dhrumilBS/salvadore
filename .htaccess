@@ -1,0 +1,16 @@
+# Security baseline for everything under /salvadore (applies to all subfolders).
+# This server is reachable from the internet, and none of these tools have a login.
+
+# Secrets and local data are read from disk by PHP - never serve them to anyone.
+<FilesMatch "(^\.env.*|service-account.*\.json|access-history\.json|\.sql|composer\.(json|lock)|package(-lock)?\.json)$">
+    Require all denied
+</FilesMatch>
+
+# Endpoints that delete folders, list the disk or run arbitrary PHP:
+# this PC and the office LAN only.
+<FilesMatch "^(deleteFolder|list_files|process_selection|run|editor)\.php$">
+    Require ip 127.0.0.1 ::1 192.168.0.0/16
+</FilesMatch>
+
+# No directory listings.
+Options -Indexes
