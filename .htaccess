@@ -26,12 +26,9 @@ Options -Indexes
     RewriteRule ^healthray-sql(/.*)?$        tools/healthray$1             [R=308,L]
     RewriteRule ^botphonic-sql(/.*)?$        tools/botphonic$1             [R=308,L]
     RewriteRule ^bigscal-section(/.*)?$      tools/bigscal$1               [R=308,L]
-    RewriteRule ^redirection(/.*)?$          tools/redirection$1           [R=308,L]
     RewriteRule ^html-css-js(/.*)?$          tools/browser-snippets$1      [R=308,L]
     RewriteRule ^timestamp(/.*)?$            tools/timestamp$1             [R=308,L]
     RewriteRule ^phonr(/.*)?$                tools/phone-validator$1       [R=308,L]
-    RewriteRule ^img/arrigo(/.*)?$           templates/arrigo$1            [R=308,L]
     RewriteRule ^img(/.*)?$                  tools/image-downloader$1      [R=308,L]
-    RewriteRule ^bringer(/.*)?$              templates/bringer$1           [R=308,L]
     RewriteRule ^company(/.*)?$              assets/brand$1                [R=308,L]
 </IfModule>

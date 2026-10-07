@@ -48,7 +48,8 @@ if (!$path || strpos($path, $base) !== 0) {
 $scan = scandir($path);
 $items = [];
 foreach ($scan as $file) {
-    if ($file == '.' || $file == '..') {
+    // Dotfiles (.env, .claude) and Composer/npm dependencies are never useful to browse.
+    if ($file[0] === '.' || $file === 'vendor' || $file === 'node_modules') {
         continue;
     }
 

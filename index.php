@@ -1,27 +1,33 @@
 <?php
 /*
  * Salvadore home: a launcher for every tool in this folder.
- * Tools are listed in registry.php; any folder under tools/ or
- * templates/ that isn't listed is still shown (under "Unlisted").
+ * Tools are listed in registry.php; any folder under tools/ that isn't
+ * listed is still shown (under "Unlisted"), and a listed tool whose folder
+ * has been deleted is left out.
  * Read-only: this page never creates, edits or deletes anything.
  */
 $groups = require __DIR__ . '/registry.php';
 
-// Folders on disk the registry doesn't mention yet.
+// Drop entries whose folder/file is gone, then any group left empty.
 $listed = [];
-foreach ($groups as $g) {
-    foreach ($g['items'] as $it) {
+foreach ($groups as $key => $g) {
+    $groups[$key]['items'] = array_values(array_filter($g['items'], fn($it) => file_exists(__DIR__ . '/' . strtok($it['path'], '#'))));
+    if (!$groups[$key]['items']) {
+        unset($groups[$key]);
+        continue;
+    }
+    foreach ($groups[$key]['items'] as $it) {
         $listed[rtrim(strtok($it['path'], '#'), '/')] = true;
     }
 }
+
+// Folders on disk the registry doesn't mention yet.
 $unlisted = [];
-foreach (['tools', 'templates'] as $root) {
-    foreach (glob(__DIR__ . "/$root/*", GLOB_ONLYDIR) ?: [] as $dir) {
-        $rel = $root . '/' . basename($dir);
-        $known = isset($listed[$rel]) || array_filter(array_keys($listed), fn($p) => str_starts_with($p, $rel . '/'));
-        if (!$known) {
-            $unlisted[] = ['name' => basename($dir), 'path' => $rel . '/', 'tags' => [], 'desc' => 'Not in registry.php yet.'];
-        }
+foreach (glob(__DIR__ . '/tools/*', GLOB_ONLYDIR) ?: [] as $dir) {
+    $rel = 'tools/' . basename($dir);
+    $known = isset($listed[$rel]) || array_filter(array_keys($listed), fn($p) => str_starts_with($p, $rel . '/'));
+    if (!$known) {
+        $unlisted[] = ['name' => basename($dir), 'path' => $rel . '/', 'tags' => [], 'desc' => 'Not in registry.php yet.'];
     }
 }
 if ($unlisted) {
@@ -187,16 +193,15 @@ $e = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
                 <div class="grid">
                     <?php foreach ($g['items'] as $it):
                         $tags = $it['tags'];
-                        $exists = file_exists(__DIR__ . '/' . strtok($it['path'], '#'));
                         $locked = in_array('lan', $tags, true) && !$onLan;
-                        $static = in_array('api', $tags, true) || !$exists || $locked;
+                        $static = in_array('api', $tags, true) || $locked;
                         $tag = $static ? 'div' : 'a';
                         $cls = 'card' . (!empty($it['featured']) ? ' featured' : '') . ($static ? ' static' : '') . ($locked ? ' locked' : '');
                         $search = strtolower($it['name'] . ' ' . $it['desc'] . ' ' . $it['path'] . ' ' . implode(' ', array_map(fn($t) => $TAGS[$t][0] ?? $t, $tags)));
                     ?>
                         <<?= $tag ?> class="<?= $cls ?>" <?= $static ? '' : 'href="' . $e($it['path']) . '"' ?> data-search="<?= $e($search) ?>">
                             <h3><span class="name"><?= $e($it['name']) ?></span><?php if (!$static): ?><span class="go" aria-hidden="true">→</span><?php endif; ?></h3>
-                            <p class="desc"><?= $e($it['desc']) ?><?= !$exists ? ' <strong>(folder missing)</strong>' : '' ?><?= $locked ? ' <strong>(office network only)</strong>' : '' ?></p>
+                            <p class="desc"><?= $e($it['desc']) ?><?= $locked ? ' <strong>(office network only)</strong>' : '' ?></p>
                             <?php if (!empty($it['brand'])): ?>
                                 <div class="logos"><?php foreach (glob(__DIR__ . '/assets/brand/*.svg') ?: [] as $svg): ?><img class="<?= str_contains(basename($svg), 'white') ? 'on-dark' : '' ?>" src="assets/brand/<?= $e(basename($svg)) ?>" alt="<?= $e(basename($svg)) ?>" title="<?= $e(basename($svg)) ?>" loading="lazy"><?php endforeach; ?></div>
                             <?php endif; ?>
@@ -211,7 +216,7 @@ $e = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
         <?php endforeach; ?>
 
         <p class="empty" id="empty">No tools match “<span id="emptyQ"></span>”.</p>
-        <footer>Add a tool: put it under <code>tools/</code> or <code>templates/</code> and list it in <code>registry.php</code>. Old URLs redirect automatically (<code>.htaccess</code>).</footer>
+        <footer>Add a tool: put it under <code>tools/</code> and list it in <code>registry.php</code>. Old URLs redirect automatically (<code>.htaccess</code>).</footer>
     </main>
 
     <script>

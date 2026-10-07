@@ -1,7 +1,6 @@
 # Salvadore — internal tools
 
-Internal tools for the Healthray, Botphonic and Bigscal WordPress sites, plus
-demos and templates. Served by XAMPP from `htdocs/salvadore`; open
+Internal tools for the Healthray, Botphonic and Bigscal WordPress sites. Served by XAMPP from `htdocs/salvadore`; open
 `http://<this-pc>/salvadore/` for the dashboard.
 
 ## Layout
@@ -17,9 +16,8 @@ salvadore/
 │   │                  conn.php + .env = the database connection for all of them
 │   ├── botphonic/     Botphonic database API (no page)
 │   ├── bigscal/       Directory viewer + box/ (Node blog content builder)
-│   ├── redirection/  image-downloader/  browser-snippets/
+│   ├── image-downloader/  browser-snippets/
 │   └── timestamp/  phone-validator/
-├── templates/         HTML templates and their assets (bringer, arrigo)
 └── assets/brand/      Company logos and favicon
 ```
 
@@ -55,13 +53,18 @@ committed (see `.gitignore`).
 
 ## Adding a tool
 
-Put it under `tools/` or `templates/`, then
-add an entry to `registry.php`. Until you do, it still appears on the dashboard
-under **Unlisted**.
+Put it under `tools/`, then add an entry to `registry.php`. Until you do, it
+still appears on the dashboard under **Unlisted**.
+
+## Removing a tool
+
+Delete its folder. The dashboard hides any registry entry whose path no longer
+exists, so nothing shows up broken; remove the entry from `registry.php` when
+convenient.
 
 ## Old URLs
 
 Everything moved in October 2026; the old addresses (`/salvadore/healthray-sql/…`,
-`/salvadore/img/…`, `/salvadore/bringer/…`, …) permanently redirect (HTTP 308, POSTs
+`/salvadore/img/…`, …) permanently redirect (HTTP 308, POSTs
 kept) to the new ones — see the bottom of `.htaccess`. `post-content/` was merged
 into Master Dashboard's **Link Fixer** tab.

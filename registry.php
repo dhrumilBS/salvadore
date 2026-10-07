@@ -8,8 +8,9 @@
  *          PC + office LAN - see .htaccess), api (no page; used by other tools),
  *          node (needs `node server.js` running), multi (switches between sites)
  *
- * A folder under tools/ or templates/ that isn't listed here still
- * shows up on the dashboard under "Unlisted", so nothing goes missing.
+ * A folder under tools/ that isn't listed here still shows up on the
+ * dashboard under "Unlisted". An entry whose path no longer exists on disk
+ * is hidden, so deleting a tool's folder is enough to take it off the page.
  */
 
 return [
@@ -32,12 +33,8 @@ return [
                 'desc' => 'Find the right page structure / template per page.'],
             ['name' => 'Post Revisions', 'path' => 'tools/healthray/version/', 'tags' => ['db', 'writes'],
                 'desc' => 'List and clean up wp_posts revisions (keeps the latest 5 per post).'],
-            ['name' => 'Redirect Options Viewer', 'path' => 'tools/healthray/sql/', 'tags' => ['db'],
-                'desc' => 'Raw view of the Yoast redirect options.'],
-            ['name' => 'Phrase Count Report', 'path' => 'tools/healthray/phrase-count-report/', 'tags' => ['db'],
-                'desc' => 'How often a phrase appears across content.'],
-            ['name' => 'Find & Replace Results', 'path' => 'tools/healthray/replace/', 'tags' => ['db'],
-                'desc' => 'Locate text across posts before replacing it.'],
+            ['name' => 'Find & Replace', 'path' => 'tools/healthray/replace/', 'tags' => ['db', 'writes', 'multi'],
+                'desc' => 'Search titles, content, Elementor and SEO fields, preview every change, replace what you pick. Undo history.', 'featured' => true],
             ['name' => 'Healthray File Browser', 'path' => 'tools/healthray/', 'tags' => ['multi'],
                 'desc' => 'Browse the PHP/HTML files of the Healthray and Botphonic tool folders.'],
             ['name' => 'Botphonic API', 'path' => 'tools/botphonic/', 'tags' => ['db', 'writes', 'api'],
@@ -47,8 +44,6 @@ return [
     'utilities' => [
         'label' => 'Utilities',
         'items' => [
-            ['name' => 'Redirect Manager', 'path' => 'tools/redirection/', 'tags' => [],
-                'desc' => 'Build and manage redirect rules.'],
             ['name' => 'Image Downloader', 'path' => 'tools/image-downloader/', 'tags' => ['lan'],
                 'desc' => 'Pull every image from a site into a local folder.'],
             ['name' => 'Bigscal Directory Viewer', 'path' => 'tools/bigscal/', 'tags' => [],
@@ -63,11 +58,9 @@ return [
                 'desc' => 'Validate phone numbers.'],
         ],
     ],
-    'templates' => [
-        'label' => 'Templates & assets',
+    'assets' => [
+        'label' => 'Assets',
         'items' => [
-            ['name' => 'Bringer', 'path' => 'templates/bringer/', 'tags' => [], 'desc' => 'Digital agency HTML template (home variants, portfolio, pricing…).'],
-            ['name' => 'Arrigo images', 'path' => 'templates/arrigo/', 'tags' => ['api'], 'desc' => 'Image assets for the Arrigo template (folder of images, no page).'],
             ['name' => 'Brand logos', 'path' => 'assets/brand/', 'tags' => ['api'], 'desc' => 'Bigscal and Healthray logos + favicon (SVG).', 'brand' => true],
         ],
     ],
