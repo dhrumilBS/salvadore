@@ -554,6 +554,11 @@ td.lead-name-link:hover { text-decoration: underline; }
 .modal-hdr-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .modal-hdr-text strong { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.2px; }
 .modal-hdr-text span { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.modal-copy { margin-left: auto; flex: none; height: 32px; padding: 0 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 500; transition: background .15s, color .15s, border-color .15s; }
+.modal-copy svg { width: 15px; height: 15px; }
+.modal-copy:hover { background: var(--primary-lt); color: var(--primary); border-color: var(--primary); }
+.modal-copy.copied { background: var(--success); color: #fff; border-color: var(--success); }
+.modal-copy + .modal-close { margin-left: 0; }
 .modal-close { margin-left: auto; flex: none; width: 32px; height: 32px; border: none; background: var(--bg); color: var(--muted); border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s, color .15s; }
 .modal-close svg { width: 16px; height: 16px; }
 .modal-close:hover { background: var(--danger-lt); color: var(--danger); }

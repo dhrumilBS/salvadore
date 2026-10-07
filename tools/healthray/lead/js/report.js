@@ -1077,7 +1077,55 @@ document.addEventListener("DOMContentLoaded", () => {
         if (e.key === "Escape" && leadModal.classList.contains("visible")) closeLeadModal();
     });
 
+    const leadModalCopy = document.getElementById("leadModalCopy");
+    let currentLeadRow = null;
+
+    leadModalCopy.addEventListener("click", () => {
+        if (!currentLeadRow) return;
+        copyText(leadToText(currentLeadRow)).then(ok => {
+            if (!ok) { showToast("Could not copy to clipboard", "error"); return; }
+            showToast("Lead details copied. Paste into Teams / Slack", "success");
+            leadModalCopy.classList.add("copied");
+            leadModalCopy.querySelector("span").textContent = "Copied";
+            setTimeout(() => {
+                leadModalCopy.classList.remove("copied");
+                leadModalCopy.querySelector("span").textContent = "Copy";
+            }, 1800);
+        });
+    });
+
+    // Plain "Label: value" lines (empty fields skipped) - pastes cleanly into Teams and Slack.
+    function leadToText(row) {
+        const lines = allColumns
+            .map(col => [formatCol(col), rawValue(col, row)])
+            .filter(([, v]) => v !== "")
+            .map(([k, v]) => `${k}: ${v}`);
+        return ["Lead Details", "------------", ...lines].join("\n");
+    }
+
+    function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text).then(() => true, () => legacyCopy(text));
+        }
+        return Promise.resolve(legacyCopy(text));
+    }
+
+    // Fallback for non-HTTPS access (e.g. opened via LAN IP), where navigator.clipboard is unavailable.
+    function legacyCopy(text) {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;";
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        return ok;
+    }
+
     function openLeadModal(row) {
+        currentLeadRow = row;
         const name = row["your-name"];
         const email = row["your-email"];
         leadModalSub.textContent = [name, email].filter(Boolean).join("  ·  ") || "-";
