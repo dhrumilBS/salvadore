@@ -511,23 +511,21 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch { return String(raw); }
     }
 
-    /* Organic (no ad platform) vs Ads.
-       Healthray's convention is medium=cpc for every paid row (verified against
-       live data - source ending in "ads" always pairs with medium=cpc there, so
-       this fallback never changes a Healthray classification). Botphonic's CF7
-       setup never sets medium=cpc at all - e.g. 497 real Google Ads leads there
-       have source="GoogleAds" but medium="Lead-search-01" - so without a fallback
-       every Botphonic row reads as "Organic", including confirmed paid ones.
-       A gclid (Google's own paid-click id) or a source literally named after an
-       ad platform are unambiguous paid-traffic signals Healthray's data never has,
-       so neither fallback can relabel anything there. */
+    /* Organic vs Ads - driven purely by utm_campaign.
+       A row with a real utm_campaign value counts as "Ads"; a row with no
+       campaign (empty, or a tracking placeholder that was never filled in such
+       as "(not set)", "undefined", "{campaign}") counts as "Organic".
+       The value is resolved the same way as the UTM Campaign widget
+       (extractUtmVal), so both widgets always agree. */
+    const EMPTY_CAMPAIGN_VALUES = new Set(["", "(none)", "(not set)", "not set", "(direct)", "none", "null", "undefined", "-", "n/a", "na"]);
+    function hasUtmCampaign(row) {
+        const val = extractUtmVal(row["utm_campaign"], "utm_campaign").trim().toLowerCase();
+        if (EMPTY_CAMPAIGN_VALUES.has(val)) return false;
+        if (/^\{.*\}$/.test(val)) return false;   // unreplaced macro, e.g. {campaign}
+        return true;
+    }
     function getAdType(row) {
-        const medium = extractUtmVal(row["utm_medium"], "utm_medium").trim().toLowerCase();
-        if (medium === "cpc") return "Ads";
-        if (row["gclid"] || row["gclid_cf7"]) return "Ads";
-        const source = extractUtmVal(row["utm_source"], "utm_source").trim().toLowerCase();
-        if (/ads$/.test(source)) return "Ads";
-        return "Organic";
+        return hasUtmCampaign(row) ? "Ads" : "Organic";
     }
 
     /* Build [{ value, count }] from a set of rows for a given dimension */
