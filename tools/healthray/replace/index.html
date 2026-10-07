@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>Find &amp; Replace · Salvadore</title>
+    <script>try { var t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.setAttribute('data-theme', t); } catch (e) { }</script>
+    <link rel="icon" href="../../../assets/brand/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header class="top">
+        <a class="chip" href="../../../">← All tools</a>
+        <div class="title">
+            <b>Find &amp; Replace</b>
+            <small>Posts, pages, Elementor and SEO fields</small>
+        </div>
+        <div class="seg" id="sites" role="radiogroup" aria-label="Site"></div>
+        <div class="top-end">
+            <button class="chip" id="historyBtn" type="button">History</button>
+            <button class="chip icon" id="theme" type="button" aria-label="Toggle theme" title="Toggle light/dark theme">◐</button>
+        </div>
+    </header>
+
+    <main>
+        <form class="panel search-panel" id="form" autocomplete="off">
+            <div class="fr-row">
+                <label class="field">
+                    <span class="lbl">Find</span>
+                    <input id="find" type="text" placeholder="Text or URL to find…" required minlength="2" spellcheck="false">
+                </label>
+                <button class="swap" id="swap" type="button" title="Swap find and replace" aria-label="Swap find and replace">⇄</button>
+                <label class="field">
+                    <span class="lbl">Replace with <em>(leave empty to delete)</em></span>
+                    <input id="replace" type="text" placeholder="New text…" spellcheck="false">
+                </label>
+                <button class="btn primary" id="searchBtn" type="submit"><span class="spin" aria-hidden="true"></span><span class="txt">Search</span></button>
+            </div>
+
+            <div class="opt-row">
+                <div class="opts" role="group" aria-label="Match options">
+                    <label class="toggle" title="Healthray ≠ healthray"><input type="checkbox" id="optCase"><span>Match case</span></label>
+                    <label class="toggle" title="“emr” won't match inside “emrs”"><input type="checkbox" id="optWord"><span>Whole word</span></label>
+                    <label class="toggle" title="Only replace in visible text - never inside &lt;tags&gt;, links or image paths"><input type="checkbox" id="optTags"><span>Skip HTML tags</span></label>
+                </div>
+                <button class="link-btn" id="moreBtn" type="button" aria-expanded="false">Filters <span id="filterCount"></span> ▾</button>
+            </div>
+
+            <div class="scopes" id="scopes" role="group" aria-label="Where to search"></div>
+
+            <div class="filters" id="filters" hidden>
+                <div>
+                    <span class="lbl">Post types <button class="link-btn sm" type="button" data-all="types">all</button></span>
+                    <div class="chips" id="types"></div>
+                </div>
+                <div>
+                    <span class="lbl">Status</span>
+                    <div class="chips" id="statuses"></div>
+                </div>
+                <label class="field">
+                    <span class="lbl">Only these post IDs <em>(optional, comma separated)</em></span>
+                    <input id="ids" type="text" placeholder="e.g. 1234, 5678" inputmode="numeric">
+                </label>
+            </div>
+        </form>
+
+        <section id="results" aria-live="polite">
+            <div class="empty-state" id="intro">
+                <div class="big">🔎</div>
+                <h2>Search first, then choose what to change</h2>
+                <p>Nothing is written until you press <b>Replace</b> and confirm. Every replace is backed up and can be undone from <b>History</b>.</p>
+                <ul class="tips">
+                    <li><b>Elementor</b> pages keep their text in Elementor data - leave it ticked or the page won't change.</li>
+                    <li>Replacing a URL? Untick <b>Skip HTML tags</b> so links are included.</li>
+                    <li>Press <span class="kbd">/</span> to jump to Find, <span class="kbd">Enter</span> to search.</li>
+                </ul>
+            </div>
+        </section>
+    </main>
+
+    <div class="actionbar" id="actionbar" hidden>
+        <label class="check"><input type="checkbox" id="selAll"><span id="selText">0 selected</span></label>
+        <span class="grow"></span>
+        <button class="btn danger" id="replaceBtn" type="button" disabled>Replace selected</button>
+    </div>
+
+    <dialog id="confirm" class="modal">
+        <form method="dialog">
+            <h3>Replace on <span id="cSite"></span>?</h3>
+            <div class="live-warn" id="cLive">This is the <b>live</b> website - visitors see the change right away.</div>
+            <div class="diff-big"><del id="cFind"></del><span>→</span><ins id="cRepl"></ins></div>
+            <p id="cSummary"></p>
+            <p class="muted">A backup is saved first, and you can undo this from History.</p>
+            <div class="modal-actions">
+                <button class="btn" value="cancel" type="submit">Cancel</button>
+                <button class="btn danger" id="cGo" value="go" type="submit">Replace</button>
+            </div>
+        </form>
+    </dialog>
+
+    <aside class="drawer" id="drawer" aria-label="History" hidden>
+        <div class="drawer-head">
+            <h3>History · <span id="hSite"></span></h3>
+            <button class="chip icon" id="hClose" type="button" aria-label="Close">✕</button>
+        </div>
+        <div class="drawer-body" id="hList"></div>
+    </aside>
+    <div class="scrim" id="scrim" hidden></div>
+
+    <div class="toasts" id="toasts" aria-live="assertive"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
