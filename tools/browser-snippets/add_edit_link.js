@@ -1,39 +1,23 @@
-var bodyClassList = document.body.classList;
-var pageId = null;
-for (var i = 0; i < bodyClassList.length; i++) {
-	if (bodyClassList[i].startsWith('page-id-')) {
-		pageId = bodyClassList[i].substring('page-id-'.length);
-		if (pageId) {
-			var link = document.createElement('a');
-			link.classList.add('wp-page-id-btn');
-			link.href = '/wp-admin/post.php?post=' + pageId + '&action=elementor';
-			link.textContent = 'Edit';
-			copyCode(pageId);
-			document.body.appendChild(link);
-		}
-		break;
-	}
-	if (bodyClassList[i].startsWith('postid-')) {
-		postId = bodyClassList[i].substring('postid-'.length);
-		if (postId) {
-			var link = document.createElement('a');
-			link.classList.add('wp-page-id-btn');
-			link.href = '/wp-admin/post.php?post=' + postId + '&action=edit';
-			link.textContent = 'Edit';
-			copyCode(postId);
-			document.body.appendChild(link);
-		}
-		break;
-	}
-}
+// On a live WordPress page: shows an "Edit" button (Elementor editor for
+// Elementor pages, the normal editor otherwise) and copies the post ID.
+(() => {
+	const copy = t => navigator.clipboard?.writeText(t) ?? new Promise((ok, no) => { const a = Object.assign(document.createElement('textarea'), { value: t }); document.body.append(a); a.select(); const r = document.execCommand('copy'); a.remove(); r ? ok() : no(); }); // http pages have no Clipboard API
+	const cls = [...document.body.classList];
+	const id = (cls.find(c => /^(page-id|postid)-\d+$/.test(c)) || '').replace(/\D+/g, '');
+	if (!id) return console.warn('No page-id-/postid- class on <body> - not a single post or page.');
 
-function copyCode(Text) {
-	console.log(Text);
-	var textToCopy = Text;
-	var tempInput = document.createElement('input');
-	tempInput.value = textToCopy;
-	document.body.appendChild(tempInput);
-	tempInput.select();
-	document.execCommand('copy');
-	document.body.removeChild(tempInput);
-}
+	const elementor = cls.includes('elementor-page');
+	document.getElementById('wp-edit-snippet-btn')?.remove();
+	const a = document.createElement('a');
+	a.id = 'wp-edit-snippet-btn';
+	a.href = `/wp-admin/post.php?post=${id}&action=${elementor ? 'elementor' : 'edit'}`;
+	a.target = '_blank';
+	a.textContent = `Edit #${id}${elementor ? ' (Elementor)' : ''}`;
+	a.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647;padding:10px 16px;border-radius:999px;background:#6552f6;color:#fff;font:600 14px/1 system-ui,sans-serif;text-decoration:none;box-shadow:0 8px 24px rgba(0,0,0,.25)';
+	document.body.appendChild(a);
+
+	copy(id).then(
+		() => console.log(`Post ID ${id} copied.`),
+		() => console.log(`Post ID: ${id} (clipboard blocked - click the page first)`)
+	);
+})();

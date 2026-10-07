@@ -1,41 +1,22 @@
-$('.single_toggle').html();
-var faqArray = [];
-$('.av_toggle_section').each(function () {
-	var que = $(this).find('.toggler').text();
-	var ans = $(this).find('.toggle_content').html();
+// Builds FAQPage JSON-LD from the page's Enfold toggles (.av_toggle_section)
+// and copies the <script> tag to the clipboard, ready to paste.
+(() => {
+	const copy = t => navigator.clipboard?.writeText(t) ?? new Promise((ok, no) => { const a = Object.assign(document.createElement('textarea'), { value: t }); document.body.append(a); a.select(); const r = document.execCommand('copy'); a.remove(); r ? ok() : no(); }); // http pages have no Clipboard API
+	const clean = el => (el?.textContent || '').replace(/\s+/g, ' ').trim();
+	const faqs = [...document.querySelectorAll('.av_toggle_section')]
+		.map(s => ({ q: clean(s.querySelector('.toggler')), a: clean(s.querySelector('.toggle_content')) }))
+		.filter(f => f.q && f.a);
+	if (!faqs.length) return console.warn('No FAQ toggles (.av_toggle_section) found on this page.');
 
-	// Stripping HTML tags from ans
-	ans = ans.replace(/<\/?[^>]+(>|$)/g, '');
-	// console.log(que);
-	// console.log(ans);
-	faqArray.push({
-		question: que,
-		answer: ans,
-	});
-});
-
-var json = {
-	'@context': 'https://schema.org',
-	'@type': 'FAQPage',
-	mainEntity: [],
-};
-
-var blogFaqs = faqArray;
-
-blogFaqs.forEach(function (item, index) {
-	json.mainEntity.push({
-		'@type': 'Question',
-		name: item.question.replace(/<\/?[^>]+(>|$)/g, ''),
-		acceptedAnswer: {
-			'@type': 'Answer',
-			text: item.answer, // Assuming parseTextEditor function is defined
-		},
-	});
-});
-
-var script = `<script type="application/ld+json">`;
-var html = script;
-html += JSON.stringify(json);
-html += '</script>';
-console.log(json);
-$('.togglecontainer').append(html);
+	const schema = {
+		'@context': 'https://schema.org',
+		'@type': 'FAQPage',
+		mainEntity: faqs.map(f => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+	};
+	const tag = `<script type="application/ld+json">${JSON.stringify(schema).replace(/</g, '\\u003c')}</script>`;
+	console.log(schema);
+	copy(tag).then(
+		() => console.log(`%cFAQ schema with ${faqs.length} questions copied.`, 'color:#17a172;font-weight:bold'),
+		() => console.log(tag)
+	);
+})();

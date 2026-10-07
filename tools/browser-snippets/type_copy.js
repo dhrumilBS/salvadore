@@ -1,50 +1,31 @@
-var s = '';
-var str = [];
-var i = 1;
-window.addEventListener('keypress', function (event) {
-	if (event.key == 'Enter') {
-		i++;
-		if (s == 'me') {
-			alert(str);
-		} else if (s == '1') {
-			const username = getCookie('username');
-			if (username) {
-				console.log('Cookie Username: ' + username);
-			} else {
-				console.log('Username cookie not found');
-			}
-			s = '';
-		} else {
-			str.push(s);
-			document.cookie = 'username=' + s;
-		}
-		copyCode(s);
-		s = '';
-	} else {
-		s = s + event.key;
-	}
-});
-function copyCode(Text) {
-	console.log(Text);
-	var textToCopy = Text;
-	var tempInput = document.createElement('input');
-	tempInput.value = textToCopy;
-	document.body.appendChild(tempInput);
-	tempInput.select();
-	document.execCommand('copy');
-	document.body.removeChild(tempInput);
-}
+// Type anywhere on the page (not inside a form field) and press Enter to copy
+// what you typed. Type "me" + Enter to list everything copied so far.
+// Keys typed in inputs are ignored and nothing is saved in cookies.
+(() => {
+	const copy = t => navigator.clipboard?.writeText(t) ?? new Promise((ok, no) => { const a = Object.assign(document.createElement('textarea'), { value: t }); document.body.append(a); a.select(); const r = document.execCommand('copy'); a.remove(); r ? ok() : no(); }); // http pages have no Clipboard API
+	if (window.__typeCopy) return console.log('Type-to-copy is already running.');
+	window.__typeCopy = true;
+	let buf = '';
+	const history = [];
+	const isField = el => el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 
-function getCookie(cookieName) {
-	const name = cookieName + '=';
-	const decodedCookie = decodeURIComponent(document.cookie);
-	const cookieArray = decodedCookie.split(';');
-
-	for (let i = 0; i < cookieArray.length; i++) {
-		let cookie = cookieArray[i].trim();
-		if (cookie.indexOf(name) === 0) {
-			return cookie.substring(name.length, cookie.length);
+	window.addEventListener('keydown', e => {
+		if (isField(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+		if (e.key === 'Escape') { buf = ''; return; }
+		if (e.key === 'Backspace') { buf = buf.slice(0, -1); return; }
+		if (e.key !== 'Enter') {
+			if (e.key.length === 1) buf += e.key;
+			return;
 		}
-	}
-	return null;
-}
+		const text = buf;
+		buf = '';
+		if (!text) return;
+		if (text === 'me') return console.table(history);
+		history.push(text);
+		copy(text).then(
+			() => console.log(`Copied: ${text}`),
+			() => console.warn(`Could not copy "${text}" - click the page first.`)
+		);
+	});
+	console.log('Type-to-copy on: type, then Enter. "me" + Enter lists history, Esc clears.');
+})();

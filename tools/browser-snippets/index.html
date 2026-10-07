@@ -1,39 +1,154 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>Browser Snippets · Salvadore</title>
+    <script>try { var t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.setAttribute('data-theme', t); } catch (e) { }</script>
+    <link rel="icon" href="../../assets/brand/favicon.svg" type="image/svg+xml">
+    <style>
+        :root {
+            --bg: #0a0c14; --surface: #12151f; --surface2: #1a1e2c; --surface3: #232840; --border: #262b40;
+            --accent: #7c6cf6; --accent-dim: #241f52; --text: #eef0f8; --text2: #9aa0c0; --text3: #5b6084;
+            --ok: #2fd6a0; --ok-dim: #0f2e26; --warn: #ffb454; --warn-dim: #3a2a10;
+            --focus: 0 0 0 3px rgba(124, 108, 246, .35); --shadow: 0 8px 24px rgba(0, 0, 0, .35);
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+        }
+        :root[data-theme="light"] {
+            --bg: #f5f6fb; --surface: #fff; --surface2: #eef0f7; --surface3: #e4e7f3; --border: #e1e4f0;
+            --accent: #6552f6; --accent-dim: #ece9ff; --text: #161a2b; --text2: #5b6084; --text3: #8d92ac;
+            --ok: #17a172; --ok-dim: #e6f7ef; --warn: #b8650a; --warn-dim: #fff2e0;
+            --focus: 0 0 0 3px rgba(101, 82, 246, .2); --shadow: 0 12px 28px rgba(30, 34, 60, .12);
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.55 var(--font); -webkit-font-smoothing: antialiased; }
+        :focus-visible { outline: none; box-shadow: var(--focus); }
+        code, kbd { font-family: var(--mono); font-size: 12.5px; }
+        kbd { padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; color: var(--text2); }
+        .top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px; padding: 12px 24px;
+            background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+        .top b { font-size: 15px; }
+        .top .end { margin-left: auto; }
+        .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border);
+            background: var(--surface2); color: var(--text2); font: 600 12px var(--font); text-decoration: none; cursor: pointer; }
+        .chip:hover { border-color: var(--accent); color: var(--accent); }
+        main { max-width: 1080px; margin: 0 auto; padding: 22px 24px 48px; }
+        h1 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
+        .sub { margin: 2px 0 18px; color: var(--text2); }
+        .howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-bottom: 22px; }
+        .howto div { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; font-size: 13px; color: var(--text2); }
+        .howto b { color: var(--text); display: block; margin-bottom: 2px; }
+        .grid { display: grid; gap: 12px; }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+        .head { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; flex-wrap: wrap; }
+        .head .info { flex: 1; min-width: 240px; }
+        .head h2 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .head h2 code { color: var(--text3); font-weight: 400; font-size: 11.5px; }
+        .head p { margin: 4px 0 0; color: var(--text2); font-size: 13px; }
+        .where { font-size: 10.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--accent-dim); color: var(--accent); }
+        .where.warn { background: var(--warn-dim); color: var(--warn); }
+        .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+        .btn { height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font: 600 12.5px var(--font);
+            cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+        .btn:hover { border-color: var(--accent); color: var(--accent); }
+        .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .btn.primary:hover { filter: brightness(1.1); color: #fff; }
+        .btn.bm { cursor: grab; border-style: dashed; }
+        .btn.done { background: var(--ok-dim); border-color: var(--ok); color: var(--ok); }
+        pre { margin: 0; padding: 14px 16px; background: var(--bg); border-top: 1px solid var(--border); overflow: auto; max-height: 420px; font: 12.5px/1.6 var(--mono); color: var(--text2); tab-size: 4; }
+        .note { margin: 0 16px 14px; padding: 8px 12px; border-radius: 8px; background: var(--warn-dim); color: var(--warn); font-size: 12.5px; }
+        @media (max-width: 720px) { .top, main { padding-left: 16px; padding-right: 16px; } }
+    </style>
 </head>
 
 <body>
+    <header class="top">
+        <a class="chip" href="../../">← All tools</a>
+        <b>Browser Snippets</b>
+        <span class="end"><button class="chip" id="theme" type="button" aria-label="Toggle theme" title="Toggle light/dark theme">◐</button></span>
+    </header>
 
+    <main>
+        <h1>Browser Snippets</h1>
+        <p class="sub">Small scripts you run on a WordPress page or in wp-admin from your browser.</p>
 
-    <input type="text" name="coytext" id="copyText" >
+        <div class="howto">
+            <div><b>Quickest: bookmarklet</b>Drag a snippet's <em>⇱ Bookmark</em> button to your bookmarks bar, then click it on any page.</div>
+            <div><b>DevTools snippet</b>Copy the code → <kbd>F12</kbd> → Sources → Snippets → New snippet → paste. Run with <kbd>Ctrl</kbd>+<kbd>Enter</kbd>.</div>
+            <div><b>One-off</b>Copy the code and paste it into the DevTools Console on the page.</div>
+        </div>
 
+        <div class="grid" id="list"></div>
+    </main>
 
-    <script src="https://code.jquery.com/jquery-3.6.4.js"></script>
     <script>
-        function copyCode(Text) {
-            var textToCopy = Text;
-            var tempInput = document.createElement('input');
-            tempInput.value = textToCopy;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            document.execCommand('copy');
-            document.body.removeChild(tempInput);
+        const SNIPPETS = [
+            { file: 'add_edit_link.js', name: 'Edit this page', where: 'Live site', desc: 'Adds a floating "Edit" button that opens the page in Elementor (or the normal editor) and copies the post ID.' },
+            { file: 'img_alt.js', name: 'Images missing alt text', where: 'Live site', desc: 'Outlines every image without alt text in red and lists them in the console.' },
+            { file: 'generate_schema.js', name: 'FAQ schema generator', where: 'Live site', desc: 'Builds FAQPage JSON-LD from the page\'s FAQ toggles and copies the <script> tag, ready to paste.' },
+            { file: 'ctrl_s_file.js', name: 'wp-admin shortcuts', where: 'wp-admin', desc: 'Ctrl+S saves the post (drafts stay drafts), Ctrl+Delete deletes the open attachment, clicking a Media title turns dashes into spaces and copies it.' },
+            { file: 'type_copy.js', name: 'Type to copy', where: 'Any page', desc: 'Type anywhere (outside form fields) and press Enter to copy it. "me" + Enter lists what you copied.' },
+            { file: 'inject_file.js', name: 'Inject local CSS/JS', where: 'Any page', desc: 'Loads script.js and style.css from your local dev server into the page, to test changes before uploading. Edit BASE first.' },
+            { file: 'login_healthray.js', name: 'Healthray WP login', where: 'wp-login.php', secret: true, desc: 'Fills the WordPress login form and signs in.' },
+            { file: 'login_hrms.js', name: 'HRMS login', where: 'HRMS sign-in', secret: true, desc: 'Fills the HRMS sign-in form and signs in.' },
+        ];
+        const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+        async function render() {
+            const list = document.getElementById('list');
+            const codes = await Promise.all(SNIPPETS.map(s => fetch(s.file, { cache: 'no-store' }).then(r => r.ok ? r.text() : '').catch(() => '')));
+            list.innerHTML = SNIPPETS.map((s, i) => {
+                const code = codes[i];
+                const bookmarklet = 'javascript:' + encodeURIComponent(code);
+                return `<article class="card">
+                    <div class="head">
+                        <div class="info">
+                            <h2>${esc(s.name)} <span class="where ${s.secret ? 'warn' : ''}">${esc(s.where)}</span> <code>${esc(s.file)}</code></h2>
+                            <p>${esc(s.desc)}</p>
+                        </div>
+                        <div class="actions">
+                            <button class="btn" type="button" data-toggle="${i}" aria-expanded="false">View code</button>
+                            ${code ? `<a class="btn bm" href="${esc(bookmarklet)}" title="Drag me to your bookmarks bar" onclick="event.preventDefault(); alert('Drag this button to your bookmarks bar, then click the bookmark on the page you want to run it on.')">⇱ Bookmark</a>` : ''}
+                            <button class="btn primary" type="button" data-copy="${i}" ${code ? '' : 'disabled'}>Copy code</button>
+                        </div>
+                    </div>
+                    ${s.secret ? '<p class="note">⚠️ Fill in your username and password only in your <b>own</b> copy (DevTools snippet or bookmark) - never in this file. This folder is reachable from the internet.</p>' : ''}
+                    <pre hidden id="code-${i}"><code>${esc(code || 'Could not load ' + s.file)}</code></pre>
+                </article>`;
+            }).join('');
+
+            list.addEventListener('click', async e => {
+                const t = e.target.closest('[data-toggle]');
+                if (t) {
+                    const pre = document.getElementById('code-' + t.dataset.toggle);
+                    pre.hidden = !pre.hidden;
+                    t.setAttribute('aria-expanded', !pre.hidden);
+                    t.textContent = pre.hidden ? 'View code' : 'Hide code';
+                }
+                const c = e.target.closest('[data-copy]');
+                if (c) {
+                    try {
+                        await navigator.clipboard.writeText(codes[c.dataset.copy]);
+                        c.textContent = 'Copied ✓';
+                        c.classList.add('done');
+                    } catch (err) {
+                        c.textContent = 'Copy failed - use View code';
+                    }
+                    setTimeout(() => { c.textContent = 'Copy code'; c.classList.remove('done'); }, 1800);
+                }
+            });
         }
-        $(document).ready(function () {
-            $('#copyText').on('dblclick', function () {
-                var s = $(this).val()
-                copyCode(s) 
-            })
+        render();
 
-
-        })
+        document.getElementById('theme').addEventListener('click', () => {
+            const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', next);
+            try { localStorage.setItem('theme', next); } catch (e) { }
+        });
     </script>
-
 </body>
 
 </html>
