@@ -8,8 +8,8 @@
 
 /**
  * Distinct real content post types present in wp_posts (system types
- * excluded), most-populated first, with row counts - for the Links tab's
- * Post Type dropdown. Cached per request.
+ * excluded), most-populated first, with row counts (all statuses) and
+ * published-only counts (for the Content tab's type tabs). Cached per request.
  */
 function dw_known_post_types_with_counts(mysqli $conn)
 {
@@ -19,11 +19,11 @@ function dw_known_post_types_with_counts(mysqli $conn)
     }
     $excluded = dw_excluded_post_types();
     $placeholders = implode(',', array_fill(0, count($excluded), '?'));
-    $stmt = $conn->prepare("SELECT post_type, COUNT(*) AS c FROM wp_posts WHERE post_type NOT IN ($placeholders) GROUP BY post_type ORDER BY c DESC");
+    $stmt = $conn->prepare("SELECT post_type, COUNT(*) AS c, SUM(post_status = 'publish') AS pub FROM wp_posts WHERE post_type NOT IN ($placeholders) GROUP BY post_type ORDER BY c DESC");
     dw_stmt_bind($stmt, array_map(fn($t) => ['type' => 's', 'value' => $t], $excluded));
     $stmt->execute();
     $types = array_map(
-        fn($r) => ['type' => $r['post_type'], 'count' => (int) $r['c']],
+        fn($r) => ['type' => $r['post_type'], 'count' => (int) $r['c'], 'published' => (int) $r['pub']],
         $stmt->get_result()->fetch_all(MYSQLI_ASSOC)
     );
     return $types;

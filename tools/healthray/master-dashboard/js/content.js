@@ -450,8 +450,8 @@ function populateContentPostTypes(postTypes) {
     contentPostTypes = postTypes;
     if (!postTypes.some(t => t.type === contentState.post_type)) contentState.post_type = defaultContentPostType();
     document.getElementById('fPostTypeTabs').innerHTML = postTypes.map(t =>
-        `<button type="button" class="tab${t.type === contentState.post_type ? ' active' : ''}" data-type="${escapeHtml(t.type)}" title="${t.count} item${t.count === 1 ? '' : 's'}">` +
-        `${escapeHtml(t.type)} <span class="tab-count">${t.count}</span></button>`).join('');
+        `<button type="button" class="tab${t.type === contentState.post_type ? ' active' : ''}" data-type="${escapeHtml(t.type)}" title="${t.published} published of ${t.count} total">` +
+        `${escapeHtml(t.type)} <span class="tab-count">${t.published}</span></button>`).join('');
 }
 
 function populateContentStatuses(statuses) {
