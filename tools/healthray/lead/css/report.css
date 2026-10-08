@@ -69,10 +69,10 @@
     --dup-time-cell:    #fef9c3;
     /* +92 (Pakistan/Test) is its own segregated group, not a lead metric -
        Pakistani-flag green, distinct from the warning/amber dup family */
-    --dup-pk92-border:  var(--success);
-    --dup-pk92-text:    #047857;
-    --dup-pk92-bg:      var(--success-lt);
-    --dup-pk92-cell:    #d1fae5;
+    --dup-pk92-border:  #01411C;
+    --dup-pk92-text:    #01411C;
+    --dup-pk92-bg:      color-mix(in srgb, #01411C 10%, #fff);
+    --dup-pk92-cell:    color-mix(in srgb, #01411C 20%, #fff);
     /* Outside-India (non +91) is an informational segment, not a duplicate -
        reuses the info/blue accent so it reads distinctly from the warning-family dup cards */
     --dup-intl-border:  var(--info);
@@ -116,8 +116,9 @@
         --dup-phone-cell: color-mix(in srgb, var(--dup-phone-border) 30%, var(--surface));
         --dup-time-bg:    color-mix(in srgb, var(--dup-time-border) 18%, var(--surface));
         --dup-time-cell:  color-mix(in srgb, var(--dup-time-border) 30%, var(--surface));
-        --dup-pk92-bg:    color-mix(in srgb, var(--dup-pk92-border) 18%, var(--surface));
-        --dup-pk92-cell:  color-mix(in srgb, var(--dup-pk92-border) 30%, var(--surface));
+        --dup-pk92-bg:    color-mix(in srgb, var(--dup-pk92-border) 55%, var(--surface));
+        --dup-pk92-cell:  color-mix(in srgb, var(--dup-pk92-border) 85%, var(--surface));
+        --dup-pk92-text:  #a7f3c4;
         --dup-intl-bg:    color-mix(in srgb, var(--dup-intl-border) 18%, var(--surface));
         --dup-intl-cell:  color-mix(in srgb, var(--dup-intl-border) 30%, var(--surface));
     }
@@ -143,8 +144,9 @@
     --dup-phone-cell: color-mix(in srgb, var(--dup-phone-border) 30%, var(--surface));
     --dup-time-bg:    color-mix(in srgb, var(--dup-time-border) 18%, var(--surface));
     --dup-time-cell:  color-mix(in srgb, var(--dup-time-border) 30%, var(--surface));
-    --dup-pk92-bg:    color-mix(in srgb, var(--dup-pk92-border) 18%, var(--surface));
-    --dup-pk92-cell:  color-mix(in srgb, var(--dup-pk92-border) 30%, var(--surface));
+    --dup-pk92-bg:    color-mix(in srgb, var(--dup-pk92-border) 55%, var(--surface));
+    --dup-pk92-cell:  color-mix(in srgb, var(--dup-pk92-border) 85%, var(--surface));
+    --dup-pk92-text:  #a7f3c4;
     --dup-intl-bg:    color-mix(in srgb, var(--dup-intl-border) 18%, var(--surface));
     --dup-intl-cell:  color-mix(in srgb, var(--dup-intl-border) 30%, var(--surface));
 }

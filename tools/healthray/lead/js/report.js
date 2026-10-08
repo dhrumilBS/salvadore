@@ -8,6 +8,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let allColumns = [];
     let defaultShowCols = [];
     let filteredRows = [];
+    let allRows = [];          // every API row in server order, +92 included - drives the table display only
+    let displayRows = [];      // what the table/cards show: filteredRows + matching +92 rows (highlighted, never counted)
     let dupMeta = {};
     let visibleCols = new Set();
 
@@ -562,7 +564,7 @@ document.addEventListener("DOMContentLoaded", () => {
     /* RENDER ALL  (called once per loadData) */
     function renderAll(data) {
         allColumns = data.allColumns || [];
-        const allRows = data.rows || [];
+        allRows = data.rows || [];
 
         /* Split off +92 (Pakistan/test) rows FIRST - everything downstream
            (dedup, breakdowns, KPIs, comparisons) only ever sees originalRows. */
@@ -976,8 +978,18 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ════════════════════════════════════════════════════════
        RENDER BODY
     ════════════════════════════════════════════════════════ */
+    /* +92 rows are shown inline with every other lead (so teammates can find
+       their own test/SEO submissions), in their natural server order, but
+       only highlighted - they never enter filteredRows, so no KPI counts them. */
+    function buildDisplayRows() {
+        const pkShown = new Set(computeFilteredRows(pk92Rows, {}, getActiveFilterState()));
+        const counted = new Set(filteredRows);
+        displayRows = sortRows(allRows.filter(r => counted.has(r) || pkShown.has(r)));
+    }
+
     function renderBody() {
-        if (filteredRows.length === 0) {
+        buildDisplayRows();
+        if (displayRows.length === 0) {
             mainTable.style.display = "none";
             emptyState.classList.add("visible");
             return;
@@ -985,10 +997,11 @@ document.addEventListener("DOMContentLoaded", () => {
         mainTable.style.display = "";
         emptyState.classList.remove("visible");
 
-        tableBody.innerHTML = filteredRows.map(row => {
-            const origIdx = originalRows.indexOf(row);
-            const dup = dupMeta[origIdx] || {};
-            const rowCls = dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
+        tableBody.innerHTML = displayRows.map(row => {
+            const rowIdx = allRows.indexOf(row);
+            const isPk = isPk92Number(row["your-number"]);
+            const dup = dupMeta[originalRows.indexOf(row)] || {};
+            const rowCls = isPk ? "dup-pk92" : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
 
             const cells = allColumns.map(col => {
                 const hidden = !visibleCols.has(col);
@@ -1001,9 +1014,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (isEmailCol && dup.email) { cellDupCls = "dup-cell-email"; dupTag = `<span class="dup-tag email">dup</span>`; }
                 if (isPhoneCol && dup.phone) { cellDupCls = "dup-cell-phone"; dupTag = `<span class="dup-tag phone">dup</span>`; }
                 if (isTimeCol && dup.time) { cellDupCls = "dup-cell-time"; dupTag = `<span class="dup-tag time">same</span>`; }
+                if (isPhoneCol && isPk) { cellDupCls = "dup-cell-pk92"; dupTag = `<span class="dup-tag pk92" title="Pakistan / Test - not counted in totals or analytics">PK/Test</span>`; }
 
                 const cls = [tdClass(col), cellDupCls, isName ? "lead-name-link" : ""].filter(Boolean).join(" ");
-                const rowAttr = isName ? ` data-row="${origIdx}"` : "";
+                const rowAttr = isName ? ` data-row="${rowIdx}"` : "";
                 return `<td data-col="${esc(col)}"${rowAttr} class="${cls}" title="${esc(row[col])}" style="${hidden ? "display:none" : ""}">${formatValue(col, row[col])}${dupTag}</td>`;
             }).join("");
 
@@ -1022,13 +1036,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderMobileCards() {
         const mobileCards = document.getElementById("mobileCards");
-        if (filteredRows.length === 0) { mobileCards.innerHTML = ""; return; }
+        if (displayRows.length === 0) { mobileCards.innerHTML = ""; return; }
 
-        mobileCards.innerHTML = filteredRows.map(row => {
-            const origIdx = originalRows.indexOf(row);
-            const dup = dupMeta[origIdx] || {};
-            const rowCls = dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
+        mobileCards.innerHTML = displayRows.map(row => {
+            const rowIdx = allRows.indexOf(row);
+            const isPk = isPk92Number(row["your-number"]);
+            const dup = dupMeta[originalRows.indexOf(row)] || {};
+            const rowCls = isPk ? "dup-pk92" : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
             const tags = [
+                isPk ? `<span class="dup-tag pk92">PK/Test</span>` : "",
                 dup.email ? `<span class="dup-tag email">dup</span>` : "",
                 dup.phone ? `<span class="dup-tag phone">dup</span>` : "",
                 dup.time ? `<span class="dup-tag time">same</span>` : "",
@@ -1039,7 +1055,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             return `<div class="m-card ${rowCls}">
                 <div class="m-card-hdr">
-                    <span class="m-card-name" data-row="${origIdx}">${esc(row["your-name"] || "(no name)")}</span>
+                    <span class="m-card-name" data-row="${rowIdx}">${esc(row["your-name"] || "(no name)")}</span>
                     <div class="m-card-tags">${tags}</div>
                 </div>
                 ${rowsHtml}
@@ -1051,7 +1067,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const el = e.target.closest(".m-card-name");
         if (!el) return;
         const idx = Number(el.dataset.row);
-        const row = originalRows[idx];
+        const row = allRows[idx];
         if (row) openLeadModal(row);
     });
 
@@ -1067,7 +1083,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const cell = e.target.closest('td[data-col="your-name"]');
         if (!cell) return;
         const idx = Number(cell.dataset.row);
-        const row = originalRows[idx];
+        const row = allRows[idx];
         if (row) openLeadModal(row);
     });
 
@@ -1094,9 +1110,18 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    // Only these fields are shared, in this order. Matched by display label so
+    // "your-name" / "your_name" style keys both resolve.
+    const COPY_FIELDS = [
+        "Your Name", "Your Number", "Your Email", "Your City", "Your Business",
+        "Bed Size", "Speciality", "Page Name", "Submit Time", "User Ip",
+    ];
+
     // Plain "Label: value" lines (empty fields skipped) - pastes cleanly into Teams and Slack.
     function leadToText(row) {
-        const lines = allColumns
+        const lines = COPY_FIELDS
+            .map(label => allColumns.find(c => formatCol(c).toLowerCase() === label.toLowerCase()))
+            .filter(Boolean)
             .map(col => [formatCol(col), rawValue(col, row)])
             .filter(([, v]) => v !== "")
             .map(([k, v]) => `${k}: ${v}`);
@@ -1255,10 +1280,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function updatePagination() {
+        const pkShown = displayRows.length - filteredRows.length;
         document.getElementById("paginationInfo").textContent =
-            filteredRows.length === originalRows.length
+            (filteredRows.length === originalRows.length
                 ? `Showing all ${originalRows.length} rows`
-                : `Showing ${filteredRows.length} of ${originalRows.length} rows`;
+                : `Showing ${filteredRows.length} of ${originalRows.length} rows`) +
+            (pkShown > 0 ? ` + ${pkShown} Pakistan/Test (highlighted, not counted)` : "");
     }
 
     function showLoader(on) {
