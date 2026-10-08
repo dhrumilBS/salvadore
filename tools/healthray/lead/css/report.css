@@ -186,12 +186,16 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); min-
    PAGE
 ═══════════════════════════════════════════ */
 .page { padding: 20px; }
+/* Safety net: the page itself never scrolls sideways (wide tables scroll inside .table-wrap). clip, not hidden, so sticky bars keep working. */
+body { overflow-x: clip; }
 
 /* ═══════════════════════════════════════════
    CONTROLS (sticky filter/control bar)
 ═══════════════════════════════════════════ */
-.controls-bar { position: sticky; top: var(--topbar-h); z-index: 90; background: var(--bg); padding-top: 16px; padding-bottom: 4px; margin: 0 -28px 0; }
-.controls-bar-inner { padding: 0 28px; }
+/* Bleeds to the page edges - the negative margin must equal .page's side padding
+   (20px), or the bar overflows the viewport and adds a page-level horizontal scroll. */
+.controls-bar { position: sticky; top: var(--topbar-h); z-index: 90; background: var(--bg); padding-top: 16px; padding-bottom: 4px; margin: 0 -20px 0; }
+.controls-bar-inner { padding: 0 20px; }
 .controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
 
 .control-group { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
@@ -300,7 +304,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); min-
    BREAKDOWN WIDGETS  (expandable) - responsive grid
    utm_campaign / utm_source / date / page / adtype
 ═══════════════════════════════════════════ */
-.breakdown-bar { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.breakdown-bar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 
 .breakdown-card {
     background: var(--surface);
@@ -467,47 +471,83 @@ table.pk92-table tbody td { padding: 8px 16px; border-top: 1px solid color-mix(i
 ═══════════════════════════════════════════ */
 .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; position: relative; }
 .table-card-hdr { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-base); font-weight: 600; gap: 10px; flex-wrap: wrap; }
-.table-wrap { overflow: auto; max-height: 68vh; }
+.table-wrap { overflow-x: hidden; overflow-y: auto; max-height: 68vh; scrollbar-width: thin; }
 
-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
-thead th { position: sticky; top: 0; z-index: 5; background: var(--surface-alt); border-bottom: 1.5px solid var(--border); padding: 12px 16px; text-align: left; font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); white-space: nowrap; }
+/* Fixed layout: the table always fits the card width - no horizontal scroll.
+   Long values truncate with an ellipsis (full value in the cell's title tooltip). */
+table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-base); table-layout: fixed; }
+thead th { position: sticky; top: 0; z-index: 5; background: var(--surface-alt); border-bottom: 1px solid var(--border); padding: 11px 12px; text-align: left; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; line-height: 1.35; color: var(--muted); white-space: normal; overflow-wrap: anywhere; vertical-align: bottom; }
+thead th:first-child, tbody td:first-child { padding-left: 20px; }
+thead th:last-child, tbody td:last-child { padding-right: 20px; }
+
+/* Column share of the width - narrow, predictable columns get a fixed slice,
+   everything else (name, email, URL, campaign, extra columns) splits the rest. */
+th[data-col="your-number"]   { width: 9.5%; }
+th[data-col="your-city"]     { width: 7.5%; }
+th[data-col="utm_source"]    { width: 7.5%; }
+th[data-col="utm_medium"]    { width: 6%; }
+th[data-col="utm_placement"] { width: 9%; }
+th[data-col="submit_time"]   { width: 9.5%; }
+th[data-col="your-name"]     { width: 13%; }
+
+/* Wide mode (many columns, e.g. "Full" preset): natural column widths and
+   horizontal scroll, with the name column pinned on the left. */
+.table-wrap.wide { overflow-x: auto; }
+table.wide { table-layout: auto; width: max-content; min-width: 100%; }
+table.wide thead th { width: auto; white-space: nowrap; vertical-align: middle; }
+table.wide tbody td { min-width: 90px; max-width: 260px; white-space: nowrap; }
+table.wide td.cell-time, table.wide td[data-col="your-number"] { white-space: nowrap; }
+table.wide thead th:first-child { position: sticky; left: 0; z-index: 7; }
+table.wide tbody td:first-child { position: sticky; left: 0; z-index: 2; background: inherit; min-width: 170px; box-shadow: 1px 0 0 var(--border); }
+tbody tr { background: var(--surface); }
 thead th.sortable { cursor: pointer; user-select: none; }
 thead th.sortable:hover { color: var(--text); }
 thead th .sort-ind { display: inline-block; margin-left: 4px; opacity: .45; font-size: 9px; }
 thead th.sort-asc .sort-ind, thead th.sort-desc .sort-ind { opacity: 1; color: var(--primary); }
-tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
-tbody tr:last-child { border-bottom: none; }
-tbody tr:nth-child(even) { background: var(--surface-alt); }
-tbody tr:hover { filter: brightness(.97); }
-:root[data-theme="dark"] tbody tr:hover { filter: brightness(1.15); }
-tbody td { padding: 13px 16px; color: var(--text); max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+tbody tr { transition: background .12s; }
+tbody tr:nth-child(even) { background: color-mix(in srgb, var(--surface-alt) 60%, var(--surface)); }
+tbody tr:hover { background: var(--primary-lt); }
+tbody td { padding: 12px 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; border-bottom: 1px solid var(--border); }
+tbody tr:last-child td { border-bottom: none; }
 
 /* Duplicate highlights */
-tr.dup-email { background: var(--dup-email-bg) !important; border-left: 3px solid var(--dup-email-border); }
-tr.dup-phone { background: var(--dup-phone-bg) !important; border-left: 3px solid var(--dup-phone-border); }
-tr.dup-time  { background: var(--dup-time-bg)  !important; border-left: 3px solid var(--dup-time-border); }
-tr.dup-pk92  { background: var(--dup-pk92-bg)  !important; border-left: 3px solid var(--dup-pk92-border); }
+/* Row accent is an inset shadow on the first cell - a border-left on the <tr>
+   would widen the fixed-layout table and bring back horizontal scroll. */
+tr.dup-email { background: var(--dup-email-bg) !important; }
+tr.dup-phone { background: var(--dup-phone-bg) !important; }
+tr.dup-time  { background: var(--dup-time-bg)  !important; }
+tr.dup-pk92  { background: var(--dup-pk92-bg)  !important; }
+tr.dup-email td:first-child { box-shadow: inset 3px 0 0 var(--dup-email-border); }
+tr.dup-phone td:first-child { box-shadow: inset 3px 0 0 var(--dup-phone-border); }
+tr.dup-time  td:first-child { box-shadow: inset 3px 0 0 var(--dup-time-border); }
+tr.dup-pk92  td:first-child { box-shadow: inset 3px 0 0 var(--dup-pk92-border); }
+table.wide tr.dup-email td:first-child { box-shadow: inset 3px 0 0 var(--dup-email-border), 1px 0 0 var(--border); }
+table.wide tr.dup-phone td:first-child { box-shadow: inset 3px 0 0 var(--dup-phone-border), 1px 0 0 var(--border); }
+table.wide tr.dup-time  td:first-child { box-shadow: inset 3px 0 0 var(--dup-time-border), 1px 0 0 var(--border); }
+table.wide tr.dup-pk92  td:first-child { box-shadow: inset 3px 0 0 var(--dup-pk92-border), 1px 0 0 var(--border); }
 td.dup-cell-email { background: var(--dup-email-cell) !important; color: var(--dup-email-text) !important; font-weight: 600; }
 td.dup-cell-phone { background: var(--dup-phone-cell) !important; color: var(--dup-phone-text) !important; font-weight: 600; }
 td.dup-cell-time  { background: var(--dup-time-cell)  !important; color: var(--dup-time-text)  !important; font-weight: 600; }
 td.dup-cell-pk92  { background: var(--dup-pk92-cell)  !important; color: var(--dup-pk92-text)  !important; font-weight: 600; }
 
-.dup-tag { display: inline-flex; align-items: center; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-left: 5px; vertical-align: middle; text-transform: uppercase; letter-spacing: .4px; }
+.dup-tag { display: inline-flex; align-items: center; font-size: 9.5px; font-weight: 700; padding: 1px 5px; border-radius: 4px; margin-left: 5px; vertical-align: middle; text-transform: uppercase; letter-spacing: .4px; }
 .dup-tag.email { background: var(--dup-email-border); color: #fff; }
 .dup-tag.phone { background: var(--dup-phone-border); color: #fff; }
 .dup-tag.time  { background: var(--dup-time-border);  color: #fff; }
 .dup-tag.pk92  { background: var(--dup-pk92-border);  color: #fff; }
 
 /* Special cell types */
-td.cell-email { color: var(--primary); font-family: var(--mono); font-size: var(--fs-sm); }
-td.cell-time  { color: var(--muted);  font-family: var(--mono); font-size: var(--fs-sm); }
-td.cell-url   { color: var(--success); font-size: var(--fs-sm); font-family: var(--mono); max-width: 200px; }
+td.cell-email { color: var(--text); font-size: var(--fs-sm); }
+td.cell-time  { color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: normal; line-height: 1.35; }
+td.cell-url   { color: var(--muted); font-size: var(--fs-sm); }
+td.cell-url .url-path { color: var(--primary); font-weight: 500; }
 td.cell-muted { color: var(--muted); font-size: var(--fs-sm); }
-.badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: var(--fs-sm); font-weight: 600; background: var(--primary-lt); color: var(--primary); }
+td[data-col="your-number"] { font-variant-numeric: tabular-nums; font-size: var(--fs-sm); white-space: normal; line-height: 1.35; }
+.badge { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; padding: 2px 8px; border-radius: 6px; font-size: var(--fs-xs); font-weight: 600; background: var(--primary-lt); color: var(--primary); }
 
-/* Name + secondary text distinction */
-td.lead-name-link { cursor: pointer; color: var(--primary); font-weight: 600; }
-td.lead-name-link:hover { text-decoration: underline; }
+/* Name: bold clickable name */
+td.lead-name-link { cursor: pointer; color: var(--text); font-weight: 600; }
+td.lead-name-link:hover .nm { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
 
 /* ═══════════════════════════════════════════
    PAGINATION
@@ -580,6 +620,16 @@ td.lead-name-link:hover { text-decoration: underline; }
 ═══════════════════════════════════════════ */
 @media (max-width: 1199px) {
     .breakdown-bar { grid-template-columns: repeat(2, 1fr); }
+    .breakdown-bar > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+    .breakdown-bar > :last-child:nth-child(odd) .breakdown-list { height: auto; max-height: 260px; }
+    .stat-bar { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* Below 1100px a 10-column table gets too cramped to scan - use the card view. */
+@media (max-width: 1099px) {
+    .table-wrap table { display: none; }
+    .mobile-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .m-card { margin-bottom: 0; }
 }
 
 @media (max-width: 767px) {
@@ -598,10 +648,11 @@ td.lead-name-link:hover { text-decoration: underline; }
     .search-wrap { margin-left: 0; width: 100%; }
 
     .stat-bar { grid-template-columns: repeat(2, 1fr); }
+    .stat-bar > :last-child:nth-child(odd) { grid-column: 1 / -1; }
     .breakdown-bar { grid-template-columns: 1fr; }
 
     thead, .table-wrap table { display: none; }
-    .mobile-cards { display: block; }
+    .mobile-cards { grid-template-columns: 1fr; }
 
     .col-selector-actions { width: 100%; margin: 8px 0 0; }
 }

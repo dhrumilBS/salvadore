@@ -922,7 +922,19 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ════════════════════════════════════════════════════════
        APPLY VISIBILITY
     ════════════════════════════════════════════════════════ */
+    /* Up to WIDE_COL_LIMIT visible columns the table is squeezed to fit the card
+       (no horizontal scroll). Beyond that (e.g. the "Full" preset) squeezing makes
+       columns unreadable, so switch to natural widths + horizontal scroll with the
+       first column pinned. */
+    const WIDE_COL_LIMIT = 11;
+    function updateTableMode() {
+        const wide = getVisibleCols().length > WIDE_COL_LIMIT;
+        mainTable.classList.toggle("wide", wide);
+        mainTable.closest(".table-wrap").classList.toggle("wide", wide);
+    }
+
     function applyVisibility() {
+        updateTableMode();
         colPills.querySelectorAll(".col-pill").forEach(pill => {
             pill.classList.toggle("active", visibleCols.has(pill.dataset.col));
         });
@@ -938,6 +950,7 @@ document.addEventListener("DOMContentLoaded", () => {
        RENDER HEAD  (all columns sortable - click cycles asc/desc)
     ════════════════════════════════════════════════════════ */
     function renderHead() {
+        updateTableMode();
         tableHead.innerHTML = "<tr>" +
             allColumns.map(col => {
                 const isSortCol = sortState.col === col;
@@ -1018,7 +1031,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 const cls = [tdClass(col), cellDupCls, isName ? "lead-name-link" : ""].filter(Boolean).join(" ");
                 const rowAttr = isName ? ` data-row="${rowIdx}"` : "";
-                return `<td data-col="${esc(col)}"${rowAttr} class="${cls}" title="${esc(row[col])}" style="${hidden ? "display:none" : ""}">${formatValue(col, row[col])}${dupTag}</td>`;
+                return `<td data-col="${esc(col)}"${rowAttr} class="${cls}" title="${esc(rawValue(col, row))}" style="${hidden ? "display:none" : ""}">${formatCell(col, row[col])}${dupTag}</td>`;
             }).join("");
 
             return `<tr class="${rowCls}">${cells}</tr>`;
@@ -1263,6 +1276,19 @@ document.addEventListener("DOMContentLoaded", () => {
         if (Array.isArray(value)) return esc(value.join(", "));
 
         return esc(String(value));
+    }
+
+    /* Table-only presentation (the modal keeps full values via formatValue):
+       URLs drop the scheme + host so the useful
+       part - the page path - is what shows before the ellipsis. */
+    function formatCell(col, value) {
+        if (value === null || value === undefined || value === "") return formatValue(col, value);
+        if (col === "your-name") return `<span class="nm">${esc(String(value).trim())}</span>`;
+        if (tdClass(col) === "cell-url" && !Array.isArray(value)) {
+            const m = String(value).match(/^https?:\/\/(?:www\.)?([^/?#]+)(.*)$/i);
+            if (m) return `<span class="url-path">${esc(m[2] || "/")}</span>`;
+        }
+        return formatValue(col, value);
     }
 
     function tdClass(col) {
