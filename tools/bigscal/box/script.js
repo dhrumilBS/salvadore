@@ -1,16 +1,95 @@
 document.addEventListener('DOMContentLoaded', function () {
 
-    /* ========================== Tab switching ========================== */
-    document.querySelectorAll(".option-btn").forEach((btn) => {
-        btn.addEventListener("click", function () {
-            document.querySelectorAll(".option-btn").forEach((b) => b.classList.remove("active"));
-            this.classList.add("active");
+    const $ = (id) => document.getElementById(id);
+    const previewEl = $('preview');
+    const codeEl = $('htmlOutput');
+    const emptyEl = $('emptyState');
+    const copyBtn = $('copyBtn');
+    const outMeta = $('outMeta');
+    let lastHtml = '';          // raw generated HTML - what Copy puts on the clipboard
+    let activeView = 'preview';
 
-            document.querySelectorAll(".form").forEach((form) => form.classList.add("d-none"));
-            const target = this.getAttribute("data-target");
-            document.getElementById(target).classList.remove("d-none");
+
+    /* ========================== Tool tabs ========================== */
+    document.querySelectorAll('.tab').forEach((btn) => {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b === this));
+            document.querySelectorAll('.form').forEach((f) => { f.hidden = f.id !== this.dataset.target; });
+            // Box / CTA preview themselves live; Blog Post waits for Generate.
+            if (this.dataset.target === 'boxForm') liveBox();
+            else if (this.dataset.target === 'ctaForm') liveCta();
+            else showOutput('');
         });
     });
+
+
+    /* ========================== Output: preview / HTML view ========================== */
+    document.querySelectorAll('.seg-btn').forEach((btn) => {
+        btn.addEventListener('click', function () {
+            activeView = this.dataset.view;
+            document.querySelectorAll('.seg-btn').forEach((b) => b.classList.toggle('active', b === this));
+            renderView();
+        });
+    });
+
+    function showOutput(html) {
+        lastHtml = html || '';
+        previewEl.innerHTML = forPreview(lastHtml);
+        codeEl.innerHTML = highlight(lastHtml);
+        copyBtn.disabled = !lastHtml;
+        outMeta.textContent = lastHtml ? `${lastHtml.length.toLocaleString()} characters` : '';
+        renderView();
+    }
+
+    // Preview only: render the Enfold FAQ shortcodes as an accordion, the way the
+    // live site shows them. The copied HTML keeps the shortcodes untouched.
+    function forPreview(html) {
+        return html
+            .replace(/\[\/?av_toggle_container[^\]]*\]/g, '')
+            .replace(/\[av_toggle title='([^']*)'[^\]]*\]([\s\S]*?)\[\/av_toggle\]/g,
+                '<details class="faq-item"><summary>$1</summary>$2</details>');
+    }
+
+    function renderView() {
+        const has = !!lastHtml;
+        emptyEl.hidden = has;
+        previewEl.hidden = !has || activeView !== 'preview';
+        codeEl.hidden = !has || activeView !== 'code';
+    }
+
+    // Lightweight HTML syntax colouring for the code view (display only -
+    // Copy always uses the raw lastHtml string).
+    function highlight(html) {
+        const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return esc(html)
+            .replace(/(\[\/?av_[a-z_]+[^\]]*\])/g, '<span class="sc">$1</span>')
+            .replace(/(&lt;\/?)([a-zA-Z0-9-]+)([^&]*?)(\/?&gt;)/g, (m, open, tag, attrs, close) =>
+                `<span class="t">${open}${tag}</span>` +
+                attrs.replace(/([a-zA-Z-:]+)=("[^"]*"|'[^']*')/g, '<span class="a">$1</span>=<span class="s">$2</span>') +
+                `<span class="t">${close}</span>`);
+    }
+
+
+    /* ========================== Feedback: toast + inline errors ========================== */
+    const toastEl = $('toast');
+    let toastTimer;
+    function toast(msg, type = 'success') {
+        toastEl.className = `toast show ${type}`;
+        toastEl.querySelector('i').className = 'bi ' + (type === 'error' ? 'bi-exclamation-circle' : 'bi-check-circle-fill');
+        toastEl.querySelector('span').textContent = msg;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
+    }
+
+    function setError(id, msg, field) {
+        const el = $(id);
+        el.textContent = msg || '';
+        el.hidden = !msg;
+        document.querySelectorAll('.invalid').forEach((f) => f.classList.remove('invalid'));
+        if (msg && field) { field.classList.add('invalid'); field.focus(); }
+    }
+    document.querySelectorAll('.input, .paste-area').forEach((f) =>
+        f.addEventListener('input', () => f.classList.remove('invalid')));
 
 
     /* ========================== Shared helpers ========================== */
@@ -100,59 +179,77 @@ ${content}
     }
 
 
-    /* ========================== Dynamic Box Generator (standalone) ========================== */
-    const boxForm = document.getElementById('boxForm');
-    if (boxForm) {
-        boxForm.addEventListener('submit', function (e) {
-            e.preventDefault();
-            const type = document.querySelector('input[name="type"]:checked')?.value;
-            let title = document.getElementById('title').value.trim();
-            if (!title) title = defaultBoxTitle(type);
+    /* ========================== Info Box ========================== */
+    const boxForm = $('boxForm');
+    const boxTitle = $('title');
 
-            const content = document.getElementById('editor').value.trim();
-
-            if (!type || !content) {
-                alert("Please select a type and enter content.");
-                return;
-            }
-
-            const html = buildBox(type, title, content);
-            document.getElementById('preview').innerHTML = html;
-            document.getElementById('htmlOutput').textContent = html;
-        });
+    function readBox() {
+        const type = document.querySelector('input[name="type"]:checked')?.value || 'pro-tip';
+        const title = boxTitle.value.trim() || defaultBoxTitle(type);
+        const content = $('editor').value.trim();
+        return { type, title, content };
     }
 
-
-    /* ========================== Blog CTA Generator ========================== */
-    const ctaTemplate = document.getElementById('blog-cta');
-    const ctaForm = document.getElementById('ctaForm');
-    if (ctaForm && ctaTemplate) {
-        ctaForm.addEventListener('submit', function (e) {
-            e.preventDefault();
-
-            const heading = document.getElementById('heading').value.trim();
-            const content = document.getElementById('bullets').value.trim()
-                .split('\n').filter((line) => line.trim() !== '');
-            const btnText = document.getElementById('btnText').value.trim();
-            const btnLink = document.getElementById('btnLink').value.trim() || '#a';
-
-            const bulletHTML = content.map((item) => `\n<li>${item.trim()}</li>`).join('');
-
-            // Function replacements avoid issues when content contains "$" sequences.
-            const html = ctaTemplate.innerHTML
-                .replace('${heading}', () => heading)
-                .replace('${bulletHTML}', () => bulletHTML)
-                .replace('${btnLink}', () => btnLink)
-                .replace('${btnText}', () => btnText);
-
-            document.getElementById('preview').innerHTML = html;
-            document.getElementById('htmlOutput').textContent = html;
-        });
+    function liveBox() {
+        const { type, title, content } = readBox();
+        showOutput(content ? buildBox(type, title, content) : '');
     }
 
+    boxForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        const { type, title, content } = readBox();
+        if (!content) { setError('boxError', 'Please write the box content.', $('editor')); return; }
+        setError('boxError', '');
+        showOutput(buildBox(type, title, content));
+        toast('HTML generated');
+    });
+    boxForm.addEventListener('input', () => { $('boxError').hidden = true; liveBox(); });
+    boxForm.querySelectorAll('input[name="type"]').forEach((r) => r.addEventListener('change', () => {
+        boxTitle.placeholder = defaultBoxTitle(r.value);
+        liveBox();
+    }));
 
-    /* ========================== Blog Content Builder (single paste → auto-convert) ========================== */
-    const blogSectionForm = document.getElementById('blogSectionForm');
+
+    /* ========================== CTA ========================== */
+    const ctaTemplate = $('blog-cta');
+    const ctaForm = $('ctaForm');
+
+    function buildCta() {
+        const heading = $('heading').value.trim();
+        const content = $('bullets').value.trim()
+            .split('\n').filter((line) => line.trim() !== '');
+        const btnText = $('btnText').value.trim();
+        const btnLink = $('btnLink').value.trim() || '#a';
+
+        const bulletHTML = content.map((item) => `\n<li>${item.trim()}</li>`).join('');
+
+        // Function replacements avoid issues when content contains "$" sequences.
+        return ctaTemplate.innerHTML
+            .replace('${heading}', () => heading)
+            .replace('${bulletHTML}', () => bulletHTML)
+            .replace('${btnLink}', () => btnLink)
+            .replace('${btnText}', () => btnText);
+    }
+
+    function liveCta() {
+        const any = ['heading', 'bullets', 'btnText'].some((id) => $(id).value.trim());
+        showOutput(any ? buildCta() : '');
+    }
+
+    ctaForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (!$('heading').value.trim()) { setError('ctaError', 'Please add a heading.', $('heading')); return; }
+        if (!$('btnText').value.trim()) { setError('ctaError', 'Please add the button text.', $('btnText')); return; }
+        setError('ctaError', '');
+        showOutput(buildCta());
+        toast('HTML generated');
+    });
+    ctaForm.addEventListener('input', () => { $('ctaError').hidden = true; liveCta(); });
+
+
+    /* ========================== Blog Post (single paste -> auto-convert) ========================== */
+    const blogSectionForm = $('blogSectionForm');
+    const pasteEl = $('blogPaste');
 
     function labelToType(label) {
         const l = label.toLowerCase().replace(/\s+/g, '');
@@ -331,16 +428,43 @@ ${content}
         return result;
     }
 
-    blogSectionForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const pasteEl = document.getElementById('blogPaste');
+    function runBlog(fromButton) {
         if (!pasteEl.textContent.trim()) {
-            alert('Please paste your blog content first.');
+            if (fromButton) setError('blogError', 'Paste your blog content (or load it from a Google Doc link) first.', pasteEl);
             return;
         }
-        const html = generateBlog(pasteEl.innerHTML);
-        document.getElementById('preview').innerHTML = html;
-        document.getElementById('htmlOutput').textContent = html;
+        setError('blogError', '');
+        showOutput(generateBlog(pasteEl.innerHTML));
+        if (fromButton) toast('HTML generated');
+    }
+
+    blogSectionForm.addEventListener('submit', (e) => { e.preventDefault(); runBlog(true); });
+    $('faqSchema').addEventListener('change', () => { if (lastHtml) runBlog(false); });
+
+    // Summary of what was detected in the pasted content, so the user can check
+    // the markers were picked up before copying.
+    function updatePasteMeta() {
+        const text = pasteEl.innerText || '';
+        const words = (text.match(/\S+/g) || []).length;
+        if (!words) { $('pasteMeta').textContent = ''; return; }
+        const h2s = Array.from(pasteEl.querySelectorAll('h2'));
+        const hasFaq = h2s.some((h) => /^(faqs?|frequently asked questions)$/i.test(h.textContent.trim()));
+        const boxes = (text.match(/^\s*(pro\s*tip|note|learn\s*more)\b/gim) || []).length;
+        const summary = /^\s*quick\s*summary\b/im.test(text);
+        const parts = [`<b>${words.toLocaleString()}</b> words`, `<b>${h2s.length}</b> H2 sections`];
+        if (boxes) parts.push(`<b>${boxes}</b> info box${boxes === 1 ? '' : 'es'}`);
+        if (summary) parts.push('quick summary');
+        if (hasFaq) parts.push('FAQ');
+        $('pasteMeta').innerHTML = 'Detected: ' + parts.join(' &middot; ');
+    }
+    pasteEl.addEventListener('input', () => { $('blogError').hidden = true; updatePasteMeta(); });
+    pasteEl.addEventListener('paste', () => setTimeout(() => { updatePasteMeta(); runBlog(false); }, 0));
+
+    $('clearPaste').addEventListener('click', () => {
+        pasteEl.innerHTML = '';
+        updatePasteMeta();
+        showOutput('');
+        pasteEl.focus();
     });
 
     /* ---------- FAQ output (av_toggle shortcodes) ---------- */
@@ -375,86 +499,96 @@ ${toggles}
     }
 
 
-    /* ========================== Copy button ========================== */
-    const copyBtn = document.getElementById('copyBtn');
-    if (!copyBtn) return;
-    copyBtn.addEventListener('click', function () {
-        const text = document.getElementById('htmlOutput').innerText;
-        fallbackCopy(text);
-        showPopover(copyBtn, 'copied!');
+    /* ========================== Google Doc loader ========================== */
+    // Reads a Google Doc link, asks the local backend (server.js) to convert it to
+    // formatted HTML, then drops it into the paste box and generates straight away.
+    const loadBtn = $('loadDocBtn');
+    loadBtn.addEventListener('click', fetchDocument);
+    $('docLink').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fetchDocument(); } });
+
+    async function fetchDocument() {
+        const linkInput = $('docLink');
+        const link = linkInput.value.trim();
+        if (!link) { setError('blogError', 'Paste a Google Doc link first.', linkInput); return; }
+
+        // Accept full URLs (.../d/<id>/edit or ?id=<id>) or a bare document ID.
+        const match = link.match(/\/d\/([a-zA-Z0-9_-]{20,})/) || link.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
+        const documentId = match ? match[1] : (/^[a-zA-Z0-9_-]{20,}$/.test(link) ? link : '');
+        if (!documentId) {
+            setError('blogError', "That doesn't look like a Google Doc link.\nExpected: https://docs.google.com/document/d/DOC_ID/edit", linkInput);
+            return;
+        }
+
+        setError('blogError', '');
+        const oldHtml = loadBtn.innerHTML;
+        loadBtn.disabled = true;
+        loadBtn.classList.add('is-loading');
+        loadBtn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> Loading';
+
+        try {
+            const res = await fetch('http://localhost:3000/api/read-doc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ documentId })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `Server responded with ${res.status}`);
+
+            pasteEl.innerHTML = data.html || '';
+            updatePasteMeta();
+            runBlog(false);
+            toast('Document loaded');
+        } catch (err) {
+            setError('blogError',
+                'Could not load the document: ' + err.message +
+                '\n- Is the doc server running? (node server.js)' +
+                '\n- Is the doc shared with the service account or "Anyone with the link"?');
+        } finally {
+            loadBtn.disabled = false;
+            loadBtn.classList.remove('is-loading');
+            loadBtn.innerHTML = oldHtml;
+        }
+    }
+
+
+    /* ========================== Copy ========================== */
+    copyBtn.addEventListener('click', async function () {
+        if (!lastHtml) return;
+        let ok = false;
+        try {
+            if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(lastHtml); ok = true; }
+        } catch (e) { ok = false; }
+        if (!ok) ok = legacyCopy(lastHtml);
+        if (!ok) { toast('Could not copy - open the HTML view and copy manually', 'error'); return; }
+
+        toast('HTML copied - paste it into the WordPress Text editor');
+        const label = copyBtn.querySelector('span');
+        copyBtn.classList.add('copied');
+        label.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.classList.remove('copied'); label.textContent = 'Copy HTML'; }, 1800);
     });
+
+    // Works on plain-HTTP LAN addresses, where navigator.clipboard is unavailable.
+    function legacyCopy(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        return ok;
+    }
+
+
+    /* ========================== Keyboard: Ctrl/Cmd + Enter generates ========================== */
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
+        const form = document.querySelector('.form:not([hidden])');
+        if (form) { e.preventDefault(); form.requestSubmit(); }
+    });
+
+    renderView();
 });
-
-function fallbackCopy(text) {
-    const tempInput = document.createElement('textarea');
-    tempInput.value = text;
-    document.body.appendChild(tempInput);
-    tempInput.select();
-    document.execCommand('copy');
-    document.body.removeChild(tempInput);
-}
-
-/* ========================== Google Doc loader ========================== */
-// Called from the "Load Content" button in the Blog Content tab.
-// Reads a Google Doc link, asks the backend to convert it to formatted HTML,
-// then drops that HTML straight into the rich paste box (#blogPaste) so the
-// existing "Generate HTML" pipeline can turn it into WordPress markup.
-async function fetchDocument() {
-    const linkInput = document.getElementById('docLink');
-    const target = document.getElementById('blogPaste');
-    const btn = document.querySelector('#blogSectionForm button[onclick="fetchDocument()"]');
-
-    const link = (linkInput?.value || '').trim();
-    if (!link) {
-        alert('Please paste a Google Doc link first.');
-        return;
-    }
-
-    // Accept full URLs (…/d/<id>/edit or ?id=<id>) or a bare document ID.
-    const match = link.match(/\/d\/([a-zA-Z0-9_-]{20,})/) || link.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
-    const documentId = match ? match[1] : (/^[a-zA-Z0-9_-]{20,}$/.test(link) ? link : '');
-    if (!documentId) {
-        alert('That doesn\'t look like a Google Doc link. Expected something like:\nhttps://docs.google.com/document/d/DOC_ID/edit');
-        return;
-    }
-
-    const oldLabel = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
-
-    try {
-        const res = await fetch('http://localhost:3000/api/read-doc', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ documentId })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `Server responded with ${res.status}`);
-
-        target.innerHTML = data.html || '';
-        target.focus();
-    } catch (err) {
-        alert(
-            'Could not load the document.\n\n' + err.message +
-            '\n\nChecklist:\n' +
-            '• Is the backend running?  →  node server.js\n' +
-            '• Is the doc shared as "Anyone with the link"?\n' +
-            '• Is a valid Google API key set in server.js?'
-        );
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = oldLabel; }
-    }
-}
-
-function showPopover(element, message) {
-    const popover = bootstrap.Popover.getInstance(element)
-        || new bootstrap.Popover(element, {
-            content: message,
-            placement: 'top',
-            trigger: 'manual',
-            customClass: 'copy-popover'
-        });
-
-    popover.setContent({ '.popover-body': message });
-    popover.show();
-    setTimeout(() => popover.hide(), 2000);
-}
