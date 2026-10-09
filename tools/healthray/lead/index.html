@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <title>Report Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="css/report.css">
+    <link rel="stylesheet" href="css/report.css?v=6">
     <script>
         (function () {
             try {
@@ -307,6 +307,23 @@
                 <div class="breakdown-list"></div>
             </div>
 
+            <!-- Lead Type (Botphonic only: demo-request form vs email-only signup) -->
+            <div class="breakdown-card bc-leadtype" id="bc-leadtype" hidden>
+                <div class="breakdown-hdr">
+                    <div class="breakdown-hdr-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                            <circle cx="12" cy="7" r="4" />
+                        </svg>
+                    </div>
+                    <div class="breakdown-hdr-text">
+                        <strong title="Demo Request = contact form with name / phone · Email Signup = email-only form">Lead Type</strong>
+                        <span class="breakdown-unique"></span>
+                    </div>
+                    <span class="breakdown-total">-</span>
+                </div>
+                <div class="breakdown-list"></div>
+            </div>
         </div><!-- /.breakdown-bar -->
 
         <!-- ═══════ ACTIVE FILTER STRIP ═══════ -->
@@ -422,7 +439,7 @@
 
 
 
-    <script src="js/report.js"></script>
+    <script src="js/report.js?v=8"></script>
 </body>
 
 </html>

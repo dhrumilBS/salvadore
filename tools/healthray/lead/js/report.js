@@ -20,10 +20,11 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeDateFilter = null;  // exact string | null
     let activePageFilter = null;  // exact string | null
     let activeAdtypeFilter = null;  // 'Organic' | 'Ads' | null
+    let activeLeadtypeFilter = null;  // 'Demo Request' | 'Email Signup' | null (Botphonic only)
     let activeIntlFilter = false;  // true = show only non +91 (outside India) numbers
 
     /* Accordion open state - persisted across re-renders */
-    const breakdownOpen = { campaign: false, source: false, date: false, page: false, adtype: false };
+    const breakdownOpen = { campaign: false, source: false, date: false, page: false, adtype: false, leadtype: false };
 
     /* Period-over-period comparison state (previous equivalent date range).
        compareRows / compareDupMeta / compareFilteredRows always mirror
@@ -45,6 +46,99 @@ document.addEventListener("DOMContentLoaded", () => {
         const stored = localStorage.getItem(DB_KEY);
         if (VALID_DBS.includes(stored)) activeDb = stored;
     } catch (e) { /* ignore */ }
+
+    /* ══════════════════════════════════════
+       PER-SITE FIELD PROFILES
+       Healthray and Botphonic run different Contact Form 7 setups, so the
+       same concept (phone, landing page, paid vs organic) lives under
+       different keys. Every site-specific field name lives here - the rest
+       of the dashboard only asks the profile.
+    ══════════════════════════════════════ */
+    const SITE_PROFILES = {
+        landing: {
+            phoneCol: "your-number",
+            pageKeys: ["page-name", "handl_url_cf7-264"],
+            adsHint: "Ads = rows with a utm_campaign value · Organic = rows without one",
+            isAds: row => hasUtmCampaign(row),
+            normalize: null,
+            dropCols: [],
+            columnOrder: null,      // keep the API's first-seen order
+            defaultShow: null,      // use the API's defaultShow
+            compactCols: ["your-name", "your-email", "your-number", "submit_time"],
+            mobileFields: ["your-email", "your-number", "utm_source", "utm_medium", "utm_campaign", "your-city", "your-country", "submit_time"],
+            copyFields: ["Your Name", "Your Number", "Your Email", "Your City", "Your Business", "Bed Size", "Speciality", "Page Name", "Submit Time", "User Ip"],
+            pk92Cols: [["Name", "your-name"], ["Email", "your-email"], ["Phone", "your-number"], ["City", "your-city"], ["Submit Time", "submit_time"]],
+            pk92ExportCols: ["your-name", "your-email", "your-number", "your-city", "your-country", "submit_time"],
+            leadType: false,
+        },
+        botphonic: {
+            /* "your-number" is typed without a country code ("86016 95454");
+               "full_phone" has it ("+918601695454") but is sometimes just "+91".
+               normalize() picks the usable one into a "phone" column. */
+            phoneCol: "phone",
+            pageKeys: ["full_url", "handl_ref", "handl_url_base_cf7"],
+            adsHint: "Ads = Google click id (gclid), a paid utm_medium (cpc / Lead-search) or an *Ads utm_source · Organic = everything else, incl. utm_campaign \"seo\"",
+            isAds: row => {
+                if (row["gclid"] || row["gclid_cf7"]) return true;
+                const medium = extractUtmVal(row["utm_medium"], "utm_medium").toLowerCase();
+                const source = extractUtmVal(row["utm_source"], "utm_source").toLowerCase();
+                return /cpc|ppc|paid|lead-search/.test(medium) || /ads$|adwords/.test(source);
+            },
+            normalize: row => {
+                /* Botphonic logs submit_time in UTC (= created_date); Healthray's is
+                   already IST. Convert so times, Date Wise and Same Time match. */
+                row["submit_time"] = utcToIst(row["submit_time"]);
+                const full = String(row["full_phone"] || "").trim();
+                row["phone"] = full.replace(/\D/g, "").length >= 8 ? full : (row["your-number"] || full || "");
+                row["lead-type"] = (row["your-name"] || row["your-number"] || row["submit"]) ? "Demo Request" : "Email Signup";
+                /* Full submitted-from URL (query string kept), like Healthray's
+                   "handl_url_cf7-264": contact form → full_url, footer email form → handl_url_base_cf7 */
+                row["form-url"] = row["full_url"] || row["handl_url_base_cf7"] || row["handl_ref"] || "";
+                const page = getPageName(row);
+                row["page"] = page === "(unknown)" ? "" : page;
+            },
+            /* UTM "_cf7" keys are aliased to the plain names by the API, "submit"
+               is folded into "lead-type" - showing them again is just noise. */
+            dropCols: ["utm_campaign_cf7", "utm_source_cf7", "utm_medium_cf7", "gclid_cf7", "submit"],
+            columnOrder: ["your-name", "your-email", "phone", "lead-type", "company-website", "use-case", "employees", "call-minutes", "your-message", "form-url", "page", "utm_source", "utm_medium", "utm_campaign", "submit_time"],
+            defaultShow: ["your-name", "your-email", "phone", "lead-type", "use-case", "employees", "form-url", "utm_source", "utm_medium", "utm_campaign", "submit_time"],
+            compactCols: ["your-name", "your-email", "phone", "lead-type", "submit_time"],
+            mobileFields: ["your-email", "phone", "lead-type", "use-case", "form-url", "utm_source", "utm_medium", "submit_time"],
+            copyFields: ["Your Name", "Phone", "Your Email", "Company Website", "Use Case", "Employees", "Call Minutes", "Your Message", "Form Url", "Submit Time", "User Ip"],
+            pk92Cols: [["Name", "your-name"], ["Email", "your-email"], ["Phone", "phone"], ["Company", "company-website"], ["Submit Time", "submit_time"]],
+            pk92ExportCols: ["your-name", "your-email", "phone", "company-website", "use-case", "submit_time"],
+            leadType: true,
+        },
+    };
+    /* "YYYY-MM-DD HH:MM:SS" UTC → same format in IST (+05:30); anything else is left as-is */
+    function utcToIst(v) {
+        const m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);
+        if (!m) return v;
+        const d = new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]) + 330 * 60000);
+        return d.toISOString().slice(0, 19).replace("T", " ");
+    }
+    function site() { return SITE_PROFILES[activeDb] || SITE_PROFILES.landing; }
+    function getPhone(row) { return row[site().phoneCol]; }
+    function normalizeRows(rows) {
+        const fn = site().normalize;
+        if (fn) rows.forEach(fn);
+        return rows;
+    }
+    function siteColumns(cols, rows) {
+        const p = site();
+        let out = cols.filter(c => !p.dropCols.includes(c));
+        if (p.normalize && rows.length) {
+            Object.keys(rows[0]).forEach(c => { if (!out.includes(c)) out.push(c); });
+        }
+        /* The name cell opens the lead detail modal, so keep it even when
+           the range only has nameless (email-only) Botphonic rows */
+        if (p.normalize && !out.includes("your-name")) out.unshift("your-name");
+        if (p.columnOrder) {
+            const first = p.columnOrder.filter(c => out.includes(c));
+            out = [...first, ...out.filter(c => !first.includes(c))];
+        }
+        return out;
+    }
 
     /* Table sort state - persists across filter changes */
     let sortState = { col: null, dir: 1 };  // dir: 1 = asc, -1 = desc
@@ -101,7 +195,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     document.getElementById("btnCompact").addEventListener("click", e => {
         e.stopPropagation();
-        const compactCols = ["your-name", "your-email", "your-number", "submit_time"].filter(c => allColumns.includes(c));
+        const compactCols = site().compactCols.filter(c => allColumns.includes(c));
         visibleCols = new Set(compactCols.length ? compactCols : defaultShowCols);
         applyVisibility();
     });
@@ -130,6 +224,15 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.setAttribute("aria-selected", isActive ? "true" : "false");
         });
     }
+    /* Site-specific chrome: Lead Type card (Botphonic only) + the Organic/Ads rule hint */
+    function applySiteLayout() {
+        const p = site();
+        document.getElementById("bc-leadtype").hidden = !p.leadType;
+        document.querySelector(".breakdown-bar").classList.toggle("six", p.leadType);
+        document.querySelector("#bc-adtype .breakdown-hdr-text strong").title = p.adsHint;
+    }
+    applySiteLayout();
+
     setActiveDbButton(activeDb); // reflect a restored (non-default) selection before the first load
 
     dbSwitch.addEventListener("click", e => {
@@ -145,6 +248,10 @@ document.addEventListener("DOMContentLoaded", () => {
         compareRows = null;
         compareDupMeta = {};
         compareFilteredRows = null;
+        visibleCols = new Set();
+        sortState = { col: null, dir: 1 };
+        clearAllFilters();
+        applySiteLayout();
         loadData();
     });
 
@@ -361,7 +468,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const rawRows = await fetchRows(prevRange.from, prevRange.to);
             if (myRequestId !== compareRequestId) return; // a newer request superseded this one
             /* +92 test data is excluded from the previous period too, same as the current one */
-            compareRows = rawRows.filter(r => !isPk92Number(r["your-number"]));
+            compareRows = normalizeRows(rawRows).filter(r => !isPk92Number(getPhone(r)));
             compareDupMeta = analyseDuplicates(compareRows);
         } catch (err) {
             console.error("Comparison fetch failed", err);
@@ -461,10 +568,10 @@ document.addEventListener("DOMContentLoaded", () => {
         rows.forEach((_, i) => (meta[i] = { email: false, phone: false, time: false }));
         const emailMap = buildFreqMap(rows, r => norm(r["your-email"]));
         const timeMap = buildFreqMap(rows, r => norm(r["submit_time"]));
-        const phoneMap = buildFreqMap(rows, r => norm(r["your-number"]));
+        const phoneMap = buildFreqMap(rows, r => phoneKey(getPhone(r)));
         rows.forEach((row, i) => {
             const e = norm(row["your-email"]);
-            const p = norm(row["your-number"]);
+            const p = phoneKey(getPhone(row));
             const t = norm(row["submit_time"]);
             if (e && emailMap[e] > 1) meta[i].email = true;
             if (p && phoneMap[p] > 1) meta[i].phone = true;
@@ -477,6 +584,8 @@ document.addEventListener("DOMContentLoaded", () => {
         rows.forEach(r => { const k = fn(r); if (k) m[k] = (m[k] || 0) + 1; });
         return m;
     }
+    /* Digits only, so "+44 7828 735346" and "+447828735346" count as the same number */
+    function phoneKey(v) { const d = String(v ?? "").replace(/\D/g, ""); return d.length >= 6 ? d : null; }
     function norm(v) { return (v == null || v === "") ? null : String(v).trim().toLowerCase(); }
 
     /* BREAKDOWN HELPERS
@@ -505,7 +614,8 @@ document.addEventListener("DOMContentLoaded", () => {
        reads "(unknown)" for Botphonic even though the same URL is captured under
        "handl_url_base_cf7" (or "full_url" on a different form variant). */
     function getPageName(row) {
-        const raw = row["page-name"] || row["handl_url_cf7-264"] || row["handl_url_base_cf7"] || row["full_url"] || "";
+        const key = site().pageKeys.find(k => row[k]);
+        const raw = key ? row[key] : "";
         if (!raw) return "(unknown)";
         try {
             const path = new URL(String(raw)).pathname;
@@ -527,7 +637,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return true;
     }
     function getAdType(row) {
-        return hasUtmCampaign(row) ? "Ads" : "Organic";
+        return site().isAds(row) ? "Ads" : "Organic";
     }
 
     /* Build [{ value, count }] from a set of rows for a given dimension */
@@ -541,6 +651,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 key = getPageName(row);
             } else if (dimension === "adtype") {
                 key = getAdType(row);
+            } else if (dimension === "leadtype") {
+                key = row["lead-type"] || "(unknown)";
             } else {
                 /* utm_campaign or utm_source */
                 const raw = row[dimension];
@@ -563,15 +675,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* RENDER ALL  (called once per loadData) */
     function renderAll(data) {
-        allColumns = data.allColumns || [];
-        allRows = data.rows || [];
+        allRows = normalizeRows(data.rows || []);
+        allColumns = siteColumns(data.allColumns || [], allRows);
 
         /* Split off +92 (Pakistan/test) rows FIRST - everything downstream
            (dedup, breakdowns, KPIs, comparisons) only ever sees originalRows. */
-        pk92Rows = allRows.filter(r => isPk92Number(r["your-number"]));
-        originalRows = allRows.filter(r => !isPk92Number(r["your-number"]));
+        pk92Rows = allRows.filter(r => isPk92Number(getPhone(r)));
+        originalRows = allRows.filter(r => !isPk92Number(getPhone(r)));
 
-        defaultShowCols = data.defaultShow || allColumns;
+        defaultShowCols = site().defaultShow ? site().defaultShow.filter(c => allColumns.includes(c)) : (data.defaultShow || allColumns);
         dupMeta = analyseDuplicates(originalRows);
 
         if (visibleCols.size === 0) visibleCols = new Set(defaultShowCols);
@@ -602,14 +714,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         body.innerHTML = `<table class="pk92-table"><thead><tr>
-                <th>Name</th><th>Email</th><th>Phone</th><th>City</th><th>Submit Time</th><th>Page</th>
+                ${site().pk92Cols.map(([label]) => `<th>${label}</th>`).join("")}<th>Page</th>
             </tr></thead><tbody>` +
             pk92Rows.map(row => `<tr>
-                <td>${esc(row["your-name"] || "-")}</td>
-                <td>${esc(row["your-email"] || "-")}</td>
-                <td>${esc(row["your-number"] || "-")}</td>
-                <td>${esc(row["your-city"] || "-")}</td>
-                <td>${esc(row["submit_time"] || "-")}</td>
+                ${site().pk92Cols.map(([, col]) => `<td>${esc(rawValue(col, row) || "-")}</td>`).join("")}
                 <td>${esc(getPageName(row))}</td>
             </tr>`).join("") +
             `</tbody></table>`;
@@ -629,6 +737,7 @@ document.addEventListener("DOMContentLoaded", () => {
             date: activeDateFilter,
             page: activePageFilter,
             adtype: activeAdtypeFilter,
+            leadtype: activeLeadtypeFilter,
             intl: activeIntlFilter,
         };
     }
@@ -670,8 +779,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (state.adtype) {
             out = out.filter(row => getAdType(row) === state.adtype);
         }
+        if (state.leadtype) {
+            out = out.filter(row => row["lead-type"] === state.leadtype);
+        }
         if (state.intl) {
-            out = out.filter(row => isNonIndiaNumber(row["your-number"]));
+            out = out.filter(row => isNonIndiaNumber(getPhone(row)));
         }
         return out;
     }
@@ -708,7 +820,7 @@ document.addEventListener("DOMContentLoaded", () => {
            as the dup counts above - so e.g. Source=Ads narrows it to Ads-only. */
         const nonIntlState = { ...state, intl: false };
         const scopedForIntl = computeFilteredRows(originalRows, dupMeta, nonIntlState);
-        const intlCount = scopedForIntl.filter(row => isNonIndiaNumber(row["your-number"])).length;
+        const intlCount = scopedForIntl.filter(row => isNonIndiaNumber(getPhone(row))).length;
         document.getElementById("statOutsideIndia").textContent = intlCount;
 
         if (compareRows != null) {
@@ -732,7 +844,7 @@ document.addEventListener("DOMContentLoaded", () => {
             setDeltaText(document.getElementById("statDupTimeDelta"), dupTimeCount, prevDupTimeCount, lastPrevRange);
 
             const scopedPrevForIntl = computeFilteredRows(compareRows, compareDupMeta, nonIntlState);
-            const prevIntlCount = scopedPrevForIntl.filter(row => isNonIndiaNumber(row["your-number"])).length;
+            const prevIntlCount = scopedPrevForIntl.filter(row => isNonIndiaNumber(getPhone(row))).length;
             setDeltaText(document.getElementById("statOutsideIndiaDelta"), intlCount, prevIntlCount, lastPrevRange);
         } else {
             ["statTotalDelta", "statShowingDelta", "statDupEmailDelta", "statDupPhoneDelta", "statDupTimeDelta", "statOutsideIndiaDelta"].forEach(id => {
@@ -748,6 +860,7 @@ document.addEventListener("DOMContentLoaded", () => {
         refreshBreakdownCard("bc-date", "date", "date", activeDateFilter);
         refreshBreakdownCard("bc-page", "page", "page", activePageFilter);
         refreshBreakdownCard("bc-adtype", "adtype", "adtype", activeAdtypeFilter);
+        if (site().leadType) refreshBreakdownCard("bc-leadtype", "leadtype", "leadtype", activeLeadtypeFilter);
     }
 
     /* ════════════════════════════════════════════════════════
@@ -804,6 +917,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (filterKey === "date") activeDateFilter = activeDateFilter === val ? null : val;
         if (filterKey === "page") activePageFilter = activePageFilter === val ? null : val;
         if (filterKey === "adtype") activeAdtypeFilter = activeAdtypeFilter === val ? null : val;
+        if (filterKey === "leadtype") activeLeadtypeFilter = activeLeadtypeFilter === val ? null : val;
 
         updateFilterStrip();
 
@@ -826,6 +940,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (activeDateFilter) chips.push({ label: `Date: ${activeDateFilter}`, onRemove: () => { activeDateFilter = null; updateFilterStrip(); applyFilters(); } });
         if (activePageFilter) chips.push({ label: `Page: ${activePageFilter}`, onRemove: () => { activePageFilter = null; updateFilterStrip(); applyFilters(); } });
         if (activeAdtypeFilter) chips.push({ label: `Type: ${activeAdtypeFilter}`, onRemove: () => { activeAdtypeFilter = null; updateFilterStrip(); applyFilters(); } });
+        if (activeLeadtypeFilter) chips.push({ label: `Lead: ${activeLeadtypeFilter}`, onRemove: () => { activeLeadtypeFilter = null; updateFilterStrip(); applyFilters(); } });
         if (activeIntlFilter) chips.push({ label: "Outside India", onRemove: () => toggleIntlFilter() });
 
         if (chips.length === 0) {
@@ -874,6 +989,7 @@ document.addEventListener("DOMContentLoaded", () => {
         activeDateFilter = null;
         activePageFilter = null;
         activeAdtypeFilter = null;
+        activeLeadtypeFilter = null;
         activeIntlFilter = false;
         ["email", "phone", "time"].forEach(t =>
             document.getElementById(`cardDup${cap(t)}`).classList.remove("active-filter")
@@ -1012,7 +1128,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         tableBody.innerHTML = displayRows.map(row => {
             const rowIdx = allRows.indexOf(row);
-            const isPk = isPk92Number(row["your-number"]);
+            const isPk = isPk92Number(getPhone(row));
             const dup = dupMeta[originalRows.indexOf(row)] || {};
             const rowCls = isPk ? "dup-pk92" : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
 
@@ -1020,7 +1136,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const hidden = !visibleCols.has(col);
                 const isName = col === "your-name";
                 const isEmailCol = col === "your-email";
-                const isPhoneCol = col === "your-number";
+                const isPhoneCol = col === site().phoneCol;
                 const isTimeCol = col === "submit_time";
 
                 let cellDupCls = "", dupTag = "";
@@ -1045,7 +1161,6 @@ document.addEventListener("DOMContentLoaded", () => {
        Same filteredRows/dupMeta as the table - CSS decides which
        of the two is visible at the current viewport width.
     ════════════════════════════════════════════════════════ */
-    const mobileCardFields = ["your-email", "your-number", "utm_source", "utm_medium", "utm_campaign", "your-city", "your-country", "submit_time"];
 
     function renderMobileCards() {
         const mobileCards = document.getElementById("mobileCards");
@@ -1053,7 +1168,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         mobileCards.innerHTML = displayRows.map(row => {
             const rowIdx = allRows.indexOf(row);
-            const isPk = isPk92Number(row["your-number"]);
+            const isPk = isPk92Number(getPhone(row));
             const dup = dupMeta[originalRows.indexOf(row)] || {};
             const rowCls = isPk ? "dup-pk92" : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
             const tags = [
@@ -1062,13 +1177,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 dup.phone ? `<span class="dup-tag phone">dup</span>` : "",
                 dup.time ? `<span class="dup-tag time">same</span>` : "",
             ].join("");
-            const rowsHtml = mobileCardFields.filter(c => allColumns.includes(c)).map(c =>
+            const rowsHtml = site().mobileFields.filter(c => allColumns.includes(c)).map(c =>
                 `<div class="m-card-row"><span class="k">${formatCol(c)}</span><span class="v">${formatValue(c, row[c])}</span></div>`
             ).join("");
 
             return `<div class="m-card ${rowCls}">
                 <div class="m-card-hdr">
-                    <span class="m-card-name" data-row="${rowIdx}">${esc(row["your-name"] || "(no name)")}</span>
+                    <span class="m-card-name" data-row="${rowIdx}">${esc(row["your-name"] || row["your-email"] || "(no name)")}</span>
                     <div class="m-card-tags">${tags}</div>
                 </div>
                 ${rowsHtml}
@@ -1125,14 +1240,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Only these fields are shared, in this order. Matched by display label so
     // "your-name" / "your_name" style keys both resolve.
-    const COPY_FIELDS = [
-        "Your Name", "Your Number", "Your Email", "Your City", "Your Business",
-        "Bed Size", "Speciality", "Page Name", "Submit Time", "User Ip",
-    ];
 
     // Plain "Label: value" lines (empty fields skipped) - pastes cleanly into Teams and Slack.
     function leadToText(row) {
-        const lines = COPY_FIELDS
+        const lines = site().copyFields
             .map(label => allColumns.find(c => formatCol(c).toLowerCase() === label.toLowerCase()))
             .filter(Boolean)
             .map(col => [formatCol(col), rawValue(col, row)])
@@ -1233,7 +1344,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function doExportPk92CSV() {
-        const cols = ["your-name", "your-email", "your-number", "your-city", "your-country", "submit_time"].filter(c => allColumns.includes(c));
+        const cols = site().pk92ExportCols.filter(c => allColumns.includes(c));
         const header = cols.map(csvEsc).join(",");
         const lines = pk92Rows.map(row => cols.map(c => csvEsc(rawValue(c, row))).join(","));
         const fromVal = document.getElementById("from").value;
@@ -1282,6 +1393,7 @@ document.addEventListener("DOMContentLoaded", () => {
        URLs drop the scheme + host so the useful
        part - the page path - is what shows before the ellipsis. */
     function formatCell(col, value) {
+        if (col === "your-name" && (value == null || String(value).trim() === "")) return `<span class="nm nm-empty">View</span>`;
         if (value === null || value === undefined || value === "") return formatValue(col, value);
         if (col === "your-name") return `<span class="nm">${esc(String(value).trim())}</span>`;
         if (tdClass(col) === "cell-url" && !Array.isArray(value)) {
