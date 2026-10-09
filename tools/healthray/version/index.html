@@ -4,119 +4,207 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>wp_posts › revision</title>
+    <title>Post Revisions Cleaner</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2">
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('verTheme');
+                if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+            } catch (e) { }
+        })();
+    </script>
 </head>
 
 <body>
 
-    <div class="app">
-
-        <header class="topbar">
-            <div class="topbar-id">
-                <span class="dot" aria-hidden="true"></span>
-                <span class="path"><span class="path-dim">wp_posts</span> <span class="path-sep">›</span> revision</span>
+    <!-- ═══════ TOPBAR ═══════ -->
+    <header class="topbar">
+        <div class="brand">
+            <span class="brand-icon"><i class="bi bi-clock-history"></i></span>
+            <div class="brand-text">
+                <h1>Post Revisions</h1>
+                <span>Find and clean up old WordPress revisions</span>
             </div>
-            <div class="topbar-stats" id="summary">connecting&hellip;</div>
-        </header>
+        </div>
 
-        <div id="alertContainer" class="alert-slot"></div>
+        <div class="site-switch" id="siteSwitch" role="tablist" aria-label="Website">
+            <button type="button" class="site-btn" data-db="landing" role="tab">
+                <span class="site-dot"></span>Healthray
+            </button>
+            <button type="button" class="site-btn" data-db="botphonic" role="tab">
+                <span class="site-dot"></span>Botphonic
+            </button>
+        </div>
 
-        <div class="toolbar">
-            <div class="pill-group" id="ptPills" role="tablist" aria-label="Filter by parent post type">
-                <button class="pill active" data-pt="all" type="button">All</button>
-                <button class="pill" data-pt="post" type="button">Post</button>
-                <button class="pill" data-pt="page" type="button">Page</button>
-                <button class="pill" data-pt="whitepaper" type="button">Whitepaper</button>
-                <button class="pill" data-pt="case-studies" type="button">case-studies</button>
+        <div class="topbar-actions">
+            <a class="btn btn-ghost btn-sm" id="adminLink" href="#" target="_blank" rel="noopener" hidden>
+                <i class="bi bi-wordpress"></i><span class="hide-sm">WP Admin</span><i class="bi bi-box-arrow-up-right small-icon"></i>
+            </a>
+            <button type="button" class="icon-btn" id="helpBtn" title="Help & keyboard shortcuts (?)" aria-label="Help">
+                <i class="bi bi-question-circle"></i>
+            </button>
+            <button type="button" class="icon-btn" id="themeToggle" title="Toggle dark mode" aria-label="Toggle dark mode">
+                <i class="bi bi-moon-stars icon-moon"></i><i class="bi bi-sun icon-sun"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="page">
+
+        <!-- ═══════ STATS ═══════ -->
+        <section class="stats" id="stats" aria-label="Site overview">
+            <div class="stat">
+                <span class="stat-label">Posts with revisions</span>
+                <span class="stat-value" id="statPosts">–</span>
             </div>
+            <div class="stat">
+                <span class="stat-label">Total revisions</span>
+                <span class="stat-value" id="statRevs">–</span>
+            </div>
+            <button type="button" class="stat stat-action" id="statOldCard" title="Show only posts that have old revisions">
+                <span class="stat-label">Old revisions <em>can be deleted</em></span>
+                <span class="stat-value warn" id="statOld">–</span>
+                <span class="stat-hint" id="statOldHint">Show these posts <i class="bi bi-arrow-right"></i></span>
+            </button>
+            <div class="stat">
+                <span class="stat-label">Revision meta rows</span>
+                <span class="stat-value" id="statMeta">–</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Revision content size</span>
+                <span class="stat-value" id="statSize">–</span>
+            </div>
+        </section>
 
-            <label class="command-input">
-                <span class="prompt" aria-hidden="true">&rsaquo;</span>
-                <input type="text" id="parentIdInput" placeholder="filter by parent post id&hellip;" inputmode="numeric" autocomplete="off">
-                <span class="key-hint" aria-hidden="true"><kbd>/</kbd></span>
-                <button class="icon-btn" id="resetBtn" title="Clear filters" aria-label="Clear filters">&times;</button>
-            </label>
+        <div class="rule-note">
+            <i class="bi bi-shield-check"></i>
+            <span>The <strong>latest 5 revisions</strong> of every post are always kept, so you can still restore recent changes. Only older ones can be deleted, together with their <code>wp_postmeta</code> rows.</span>
+        </div>
 
-            <div class="toolbar-actions">
-                <button class="btn-ghost" id="expandAllBtn" type="button">Expand all</button>
-                <button class="btn-ghost" id="collapseAllBtn" type="button">Collapse all</button>
-                <button class="btn-ghost btn-icon-only" id="shortcutsBtn" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
-                    <i class="bi bi-keyboard" aria-hidden="true"></i>
+        <!-- ═══════ FILTERS ═══════ -->
+        <section class="filters" aria-label="Filters">
+            <div class="filters-row">
+                <label class="search">
+                    <i class="bi bi-search"></i>
+                    <input type="search" id="searchInput" placeholder="Search title, slug, post ID or revision ID…" autocomplete="off">
+                    <kbd class="hide-sm">/</kbd>
+                </label>
+
+                <label class="select-wrap" title="Post status">
+                    <span>Status</span>
+                    <select id="statusSelect"><option value="all">All</option></select>
+                </label>
+
+                <label class="select-wrap" title="Sort posts">
+                    <span>Sort</span>
+                    <select id="sortSelect">
+                        <option value="revs">Most revisions</option>
+                        <option value="size">Largest (content size)</option>
+                        <option value="meta">Most meta rows</option>
+                        <option value="recent">Recently edited</option>
+                        <option value="oldest">Least recently edited</option>
+                        <option value="title">Title A–Z</option>
+                    </select>
+                </label>
+
+                <label class="toggle" title="Hide posts that only have their latest 5 revisions">
+                    <input type="checkbox" id="onlyOldToggle">
+                    <span class="toggle-track"></span>
+                    <span>Only posts with old revisions</span>
+                </label>
+
+                <button type="button" class="btn btn-ghost btn-sm" id="resetBtn" title="Clear all filters">
+                    <i class="bi bi-arrow-counterclockwise"></i>Reset
                 </button>
             </div>
-        </div>
 
-        <div class="list-head" aria-hidden="true">
-            <span></span>
-            <span>post</span>
-            <span class="col-tags">type</span>
-            <span class="col-ticks">revision history</span>
-            <span class="col-count">revs</span>
-            <span class="col-meta">meta</span>
-            <span class="col-date">last touched</span>
-        </div>
+            <div class="type-chips" id="typeChips" role="tablist" aria-label="Post type"></div>
+        </section>
 
-        <main class="list" id="groupsContainer">
-            <div class="loading-state">
-                <span class="spinner" aria-hidden="true"></span> scanning wp_posts for revisions&hellip;
+        <!-- ═══════ RESULTS ═══════ -->
+        <div class="results-bar">
+            <span class="results-info" id="resultsInfo">Loading…</span>
+            <div class="results-actions">
+                <button type="button" class="btn btn-soft btn-sm" id="selectPageOldBtn" title="Select every old revision on this page (A)">
+                    <i class="bi bi-check2-square"></i>Select old on this page
+                </button>
+                <button type="button" class="btn btn-ghost btn-sm" id="expandAllBtn" title="Expand all (E)"><i class="bi bi-arrows-expand"></i><span class="hide-sm">Expand</span></button>
+                <button type="button" class="btn btn-ghost btn-sm" id="collapseAllBtn" title="Collapse all (C)"><i class="bi bi-arrows-collapse"></i><span class="hide-sm">Collapse</span></button>
+                <button type="button" class="icon-btn" id="reloadBtn" title="Reload (R)" aria-label="Reload"><i class="bi bi-arrow-clockwise"></i></button>
             </div>
-        </main>
+        </div>
 
-        <div class="pagination" id="pagination"></div>
+        <div class="list" id="list" aria-live="polite"></div>
 
-    </div>
+        <nav class="pagination" id="pagination" aria-label="Pages"></nav>
+    </main>
 
-    <div class="selection-bar" id="selectionBar">
-        <span id="selectionText" class="mono"></span>
+    <!-- ═══════ SELECTION BAR ═══════ -->
+    <div class="selection-bar" id="selectionBar" role="region" aria-label="Selection">
+        <div class="selection-text">
+            <strong id="selCount">0</strong> <span id="selLabel">revisions selected</span>
+            <span class="selection-sub" id="selSub"></span>
+        </div>
         <div class="selection-actions">
-            <button class="btn-ghost" id="clearSelectionBtn" type="button">Cancel</button>
-            <button class="btn-danger" id="deleteSelectedBtn" type="button">Delete selected</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="clearSelBtn">Clear</button>
+            <button type="button" class="btn btn-danger btn-sm" id="deleteSelBtn"><i class="bi bi-trash3"></i><span id="deleteSelText">Delete</span></button>
         </div>
     </div>
 
-    <div class="modal-overlay" id="confirmModal" aria-hidden="true">
-        <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-            <div class="modal-header">
-                <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
-                <h3 id="modalTitle">Confirm deletion</h3>
-                <button class="icon-btn" id="modalCloseBtn" aria-label="Close">&times;</button>
+    <!-- ═══════ CONFIRM DELETE ═══════ -->
+    <div class="modal" id="confirmModal" aria-hidden="true">
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+            <div class="modal-head danger">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <h2 id="confirmTitle">Delete revisions?</h2>
+                <button type="button" class="icon-btn" data-close aria-label="Close"><i class="bi bi-x-lg"></i></button>
             </div>
-            <div class="modal-body" id="confirmModalBody"></div>
-            <div class="modal-footer">
-                <button class="btn-ghost" id="modalCancelBtn" type="button">Cancel</button>
-                <button class="btn-danger" id="confirmDeleteBtn" type="button">Delete permanently</button>
+            <div class="modal-body" id="confirmBody"></div>
+            <div class="modal-foot">
+                <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn"><i class="bi bi-trash3"></i><span>Delete permanently</span></button>
             </div>
         </div>
     </div>
 
-    <div class="modal-overlay" id="helpModal" aria-hidden="true">
-        <div class="modal-panel help-panel" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
-            <div class="modal-header">
-                <i class="bi bi-keyboard-fill" aria-hidden="true"></i>
-                <h3 id="helpTitle">Keyboard shortcuts</h3>
-                <button class="icon-btn" id="helpCloseBtn" aria-label="Close">&times;</button>
+    <!-- ═══════ HELP ═══════ -->
+    <div class="modal" id="helpModal" aria-hidden="true">
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+            <div class="modal-head">
+                <i class="bi bi-question-circle-fill"></i>
+                <h2 id="helpTitle">How it works</h2>
+                <button type="button" class="icon-btn" data-close aria-label="Close"><i class="bi bi-x-lg"></i></button>
             </div>
-            <div class="modal-body">
-                <div class="shortcut-list">
-                    <div class="shortcut"><span class="keys"><kbd>/</kbd> <em>or</em> <kbd>Ctrl</kbd><kbd>K</kbd></span><span>Focus the parent-id filter</span></div>
-                    <div class="shortcut"><span class="keys"><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd><kbd>4</kbd> <kbd>5</kbd></span><span>Filter: All &middot; Post &middot; Page &middot; Whitepaper &middot; Case Studies</span></div>
-                    <div class="shortcut"><span class="keys"><kbd>E</kbd> / <kbd>C</kbd></span><span>Expand / collapse all groups</span></div>
-                    <div class="shortcut"><span class="keys"><kbd>A</kbd></span><span>Select / deselect every deletable revision on the page</span></div>
-                    <div class="shortcut"><span class="keys"><kbd>Del</kbd></span><span>Delete the selected revisions</span></div>
-                    <div class="shortcut"><span class="keys"><kbd>R</kbd></span><span>Reload the list</span></div>
-                    <div class="shortcut"><span class="keys"><kbd>&larr;</kbd> / <kbd>&rarr;</kbd></span><span>Previous / next page</span></div>
-                    <div class="shortcut"><span class="keys"><kbd>Esc</kbd></span><span>Close dialogs, clear selection, leave the input</span></div>
-                    <div class="shortcut"><span class="keys"><kbd>?</kbd></span><span>Show this help</span></div>
+            <div class="modal-body help">
+                <ol class="help-steps">
+                    <li>Pick the website at the top: <strong>Healthray</strong> or <strong>Botphonic</strong>.</li>
+                    <li>Click <strong>Old revisions</strong> (or turn on <em>Only posts with old revisions</em>) to see what can be cleaned.</li>
+                    <li>Use <strong>Trim to 5</strong> on a post, or <strong>Select old on this page</strong>, then delete.</li>
+                </ol>
+                <p class="help-note"><i class="bi bi-shield-check"></i> The latest 5 revisions of each post are never deleted. The server enforces this too.</p>
+                <h3>Keyboard shortcuts</h3>
+                <div class="shortcuts">
+                    <div><span><kbd>/</kbd> or <kbd>Ctrl</kbd>+<kbd>K</kbd></span>Search</div>
+                    <div><span><kbd>1</kbd> … <kbd>9</kbd></span>Post type tabs</div>
+                    <div><span><kbd>O</kbd></span>Only posts with old revisions</div>
+                    <div><span><kbd>A</kbd></span>Select / clear old revisions on this page</div>
+                    <div><span><kbd>Del</kbd></span>Delete selected</div>
+                    <div><span><kbd>E</kbd> / <kbd>C</kbd></span>Expand / collapse all</div>
+                    <div><span><kbd>←</kbd> / <kbd>→</kbd></span>Previous / next page</div>
+                    <div><span><kbd>R</kbd></span>Reload</div>
+                    <div><span><kbd>Esc</kbd></span>Close dialog / clear selection</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+
+    <script src="app.js?v=3"></script>
 </body>
 
 </html>

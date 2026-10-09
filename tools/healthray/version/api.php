@@ -1,4 +1,13 @@
 <?php
+/*
+ * Which site to work on comes ONLY from this request's "db" param. Never the
+ * shared "db" cookie that other tools (e.g. wp_options) set for the whole
+ * domain - otherwise this page could list and delete another site's revisions
+ * while showing the wrong site name.
+ */
+$VERSION_SITES = ['landing' => 'Healthray', 'botphonic' => 'Botphonic'];
+$requestedDb = $_GET['db'] ?? $_POST['db'] ?? 'landing';
+$ACTIVE_DB = isset($VERSION_SITES[$requestedDb]) ? $requestedDb : 'landing';
 require_once __DIR__ . '/../conn.php';
 
 /**
@@ -103,6 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 
         echo json_encode([
             'success' => true,
+            'db' => $ACTIVE_DB,
             'deleted_posts' => $postsDeleted,
             'deleted_meta' => $metaDeleted,
             'deleted_ids' => $deletableIds,
@@ -117,37 +127,122 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 }
 
 // =====================================================================
-// LIST (default GET action) - grouped by parent post
+// META - site overview: totals, post types / statuses, admin URL
 // =====================================================================
-$allowedParentTypes = ['all', 'post', 'page'];
-$post_type = $_GET['pt'] ?? 'all';
-if (!in_array($post_type, $allowedParentTypes, true)) {
-    $post_type = 'all';
+if (($_GET['action'] ?? '') === 'meta') {
+    $totals = $conn->query(
+        "SELECT COUNT(*) AS revisions, COUNT(DISTINCT post_parent) AS posts, COALESCE(SUM(LENGTH(post_content)), 0) AS bytes
+         FROM wp_posts WHERE post_type = 'revision'"
+    )->fetch_assoc();
+
+    // Revisions beyond the 5 newest per post - what can actually be deleted
+    $deletable = (int) ($conn->query(
+        "SELECT COALESCE(SUM(GREATEST(c - 5, 0)), 0) FROM (
+            SELECT COUNT(*) AS c FROM wp_posts WHERE post_type = 'revision' GROUP BY post_parent
+         ) t"
+    )->fetch_row()[0] ?? 0);
+
+    $metaRows = (int) ($conn->query(
+        "SELECT COUNT(*) FROM wp_postmeta pm JOIN wp_posts p ON p.ID = pm.post_id WHERE p.post_type = 'revision'"
+    )->fetch_row()[0] ?? 0);
+
+    // Parent post types / statuses that actually have revisions on THIS site
+    $breakdown = function ($col) use ($conn) {
+        $out = [];
+        $res = $conn->query(
+            "SELECT COALESCE(parent.$col, '(missing)') AS k, COUNT(DISTINCT p.post_parent) AS posts, COUNT(*) AS revisions
+             FROM wp_posts p LEFT JOIN wp_posts parent ON parent.ID = p.post_parent
+             WHERE p.post_type = 'revision'
+             GROUP BY k ORDER BY revisions DESC"
+        );
+        while ($r = $res->fetch_assoc()) {
+            $out[] = ['key' => $r['k'], 'posts' => (int) $r['posts'], 'revisions' => (int) $r['revisions']];
+        }
+        return $out;
+    };
+
+    $opts = [];
+    $res = $conn->query("SELECT option_name, option_value FROM wp_options WHERE option_name IN ('siteurl', 'home')");
+    while ($r = $res->fetch_assoc()) {
+        $opts[$r['option_name']] = rtrim($r['option_value'], '/');
+    }
+    $siteUrl = $opts['siteurl'] ?? $opts['home'] ?? '';
+
+    echo json_encode([
+        'success' => true,
+        'db' => $ACTIVE_DB,
+        'label' => $VERSION_SITES[$ACTIVE_DB],
+        'admin_url' => $siteUrl !== '' ? $siteUrl . '/wp-admin/' : '',
+        'home_url' => $opts['home'] ?? $siteUrl,
+        'keep' => 5,
+        'totals' => [
+            'posts' => (int) $totals['posts'],
+            'revisions' => (int) $totals['revisions'],
+            'bytes' => (int) $totals['bytes'],
+            'deletable' => $deletable,
+            'meta_rows' => $metaRows,
+        ],
+        'types' => $breakdown('post_type'),
+        'statuses' => $breakdown('post_status'),
+    ]);
+    exit;
 }
 
-$searchParentId = (isset($_GET['parent_id']) && ctype_digit($_GET['parent_id'])) ? (int) $_GET['parent_id'] : null;
-
-$page = (isset($_GET['page']) && ctype_digit($_GET['page']) && (int) $_GET['page'] > 0) ? (int) $_GET['page'] : 1;
-$perPage = 50 ; // groups (posts) per page, not revisions
-$offset = ($page - 1) * $perPage;
-
+// =====================================================================
+// LIST (default GET action) - grouped by parent post
+// =====================================================================
 $whereClauses = ["p.post_type = 'revision'"];
 $params = [];
 $types = '';
 
-if ($post_type !== 'all') {
+// Parent post type / status - any value is safe, it's only ever a bound parameter
+$post_type = trim($_GET['pt'] ?? 'all');
+if ($post_type !== '' && $post_type !== 'all') {
     $whereClauses[] = 'parent.post_type = ?';
     $params[] = $post_type;
     $types .= 's';
 }
+$status = trim($_GET['status'] ?? 'all');
+if ($status !== '' && $status !== 'all') {
+    $whereClauses[] = 'parent.post_status = ?';
+    $params[] = $status;
+    $types .= 's';
+}
 
-if ($searchParentId !== null) {
-    $whereClauses[] = 'p.post_parent = ?';
-    $params[] = $searchParentId;
-    $types .= 'i';
+// Search: a number matches the post ID or one of its revision IDs; text matches title / slug
+$q = trim($_GET['q'] ?? ($_GET['parent_id'] ?? ''));
+if ($q !== '') {
+    if (ctype_digit($q)) {
+        $whereClauses[] = "(p.post_parent = ? OR p.post_parent = (SELECT r.post_parent FROM wp_posts r WHERE r.ID = ? AND r.post_type = 'revision'))";
+        $params[] = (int) $q;
+        $params[] = (int) $q;
+        $types .= 'ii';
+    } else {
+        $whereClauses[] = '(parent.post_title LIKE ? OR parent.post_name LIKE ?)';
+        $like = '%' . $q . '%';
+        $params[] = $like;
+        $params[] = $like;
+        $types .= 'ss';
+    }
 }
 
 $whereSql = implode(' AND ', $whereClauses);
+$havingSql = !empty($_GET['only_old']) ? 'HAVING COUNT(p.ID) > 5' : '';
+
+$sorts = [
+    'revs'   => 'revision_count DESC, last_revision DESC',
+    'meta'   => 'total_meta DESC, revision_count DESC',
+    'size'   => 'total_bytes DESC',
+    'recent' => 'last_revision DESC',
+    'oldest' => 'last_revision ASC',
+    'title'  => 'post_title ASC',
+];
+$sort = isset($sorts[$_GET['sort'] ?? '']) ? $_GET['sort'] : 'revs';
+
+$page = (isset($_GET['page']) && ctype_digit($_GET['page']) && (int) $_GET['page'] > 0) ? (int) $_GET['page'] : 1;
+$perPage = (int) ($_GET['per_page'] ?? 25); // groups (posts) per page, not revisions
+if (!in_array($perPage, [25, 50, 100], true)) $perPage = 25;
+$offset = ($page - 1) * $perPage;
 
 // ---- Count total distinct parent posts (groups) for pagination ----
 $countSql = "SELECT COUNT(*) AS total FROM (
@@ -156,6 +251,7 @@ $countSql = "SELECT COUNT(*) AS total FROM (
                 LEFT JOIN wp_posts parent ON parent.ID = p.post_parent
                 WHERE $whereSql
                 GROUP BY p.post_parent
+                $havingSql
              ) t";
 $countStmt = $conn->prepare($countSql);
 if ($types !== '') {
@@ -169,16 +265,20 @@ $totalPages = max(1, (int) ceil($totalGroups / $perPage));
 // ---- Fetch the page of parent-post groups, with aggregate counts ----
 $groupSql = "SELECT
         p.post_parent AS post_id,
-        parent.post_name   AS post_name,
-        parent.post_type   AS post_type,
-        parent.post_status AS post_status,
+        MAX(parent.post_title)  AS post_title,
+        MAX(parent.post_name)   AS post_name,
+        MAX(parent.post_type)   AS post_type,
+        MAX(parent.post_status) AS post_status,
         COUNT(p.ID) AS revision_count,
-        MAX(p.post_modified) AS last_revision
+        MAX(p.post_modified) AS last_revision,
+        SUM(LENGTH(p.post_content)) AS total_bytes,
+        SUM((SELECT COUNT(*) FROM wp_postmeta pm WHERE pm.post_id = p.ID)) AS total_meta
     FROM wp_posts p
     LEFT JOIN wp_posts parent ON parent.ID = p.post_parent
     WHERE $whereSql
     GROUP BY p.post_parent
-    ORDER BY revision_count DESC
+    $havingSql
+    ORDER BY {$sorts[$sort]}
     LIMIT ? OFFSET ?";
 
 $groupParams = $params;
@@ -198,18 +298,21 @@ while ($row = $groupResult->fetch_assoc()) {
     $postIds[] = $postId;
     $groups[$postId] = [
         'post_id' => $postId,
+        'post_title' => $row['post_title'],
         'post_name' => $row['post_name'],
         'post_type' => $row['post_type'],
         'post_status' => $row['post_status'],
         'revision_count' => (int) $row['revision_count'],
         'last_revision' => $row['last_revision'],
-        'total_meta' => 0,
+        'total_bytes' => (int) $row['total_bytes'],
+        'total_meta' => (int) $row['total_meta'],
         'revisions' => [],
     ];
 }
 $groupStmt->close();
 
-// ---- Fetch the individual revisions (+ meta counts) for those posts ----
+// ---- Fetch the individual revisions (+ meta count, author, size) for those posts ----
+// Same newest-first order the delete endpoint uses to protect the latest 5.
 if (!empty($postIds)) {
     $idPlaceholders = implode(',', array_fill(0, count($postIds), '?'));
     $idTypes = str_repeat('i', count($postIds));
@@ -218,11 +321,15 @@ if (!empty($postIds)) {
             p.ID AS revision_id,
             p.post_parent,
             p.post_title,
+            p.post_name,
             p.post_date,
             p.post_modified,
             p.post_status,
+            LENGTH(p.post_content) AS bytes,
+            u.display_name AS author,
             (SELECT COUNT(*) FROM wp_postmeta pm WHERE pm.post_id = p.ID) AS meta_count
         FROM wp_posts p
+        LEFT JOIN wp_users u ON u.ID = p.post_author
         WHERE p.post_type = 'revision' AND p.post_parent IN ($idPlaceholders)
         ORDER BY p.post_parent DESC, p.post_date DESC";
 
@@ -235,15 +342,16 @@ if (!empty($postIds)) {
         $postId = (int) $row['post_parent'];
         if (!isset($groups[$postId])) continue;
 
-        $metaCount = (int) $row['meta_count'];
-        $groups[$postId]['total_meta'] += $metaCount;
         $groups[$postId]['revisions'][] = [
             'revision_id' => (int) $row['revision_id'],
             'post_title' => $row['post_title'],
+            'autosave' => strpos((string) $row['post_name'], 'autosave') !== false,
             'post_date' => $row['post_date'],
             'post_modified' => $row['post_modified'],
             'post_status' => $row['post_status'],
-            'meta_count' => $metaCount,
+            'bytes' => (int) $row['bytes'],
+            'author' => $row['author'],
+            'meta_count' => (int) $row['meta_count'],
         ];
     }
     $revStmt->close();
@@ -251,13 +359,10 @@ if (!empty($postIds)) {
 
 echo json_encode([
     'success' => true,
+    'db' => $ACTIVE_DB,
     'groups' => array_values($groups),
     'totalGroups' => $totalGroups,
     'page' => $page,
     'perPage' => $perPage,
     'totalPages' => $totalPages,
-    'filters' => [
-        'pt' => $post_type,
-        'parent_id' => $searchParentId,
-    ],
 ]);
