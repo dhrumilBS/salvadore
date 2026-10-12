@@ -4,8 +4,9 @@
  * another tab displays (a post's status/slug, a link inside post content, a
  * new 410 redirect), that other tab is marked stale and reloads the next time
  * it's shown - or right away if it's the one on screen. The active tab lives
- * in the URL hash (#content, #links, #fixer, #redirects, #bulk) so each one is
- * bookmarkable; Link Fixer adds its own filters after a "?" (#fixer?page=2). */
+ * in the URL hash (#content, #links, #fixer, #redirects, #bulk, #menu, #replace,
+ * #keywords) so each one is bookmarkable; Link Fixer adds its own filters after a
+ * "?" (#fixer?page=2) and Find & Replace accepts #replace?find=...&replace=... */
 
 const VIEWS = {
     content:   { el: 'contentView',   load: loadContent,  search: 'fSearch' },
@@ -13,10 +14,13 @@ const VIEWS = {
     fixer:     { el: 'fixerView',     load: loadFixer,    search: 'fx-search' },
     redirects: { el: 'redirectsView', load: loadRedirects, search: 'rSearch' },
     bulk:      { el: 'bulkView',      load: null,         search: 'bulkUrlsInput' }, // only searches on demand
+    menu:      { el: 'menuView',      load: loadMenu,     search: 'mo-search',  key: e => moHandleKey(e) },
+    replace:   { el: 'replaceView',   load: loadReplace,  search: 'fr-find',    key: e => frHandleKey(e) },
+    keywords:  { el: 'keywordsView',  load: loadKeywords, search: 'kw-search',  key: e => kwHandleKey(e) },
 };
 
 let activeView = 'content';
-const viewNeedsLoad = { content: true, links: true, fixer: true, redirects: true, bulk: false };
+const viewNeedsLoad = { content: true, links: true, fixer: true, redirects: true, bulk: false, menu: true, replace: true, keywords: true };
 
 /** "#fixer?page=2" -> ['fixer', 'page=2'] */
 function parseHash() {
@@ -51,14 +55,15 @@ function markStale(views) {
     });
 }
 
-/** A post's status/slug/title/etc changed (Content save, Bulk status apply). */
+/** A post's status/slug/title/order changed (Content save, Bulk status apply, Menu Order save).
+ * The tab that made the change keeps its own rows in sync, so it is never reloaded here. */
 function onPostsChanged() {
-    markStale(['links', 'redirects', 'fixer'].concat(activeView === 'bulk' ? ['content'] : []));
+    markStale(['content', 'links', 'redirects', 'fixer', 'menu', 'keywords'].filter(v => v !== activeView));
 }
 
-/** Links inside post content changed (Link Fixer write / undo). Link Fixer keeps its own rows in sync. */
+/** Post content / meta changed (Link Fixer write or undo, Find & Replace apply or undo). */
 function onLinksChanged() {
-    markStale(['links', 'content'].filter(v => v !== activeView));
+    markStale(['links', 'content', 'fixer', 'menu', 'keywords'].filter(v => v !== activeView));
 }
 
 /** A Yoast redirect rule was added/replaced (trash -> 410 prompts). */
@@ -76,7 +81,15 @@ function openHelp() { document.getElementById('helpModal').classList.add('open')
 function closeHelp() { document.getElementById('helpModal').classList.remove('open'); }
 const isHelpOpen = () => document.getElementById('helpModal').classList.contains('open');
 
+/** Hand a key to the active tab's own handler (Menu Order, Find & Replace, Focus Keywords). */
+function tabKey(e) {
+    const handler = VIEWS[activeView].key;
+    return !!(handler && handler(e));
+}
+
 function onGlobalKey(e) {
+    // Menu Order's Ctrl+S must work while typing and inside its own review dialog
+    if (activeView === 'menu' && tabKey(e)) { e.preventDefault(); return; }
     if (isConfirmOpen()) {
         if (e.key === 'Escape') { e.preventDefault(); closeConfirm(false); }
         return;
@@ -85,12 +98,17 @@ function onGlobalKey(e) {
         if (isHelpOpen()) { closeHelp(); return; }
         if (isHistoryOpen()) { closeHistory(); return; }
         if (activeView === 'fixer' && fxHandleKey(e)) { e.preventDefault(); return; }
+        if (activeView !== 'menu' && tabKey(e)) e.preventDefault();
         return;
     }
-    if (isHelpOpen() || isHistoryOpen() || document.querySelector('.modal-backdrop.open, .fx-modal-overlay.open')) return;
+    if (isHelpOpen() || isHistoryOpen() || document.querySelector('.modal-backdrop.open, .fx-modal-overlay.open, #fr-drawer.fr-open')) return;
 
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
-    if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (typing || e.ctrlKey || e.metaKey || e.altKey) {
+        // the ported tabs do their own typing checks
+        if (activeView !== 'menu' && tabKey(e)) e.preventDefault();
+        return;
+    }
 
     if (e.key === '?') { e.preventDefault(); openHelp(); return; }
     if (e.key === '/') {
@@ -101,17 +119,19 @@ function onGlobalKey(e) {
     const k = e.key.toLowerCase();
     if (Date.now() - gPending < 1200) {
         gPending = 0;
-        const target = { c: 'content', l: 'links', f: 'fixer', r: 'redirects', b: 'bulk' }[k];
+        const target = { c: 'content', l: 'links', f: 'fixer', r: 'redirects', b: 'bulk', m: 'menu', s: 'replace', k: 'keywords' }[k];
         if (target) { e.preventDefault(); showView(target); }
         return;
     }
     if (k === 'g') { gPending = Date.now(); return; }
     if (k === 'h') { e.preventDefault(); openHistory(); return; }
-    if (activeView === 'fixer' && fxHandleKey(e)) e.preventDefault();
+    if (activeView === 'fixer' && fxHandleKey(e)) { e.preventDefault(); return; }
+    if (activeView !== 'menu' && tabKey(e)) e.preventDefault();
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
     initTheme();
+    initDensity();
     LinkStatus.bind();
     bindCopyButtons();
     bindConfirmDialog();
@@ -122,6 +142,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindFixerTab();
     bindRedirectsTab();
     bindBulkTab();
+    bindMenuTab();
+    bindReplaceTab();
+    bindKeywordsTab();
+    bindSavedViews();
 
     bindDatabaseSwitcher();
     // Pin this page to one site before anything else talks to the API.
@@ -135,6 +159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('hashchange', () => {
         const [view, query] = parseHash();
         if (view === 'fixer' && query) fxReadHash(query);
+        if (view === 'replace' && query) frReadHash(query);
         showView(view);
     });
     document.addEventListener('keydown', onGlobalKey);
@@ -154,5 +179,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const [view, query] = parseHash();
     if (view === 'fixer') fxReadHash(query);
+    if (view === 'replace' && query) frReadHash(query);
     showView(view || 'content');
 });

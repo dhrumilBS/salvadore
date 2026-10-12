@@ -23,6 +23,10 @@ Options -Indexes
     RewriteBase /salvadore/
 
     RewriteRule ^healthray-sql/post-content(/.*)?$  tools/healthray/master-dashboard/#fixer [R=308,NE,L]
+    # Menu Order, Find & Replace and Focus Keyword became Master Dashboard tabs (October 2026)
+    RewriteRule ^(?:healthray-sql|tools/healthray)/menu-order(/.*)?$     tools/healthray/master-dashboard/#menu     [R=308,NE,L]
+    RewriteRule ^(?:healthray-sql|tools/healthray)/replace(/.*)?$        tools/healthray/master-dashboard/#replace  [R=308,NE,L]
+    RewriteRule ^(?:healthray-sql|tools/healthray)/focus-keyword(/.*)?$  tools/healthray/master-dashboard/#keywords [R=308,NE,L]
     RewriteRule ^healthray-sql(/.*)?$        tools/healthray$1             [R=308,L]
     RewriteRule ^botphonic-sql(/.*)?$        tools/botphonic$1             [R=308,L]
     RewriteRule ^bigscal-section(/.*)?$      tools/bigscal$1               [R=308,L]

@@ -1,0 +1,769 @@
+/* ══════════════════════════════════════════════════════════
+   Focus Keywords tab (js/keywords.js) - everything scoped to #keywordsView.
+   Colours come only from the theme variables in style.css, so both themes work.
+   ══════════════════════════════════════════════════════════ */
+
+#keywordsView {
+    /* duplicate-group tints, cycling 1..4 per keyword */
+    --kw-g1: var(--ok);
+    --kw-g2: var(--accent);
+    --kw-g3: var(--warn);
+    --kw-g4: var(--danger);
+}
+
+#keywordsView [hidden] {
+    display: none !important;
+}
+
+/* ── Stat cards (buttons) ───────────────────────────────── */
+#keywordsView .kw-stat {
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color .15s, background .15s, box-shadow .15s;
+}
+
+#keywordsView .kw-stat:focus-visible {
+    box-shadow: var(--focus-ring);
+    border-radius: var(--r-md);
+}
+
+#keywordsView .kw-stat.active {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+#keywordsView .kw-stat-sub {
+    margin-top: 3px;
+    font-size: 11px;
+    color: var(--text3);
+}
+
+/* ── Filters ────────────────────────────────────────────── */
+#keywordsView .kw-frow {
+    flex: 0 1 190px;
+    min-width: 150px;
+}
+
+#keywordsView .kw-frow select {
+    width: 100%;
+}
+
+#keywordsView .kw-search-wrap {
+    align-self: flex-end;
+}
+
+#keywordsView .kw-actions {
+    position: relative;
+}
+
+#keywordsView .kw-perf b,
+#keywordsView .kw-site b {
+    font-family: var(--mono);
+    font-weight: 600;
+}
+
+#keywordsView .kw-perf-server {
+    font-style: normal;
+    color: var(--text3);
+}
+
+#keywordsView .kw-perf.kw-perf-good b { color: var(--ok); }
+#keywordsView .kw-perf.kw-perf-warn b { color: var(--warn); }
+#keywordsView .kw-perf.kw-perf-slow b { color: var(--danger); }
+
+#keywordsView .kw-site b {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── Menus (Columns / Export) ───────────────────────────── */
+#keywordsView .kw-menu-left {
+    left: 0;
+    right: auto;
+}
+
+#keywordsView .kw-cols-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 9px 12px 11px;
+}
+
+#keywordsView .kw-col-check {
+    border-radius: var(--r-sm);
+}
+
+#keywordsView .kw-col-check.kw-locked {
+    opacity: .6;
+    cursor: not-allowed;
+}
+
+#keywordsView .export-item:focus-visible {
+    background: var(--surface2);
+    color: var(--text);
+    border-radius: 0;
+}
+
+/* ── Filter chips ───────────────────────────────────────── */
+#keywordsView .kw-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+#keywordsView .kw-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    max-width: 100%;
+    padding: 3px 4px 3px 11px;
+    border-radius: 999px;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    font-size: 12px;
+    color: var(--text);
+}
+
+#keywordsView .kw-chip-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--text2);
+}
+
+#keywordsView .kw-chip-val {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+#keywordsView .kw-chip-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+
+#keywordsView .kw-chip-clear:hover {
+    background: var(--surface3);
+    color: var(--text);
+}
+
+/* ── Conflicting keyword panel ──────────────────────────── */
+#keywordsView .kw-panel-hint {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+    font-size: 11.5px;
+    color: var(--text2);
+}
+
+#keywordsView .kw-panel-close {
+    margin-left: auto;
+}
+
+#keywordsView .kw-panel-body {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 260px;
+    overflow: auto;
+}
+
+#keywordsView .kw-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+    padding: 4px 5px 4px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+}
+
+#keywordsView .kw-group:hover {
+    border-color: var(--accent);
+}
+
+#keywordsView .kw-group.active {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+}
+
+#keywordsView .kw-group-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+#keywordsView .kw-group-count {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--warn-dim);
+    border: 1px solid var(--warn);
+    color: var(--warn);
+}
+
+/* ── Legend ─────────────────────────────────────────────── */
+#keywordsView .kw-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--text3);
+}
+
+#keywordsView .kw-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+}
+
+#keywordsView .kw-dot.kw-g1 { background: var(--kw-g1); }
+#keywordsView .kw-dot.kw-g2 { background: var(--kw-g2); }
+#keywordsView .kw-dot.kw-g3 { background: var(--kw-g3); }
+#keywordsView .kw-dot.kw-g4 { background: var(--kw-g4); }
+
+/* ── Table ──────────────────────────────────────────────── */
+#keywordsView #kw-table {
+    min-width: 940px; /* scroll sideways inside the card instead of crushing columns */
+}
+
+#keywordsView td.url-col {
+    min-width: 260px;
+    max-width: 440px;
+}
+
+#keywordsView td.kw-kw {
+    min-width: 150px;
+}
+
+#keywordsView th.kw-sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+#keywordsView th.kw-sortable:hover {
+    color: var(--text);
+}
+
+#keywordsView .kw-no {
+    color: var(--text3);
+}
+
+#keywordsView .kw-slug {
+    overflow-wrap: anywhere;
+    min-width: 130px;
+    max-width: 220px;
+}
+
+#keywordsView .kw-date {
+    white-space: nowrap;
+}
+
+#keywordsView .kw-url {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+#keywordsView .kw-url .url-cell {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#keywordsView .kw-approx {
+    flex-shrink: 0;
+    margin-top: 2px;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--warn-dim);
+    border: 1px solid var(--warn);
+    color: var(--warn);
+    cursor: help;
+}
+
+#keywordsView .kw-title {
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: var(--text3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 420px;
+}
+
+#keywordsView a.kw-id {
+    text-decoration: none;
+    color: var(--text2);
+}
+
+#keywordsView a.kw-id:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+#keywordsView .kw-cats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 120px;
+}
+
+#keywordsView .kw-cat {
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text2);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color .15s, color .15s;
+}
+
+#keywordsView .kw-cat:hover,
+#keywordsView .kw-cat.active {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+#keywordsView .kw-cat.active {
+    background: var(--accent-dim);
+}
+
+#keywordsView .kw-badge {
+    font: inherit;
+    font-size: 11.5px;
+    display: inline-block;
+    max-width: 260px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    overflow-wrap: anywhere;
+    transition: border-color .15s, filter .15s;
+}
+
+#keywordsView .kw-badge:hover {
+    border-color: var(--accent);
+}
+
+#keywordsView .kw-badge.active {
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* Duplicate groups: one tint per keyword, cycling through four colours */
+#keywordsView tr.kw-g1 { --kw-g: var(--kw-g1); }
+#keywordsView tr.kw-g2 { --kw-g: var(--kw-g2); }
+#keywordsView tr.kw-g3 { --kw-g: var(--kw-g3); }
+#keywordsView tr.kw-g4 { --kw-g: var(--kw-g4); }
+
+#keywordsView tr.kw-grp td {
+    background: color-mix(in srgb, var(--kw-g) 7%, transparent);
+}
+
+#keywordsView tr.kw-grp:hover td {
+    background: color-mix(in srgb, var(--kw-g) 13%, transparent);
+}
+
+#keywordsView tr.kw-grp td:first-child {
+    box-shadow: inset 3px 0 0 var(--kw-g);
+}
+
+#keywordsView tr.kw-grp .kw-badge.kw-dup {
+    background: color-mix(in srgb, var(--kw-g) 16%, transparent);
+    border-color: color-mix(in srgb, var(--kw-g) 45%, transparent);
+    color: var(--kw-g);
+    font-weight: 600;
+}
+
+/* ── Pagination ─────────────────────────────────────────── */
+#keywordsView .pager-btns {
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+#keywordsView #kw-page-len {
+    height: 31px;
+}
+
+#keywordsView .kw-pg-cur {
+    padding: 0 4px;
+    white-space: nowrap;
+}
+
+/* ── Narrow screens ─────────────────────────────────────── */
+@media (max-width: 640px) {
+    #keywordsView .kw-frow {
+        flex: 1 1 140px;
+    }
+
+    #keywordsView .kw-legend,
+    #keywordsView .kw-actions .toolbar-sep {
+        display: none;
+    }
+
+    /* Menus span the toolbar instead of hanging off-screen */
+    #keywordsView .kw-menu-wrap {
+        position: static;
+    }
+
+    #keywordsView .kw-menu,
+    #keywordsView .kw-menu-left {
+        left: 0;
+        right: 0;
+        min-width: 0;
+    }
+
+    #keywordsView .pagination {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+@media (max-width: 420px) {
+    #keywordsView .kw-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #keywordsView .stat-val {
+        font-size: 19px;
+    }
+
+    #keywordsView .pager-btns .btn {
+        padding: 0 9px;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════
+   Focus keyword editing (staged edits, save bar, bulk select)
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Select column ──────────────────────────────────────── */
+#keywordsView .kw-sel {
+    width: 34px;
+    padding-right: 0;
+    text-align: center;
+}
+
+#keywordsView .kw-sel input {
+    cursor: pointer;
+    accent-color: var(--accent);
+}
+
+#keywordsView tr.kw-selected td {
+    background: var(--accent-dim);
+}
+
+/* ── Keyword cell ───────────────────────────────────────── */
+#keywordsView td.kw-kw {
+    min-width: 190px;
+}
+
+#keywordsView .kw-kwline {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+#keywordsView .kw-edit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text3);
+    font: inherit;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: .55;
+    transition: opacity .15s, color .15s, border-color .15s, background .15s;
+}
+
+#keywordsView tr:hover .kw-edit-btn,
+#keywordsView .kw-edit-btn:focus-visible {
+    opacity: 1;
+}
+
+#keywordsView .kw-edit-btn:hover {
+    color: var(--accent);
+    border-color: var(--border);
+    background: var(--surface2);
+}
+
+#keywordsView .kw-add {
+    font: inherit;
+    font-size: 11.5px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    border: 1px dashed var(--border);
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    transition: border-color .15s, color .15s;
+}
+
+#keywordsView .kw-add:hover,
+#keywordsView .kw-add:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+#keywordsView .kw-badge.kw-staged {
+    cursor: default;
+    border-color: var(--warn);
+    background: var(--warn-dim);
+    color: var(--text);
+    font-weight: 600;
+}
+
+#keywordsView .kw-badge.kw-staged.kw-staged-dup {
+    border-style: dashed;
+    border-color: var(--danger);
+}
+
+#keywordsView .kw-staged-none {
+    font-size: 11.5px;
+    font-style: italic;
+    color: var(--danger);
+}
+
+#keywordsView .kw-was {
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--text3);
+}
+
+#keywordsView .kw-was span {
+    text-decoration: line-through;
+    overflow-wrap: anywhere;
+}
+
+#keywordsView .kw-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 200px;
+}
+
+#keywordsView .kw-edit-input {
+    width: 100%;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--accent);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 12.5px;
+}
+
+#keywordsView .kw-edit-input:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+#keywordsView .kw-edit-hint {
+    font-size: 10.5px;
+    line-height: 1.35;
+    color: var(--text3);
+    overflow-wrap: anywhere;
+}
+
+#keywordsView .kw-hint-warn {
+    color: var(--warn);
+}
+
+#keywordsView .kw-hint-warn b {
+    font-weight: 600;
+}
+
+/* Changed rows: amber outline (overrides the duplicate-group stripe) */
+#keywordsView tr.kw-changed td {
+    background: color-mix(in srgb, var(--warn) 6%, transparent);
+    box-shadow: inset 0 1px 0 var(--warn), inset 0 -1px 0 var(--warn);
+}
+
+#keywordsView tr.kw-changed td:first-child {
+    box-shadow: inset 1px 0 0 var(--warn), inset 0 1px 0 var(--warn), inset 0 -1px 0 var(--warn);
+}
+
+#keywordsView tr.kw-changed td:last-child {
+    box-shadow: inset -1px 0 0 var(--warn), inset 0 1px 0 var(--warn), inset 0 -1px 0 var(--warn);
+}
+
+/* ── Conflicting-keyword panel: "Edit group" ────────────── */
+#keywordsView .kw-group-wrap {
+    display: inline-flex;
+    align-items: stretch;
+    max-width: 100%;
+}
+
+#keywordsView .kw-group-wrap .kw-group {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    min-width: 0;
+}
+
+#keywordsView .kw-group-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+    padding: 0 10px 0 8px;
+    border: 1px solid var(--border);
+    border-left: none;
+    border-radius: 0 999px 999px 0;
+    background: var(--surface);
+    color: var(--text2);
+    font: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+}
+
+#keywordsView .kw-group-edit:hover,
+#keywordsView .kw-group-edit:focus-visible {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-dim);
+}
+
+/* ── Floating save / selection bar (built by js/keywords.js inside #keywordsView) ── */
+#keywordsView.kw-has-bar {
+    padding-bottom: 64px;
+}
+
+#keywordsView .kw-save-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 18px;
+    z-index: 240;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    max-width: calc(100vw - 32px);
+    padding: 8px 8px 8px 14px;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--warn);
+    box-shadow: 0 10px 30px color-mix(in srgb, var(--text) 18%, transparent);
+    transform: translate(-50%, 160%);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform .22s cubic-bezier(.2, .9, .3, 1.2), opacity .18s;
+}
+
+#keywordsView .kw-save-bar.kw-bar-show {
+    transform: translate(-50%, 0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#keywordsView .kw-bar-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#keywordsView .kw-bar-group:not([hidden]) + .kw-bar-group:not([hidden]) {
+    padding-left: 16px;
+    border-left: 1px solid var(--border);
+}
+
+#keywordsView .kw-bar-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-right: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#keywordsView .kw-bar-pill {
+    padding: 1px 9px;
+    border-radius: 999px;
+    background: var(--warn);
+    color: var(--surface);
+    font-variant-numeric: tabular-nums;
+}
+
+#keywordsView .kw-bar-pill-sel {
+    background: var(--accent);
+}
+
+@media (max-width: 640px) {
+    #keywordsView .kw-save-bar {
+        left: 12px;
+        right: 12px;
+        bottom: 10px;
+        max-width: none;
+        transform: translateY(160%);
+    }
+
+    #keywordsView .kw-save-bar.kw-bar-show {
+        transform: none;
+    }
+
+    #keywordsView .kw-bar-group:not([hidden]) + .kw-bar-group:not([hidden]) {
+        padding-left: 0;
+        border-left: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #keywordsView .kw-save-bar {
+        transition: none;
+    }
+}

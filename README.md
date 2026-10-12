@@ -11,8 +11,9 @@ salvadore/
 ├── registry.php       The list the dashboard shows — add new tools here
 ├── .htaccess          Security rules + redirects from the old (pre-Oct 2026) URLs
 ├── tools/             Real work tools
-│   ├── healthray/     WordPress tools: master-dashboard, lead, menu-order,
-│   │                  focus-keyword, wp_options, stateCity, template, version, …
+│   ├── healthray/     WordPress tools: master-dashboard (content, links, redirects,
+│   │                  menu order, find & replace, focus keywords), lead, wp_options,
+│   │                  stateCity, template, version, …
 │   │                  conn.php + .env = the database connection for all of them
 │   ├── botphonic/     Botphonic database API (no page)
 │   ├── bigscal/       Directory viewer + box/ (Node blog content builder)
@@ -25,8 +26,7 @@ salvadore/
 
 1. **Database credentials** — for each `.env.example`, copy it to `.env` in the
    same folder and fill it in:
-   - `tools/healthray/.env` (Landing live, Old local, Botphonic)
-   - `tools/healthray/focus-keyword/.env` (its own login + databases)
+   - `tools/healthray/.env` (Landing live, Botphonic)
    - `tools/botphonic/.env`
 2. **PHP dependencies** — `composer install` in `tools/healthray/` and
    `tools/botphonic/` (installs `vendor/`, used for `.env` loading).
@@ -67,4 +67,5 @@ convenient.
 Everything moved in October 2026; the old addresses (`/salvadore/healthray-sql/…`,
 `/salvadore/img/…`, …) permanently redirect (HTTP 308, POSTs
 kept) to the new ones — see the bottom of `.htaccess`. `post-content/` was merged
-into Master Dashboard's **Link Fixer** tab.
+into Master Dashboard's **Link Fixer** tab; `menu-order/`, `replace/` and `focus-keyword/`
+became its **Menu Order**, **Find & Replace** and **Focus Keywords** tabs.

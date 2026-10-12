@@ -20,20 +20,12 @@ $DATABASES = [
         'port'  => (int) $_ENV['DB_PORT'],
     ],
     'botphonic' => [
-        'label' => 'Botphonic',
+        'label' => 'Botphonic - Live',
         'host'  => $_ENV['DB_BP_HOST'],
         'user'  => $_ENV['DB_BP_USER'],
         'pass'  => $_ENV['DB_BP_PASS'],
         'name'  => $_ENV['DB_BP_NAME'],
         'port'  => (int) ($_ENV['DB_BP_PORT']),
-    ],
-    'old' => [
-        'label' => 'Old - Local',
-        'host'  => $_ENV['DB_OLD_HOST'] ?? '127.0.0.1',
-        'user'  => $_ENV['DB_OLD_USER'] ?? 'root',
-        'pass'  => $_ENV['DB_OLD_PASS'] ?? '',
-        'name'  => $_ENV['DB_OLD_NAME'] ?? 'wp_healthray_old',
-        'port'  => (int) ($_ENV['DB_OLD_PORT'] ?? 3306),
     ],
 ];
 
@@ -87,7 +79,7 @@ function db_resolve_key()
 /*
  * Backward-compatible default connection - every page that does
  * `require conn.php` automatically honours the resolved database above.
- * To force a specific DB regardless of request, set $ACTIVE_DB = 'old';
+ * To force a specific DB regardless of request, set $ACTIVE_DB = 'botphonic';
  * before requiring this file.
  */
 $conn = db_connect(db_resolve_key());

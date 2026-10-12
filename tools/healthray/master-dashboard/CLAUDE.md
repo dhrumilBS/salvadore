@@ -1,4 +1,4 @@
-# Master Dashboard — Content, Links & UTM, Link Fixer, Redirects, Bulk URL Update
+# Master Dashboard — Content, Links & UTM, Link Fixer, Redirects, Bulk URL Update, Menu Order, Find & Replace, Focus Keywords
 
 One standalone PHP + vanilla-JS tool (no WordPress hooks, no build step) that
 talks to one or more WordPress databases directly over `mysqli`. It replaces
@@ -9,6 +9,11 @@ three former sibling tools that duplicated most of their plumbing:
 | `../datewise/` (Content, Redirects, Bulk URL Update tabs) | same three tabs here |
 | `../link-checker/` (Link & UTM Checker) | the **Links & UTM** tab |
 | `../post-content/` (Link Checker / fixer) | the **Link Fixer** tab |
+| `../menu-order/` | the **Menu Order** tab |
+| `../replace/` (Find & Replace) | the **Find & Replace** tab |
+| `../focus-keyword/` (duplicate focus keywords; its login was not ported) | the **Focus Keywords** tab |
+
+Old URLs of all of these 308-redirect to the matching tab (`/salvadore/.htaccess`).
 
 Don't fork this per site: a new WordPress site is a new `$DATABASES` entry in
 `../conn.php` + its `.env` vars, and it shows up in the Site dropdown.
@@ -52,20 +57,29 @@ Don't fork this per site: a new WordPress site is a new `$DATABASES` entry in
 ## Layout
 
 ```
-index.html          one page, 5 views toggled by #viewTabs (hash: #content #links #fixer #redirects #bulk;
-                    Link Fixer keeps its filters after a "?": #fixer?page=2&status=error&find=...)
+index.html          one page, 8 views toggled by #viewTabs (hash: #content #links #fixer #redirects #bulk
+                    #menu #replace #keywords; Link Fixer keeps its filters after a "?": #fixer?page=2&status=error&find=...,
+                    Find & Replace accepts #replace?find=...&replace=... and searches straight away)
 style.css           datewise base, Links-tab components, then shared dialogs/drawer + fx- Link Fixer styles
 js/common.js        shared helpers, confirmDialog()/alertDialog(), toast(), LinkStatus
 js/content.js       Content tab (staged edits, confirmed saves)
 js/links.js         Links & UTM tab (client-side utm/domain/status filters, detail modal -> "Fix in Link Fixer")
 js/fixer.js         Link Fixer tab: edit / fix-redirect / unlink / find-replace links in post_content + FAQ fields
-js/history.js       History drawer: the server-side Link Fixer journal, with Undo
+js/history.js       unified History drawer (every write on this site, filters, diff, Undo, CSV) - see "Activity history"
 js/redirects.js     Redirects tab
 js/bulk.js          Bulk URL Update tab
+js/menu-order.js    Menu Order tab (IIFE; mo- ids): inline edit order/title/slug/date, drag reorder, renumber, review & save
+js/replace.js       Find & Replace tab (IIFE; fr- ids): literal text search over title/content/excerpt/Elementor/Yoast/meta,
+                    JSON + serialized aware, backups + undo, own history drawer (#fr-drawer)
+js/keywords.js      Focus Keywords tab (IIFE; kw- ids, read-only): duplicate Yoast focus keywords, client-side table/CSV
+css/*.css           one stylesheet per ported tab, scoped to its view
 js/app.js           view switching, lazy loading, cross-tab staleness, global keyboard shortcuts, init
 api/                endpoints (below); api/lib/ shared PHP (lib/link_editor.php = Link Fixer)
-backups/            Yoast redirect-option backups (before every redirect write) and
-                    link-changes-<site>.jsonl, the Link Fixer journal (.htaccess denies web access)
+backups/            activity-<site>.jsonl (unified History log, lib/activity.php),
+                    Yoast redirect-option backups (before every redirect write),
+                    link-changes-<site>.jsonl (Link Fixer journal), replace-history-<site>.jsonl +
+                    replace-op-<id>.json (Find & Replace journal + full before/after per op)
+                    (.htaccess denies web access)
 ```
 
 Links-tab element IDs are `l`-prefixed (`lStatus`, `lTableBody`, ...) and Link
@@ -90,6 +104,50 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
   (`dw_fx_needle_variants()`: as typed, `&amp;`, root-relative for own-site URLs).
 - Check results come from the shared `LinkStatus` (persisted per site in
   sessionStorage for 30 min); HEAD answers 403/405/501 are re-checked with GET.
+
+## Ported tabs (Menu Order, Find & Replace, Focus Keywords)
+
+- Each is one IIFE exposing only `bind<Tab>Tab()`, `load<Tab>()`, `<prefix>HandleKey(e)`
+  and `<prefix>HasUnsaved()` (+ `frReadHash()`); `VIEWS` in app.js routes to them.
+  Their key handlers get every keydown while their tab is active (Menu Order's
+  even before the confirm-dialog check, for Ctrl+S) and do their own typing checks.
+- Unsaved work: `unsavedTabs()` (common.js) drives both the site-switch warning
+  and the leave-page prompt - add a new tab with unsaved state to `UNSAVED_CHECKS`.
+- **Menu Order save** (`menu_save.php`): all-or-nothing; every change must carry
+  the row's `post_modified` (optimistic lock, checked inside the transaction).
+- **Find & Replace**: literal matching only (no regex). The op backup and the
+  history line are written *before* commit; undo restores a field only while it
+  still equals what the replace wrote. It does not bump `post_modified` or clear
+  Elementor's CSS cache (same as the original tool).
+- **Focus Keywords** keeps the original tool's Yoast-indexable-first permalinks
+  (`fk_*` in lib/focus_keyword.php), not `dw_hydrate_batch()`.
+- Sites whose label contains "Live" get the LIVE flag; both production sites
+  (`Landing - Live`, `Botphonic - Live` in ../conn.php) must keep that word.
+
+## Activity history (unified History drawer)
+
+- **Every write endpoint logs one entry after its commit** via
+  `md_activity_log($ACTIVE_DB, [source, action, summary, post_ids?, changes?, ref?])`
+  (`api/lib/activity.php`, `require_once`). It appends a JSON line to
+  `backups/activity-<site>.jsonl` (flock; id/time/ip added; file rotated to
+  `activity-<site>-<date>.jsonl` past 20 MB - rotated files are not listed). It never
+  throws: a failed log returns null + `error_log()`, the write stands. Responses add `activity_id`.
+- `changes`: `{kind:'post', post_id, field:<wp_posts column>, before, after}`,
+  `{kind:'meta', post_id, key, before|null, after}`, `{kind:'redirect', origin, before:{url,type}|null, after}`;
+  `link`/`text` kinds are display-only (Link Fixer / Find & Replace, whose own journals do the undo -
+  `ref: {journal:'fixer'|'replace', id, ids?}`). "Before" values are read under the same row lock as the write.
+- Who logs: `update_post` (content), `bulk_update_status` (bulk, one entry), `add_redirect` (redirects),
+  `menu_save` (menu, one entry per save), `replace_apply`/`replace_undo`, `fixer_write`/`fixer_undo`, `kw_save` (keywords).
+  A new write endpoint must log too.
+- `activity_list.php` merges the older journals at read time (`fx-<id>` / `fr-<op>` entries) unless an activity
+  entry already points at that journal line; undo state of journal-backed entries comes from the journal.
+- `activity_undo.php` restores a value only while it still equals the logged `after` (per change, skipped
+  ones reported), then logs an `undo` entry and appends an `undone` marker line. Menu undos bump
+  `post_modified`; trash/untrash undos never touch 410 redirects; redirect undos go through
+  `dw_redirect_restore()` (backup first). Replace/Fixer delegate to `fr_undo_op()` / `dw_fx_undo()`.
+- `js/history.js` wraps `api()` so any POST response carrying `activity_id` refreshes the badge
+  (writes of the last 24 h). Find & Replace keeps its own drawer (`#fr-drawer`) as well.
+- Tests: define `MD_ACTIVITY_DIR` (or env var, CLI only) to point the log at a temp dir.
 
 ## Rules that must survive changes
 
@@ -154,8 +212,18 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 | `bulk_update_status.php` | POST | one status for many post IDs |
 | `fixer_list.php` | GET | Link Fixer: one page of posts + every link (content + FAQ), `link=` site-wide find |
 | `fixer_write.php` | POST | `op=replace|unlink`, `items=` JSON (max 1000) - each journaled |
-| `fixer_history.php` | GET | this site's Link Fixer journal, newest first |
+| `fixer_history.php` | GET | this site's Link Fixer journal, newest first (legacy; History uses activity_list) |
+| `activity_list.php` | GET | unified History: `source`, `q`, `limit`, `offset` -> entries, total, counts_by_source, recent_24h, admin_url |
+| `activity_undo.php` | POST | undo one History entry (`id`; also `fx-`/`fr-` journal ids) - per-change, skipped if changed since |
 | `fixer_undo.php` | POST | undo one journal entry (refused if the field changed since) |
+| `menu_types.php` / `menu_list.php` | GET | Menu Order: post types / rows of one type (+ parents, site URL) |
+| `menu_save.php` | POST | Menu Order: validate + save order/title/slug/date changes (JSON body) |
+| `replace_site.php` | GET | Find & Replace: home URL, post types, scopes, statuses |
+| `replace_search.php` | POST | Find & Replace: preview matches (read-only, max 1000 fields) |
+| `replace_apply.php` / `replace_undo.php` | POST | Find & Replace: replace selected fields / undo one op |
+| `replace_history.php` | GET | Find & Replace journal, newest first |
+| `kw_options.php` / `kw_list.php` | GET | Focus Keywords: types + categories / rows with duplicate flags |
+| `kw_save.php` | POST | Focus Keywords: save staged keyword edits (JSON `changes:[{post_id, focus_keyword, expected}]`, max 500). All-or-nothing; each row's stored `_yoast_wpseo_focuskw` must still equal `expected` (else 409 + per-row `conflict` errors). Empty = meta deleted; syncs `wp_yoast_indexable.primary_focus_keyword`, bumps `post_modified`. Edits in the tab stage inline and save only via the save bar's Review & save (`confirmDialog`) |
 | `_test_store.php` | CLI | redirect-store self test |
 
 ## Extension pointers

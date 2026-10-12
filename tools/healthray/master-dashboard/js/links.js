@@ -37,11 +37,21 @@ const LINKS_COLUMNS = [
 ];
 
 /* ---------- load ---------- */
-function populateLinksFilters(postTypes, statuses) {
+let linksPostTypes = [];
+
+/** Type dropdown: only types with posts in the selected status, with that count. */
+function renderLinksTypeOptions() {
+    const visible = linksPostTypes.filter(t => typeCountFor(t, linksState.status) > 0);
+    if (linksState.post_type !== 'any' && !visible.some(t => t.type === linksState.post_type)) linksState.post_type = 'any';
     const ptSel = document.getElementById('lPostType');
     ptSel.innerHTML = '<option value="any">All Types</option>' +
-        postTypes.map(t => `<option value="${escapeHtml(t.type)}">${escapeHtml(t.type)} (${t.count})</option>`).join('');
-    ptSel.value = postTypes.some(t => t.type === linksState.post_type) ? linksState.post_type : 'any';
+        visible.map(t => `<option value="${escapeHtml(t.type)}">${escapeHtml(typeLabel(t.type))} (${fmtNum(typeCountFor(t, linksState.status))})</option>`).join('');
+    ptSel.value = linksState.post_type;
+}
+
+function populateLinksFilters(postTypes, statuses) {
+    linksPostTypes = postTypes;
+    renderLinksTypeOptions();
 
     const stSel = document.getElementById('lStatus');
     stSel.innerHTML = Object.entries(statuses).map(([k, label]) => `<option value="${escapeHtml(k)}">${escapeHtml(label)}</option>`).join('');
@@ -153,15 +163,22 @@ function renderLinksStats() {
     const utmLinks = linksFilteredRows.reduce((s, r) => s + rowLinksScoped(r).filter(l => l.is_utm).length, 0);
     const postsUtm = linksFilteredRows.filter(r => rowLinksScoped(r).some(l => l.is_utm)).length;
 
-    document.getElementById('lStatPosts').textContent = linksFilteredRows.length.toLocaleString();
-    document.getElementById('lStatLinks').textContent = totalLinks.toLocaleString();
-    document.getElementById('lStatUtm').textContent = utmLinks.toLocaleString();
-    document.getElementById('lStatPostsUtm').textContent = postsUtm.toLocaleString();
+    setKpi('lStatPosts', linksFilteredRows.length);
+    setKpi('lStatLinks', totalLinks);
+    setKpi('lStatUtm', utmLinks);
+    setKpi('lStatPostsUtm', postsUtm);
+    document.getElementById('lStatUtmHint').textContent = utmLinks ? 'links carrying utm_ tags' : 'No UTM links — all clean';
 
     // Only the links currently on screen - not checks made on other tabs or for filtered-out posts.
-    const { checked, broken } = LinkStatus.stats(linksFilteredRows.flatMap(r => rowLinksScoped(r).map(l => l.url)));
-    document.getElementById('lStatChecked').textContent = checked.toLocaleString();
-    document.getElementById('lStatBroken').textContent = broken.toLocaleString();
+    const urls = linksFilteredRows.flatMap(r => rowLinksScoped(r).map(l => l.url));
+    const { checked, broken } = LinkStatus.stats(urls);
+    // Before anything is checked, "0 broken" would be a false all-clear - show a dash and say why.
+    setKpi('lStatChecked', checked, checked ? null : '–');
+    setKpi('lStatBroken', broken, checked ? null : '–');
+    document.getElementById('lStatCheckedHint').textContent = checked
+        ? `${fmtNum(checked)} of ${fmtNum(urls.length)} links`
+        : (urls.length ? 'Not checked yet — click to check' : 'No links to check');
+    document.getElementById('lStatBrokenHint').textContent = !checked ? 'known after checking' : broken ? 'click to show them' : 'None broken';
 }
 
 function renderLinksHead() {
@@ -198,7 +215,7 @@ function renderLinksPage() {
                 <td class="mono" style="color:var(--text3)">${start + i + 1}</td>
                 <td><span class="id-chip">${r.id}</span></td>
                 <td class="mono">${escapeHtml(r.slug || '—')}</td>
-                <td><a class="post-title-link" href="${escapeHtml(r.permalink)}" target="_blank" rel="noopener">${escapeHtml(r.title || '(untitled)')}</a></td>
+                <td><a class="post-title-link" href="${escapeHtml(r.permalink)}" target="_blank" rel="noopener">${escapeHtml(decodeEntities(r.title) || '(untitled)')}</a></td>
                 <td>${statusBadge(r.status)}</td>
                 <td class="mono">${r.post_date ? escapeHtml(r.post_date.split(' ')[0]) : '—'}</td>
                 <td>${linkSummaryHtml(r)}</td>
@@ -238,7 +255,7 @@ function openDetailModal(id) {
                     ${urlCellHtml(l.url)}
                     <div class="link-card-status" data-status-url="${escapeHtml(l.url)}">${LinkStatus.badge(l.url)}</div>
                 </div>
-                ${l.anchor ? `<div class="link-anchor">↳ ${escapeHtml(l.anchor)}</div>` : ''}
+                ${l.anchor ? `<div class="link-anchor">↳ ${escapeHtml(decodeEntities(l.anchor))}</div>` : ''}
                 <div class="domain-tag">${l.is_internal ? 'Internal' : 'External'} · ${escapeHtml(l.domain || '—')}
                     <button type="button" class="btn small btn-fix-link" data-fix-url="${escapeHtml(l.url)}" title="Open Link Fixer with every post on the site that links here — edit, fix or unlink it">Fix in Link Fixer →</button></div>
                 ${l.is_utm ? `<div class="utm-params">${l.utm_params.map(p => `<span class="utm-param-tag">${escapeHtml(p)}</span>`).join('')}</div>` : ''}
@@ -254,7 +271,20 @@ function closeDetailModal() {
 /* ---------- binding ---------- */
 function bindLinksTab() {
     document.getElementById('lPostType').addEventListener('change', e => { linksState.post_type = e.target.value; loadLinks(); });
-    document.getElementById('lStatus').addEventListener('change', e => { linksState.status = e.target.value; loadLinks(); });
+    // Stat cards double as shortcuts: UTM -> "Has UTM", Checked -> check all, Broken -> broken filter
+    document.getElementById('lStatsGrid').addEventListener('click', e => {
+        const card = e.target.closest('[data-lstat]');
+        if (!card) return;
+        if (card.dataset.lstat === 'utm') document.querySelector('#lUtmTabs .tab[data-utm="utm"]')?.click();
+        if (card.dataset.lstat === 'check') document.getElementById('lCheckAllBtn').click();
+        if (card.dataset.lstat === 'broken') {
+            const sel = document.getElementById('lLinkStatus');
+            sel.value = 'broken';
+            sel.dispatchEvent(new Event('change'));
+        }
+    });
+
+    document.getElementById('lStatus').addEventListener('change', e => { linksState.status = e.target.value; renderLinksTypeOptions(); loadLinks(); });
     document.getElementById('lSearch').addEventListener('input', debounce(e => { linksState.search = e.target.value.trim(); loadLinks(); }, 400));
 
     document.getElementById('lUtmTabs').addEventListener('click', e => {

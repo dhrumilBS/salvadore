@@ -132,12 +132,24 @@ function updateContentExportLink() {
 function renderContentHead() {
     document.getElementById('tableHead').innerHTML =
         '<tr>' + activeColumns().map(c =>
-            `<th${WIDE_URL_COLUMNS.includes(c.key) ? ' class="url-col"' : ''}>${c.label}</th>`).join('')
-        + '<th>Actions</th></tr>';
+            `<th class="col-${c.key}${WIDE_URL_COLUMNS.includes(c.key) ? ' url-col' : ''}">${c.label}</th>`).join('')
+        + '<th class="col-actions">Actions</th></tr>';
 }
 
 function editableInput(r, field, extraClass = '') {
-    return `<input type="text" class="cell-input ${extraClass}" data-id="${r.id}" data-field="${field}" value="${escapeHtml(r[field])}">`;
+    return `<input type="text" class="cell-input ${extraClass}" data-id="${r.id}" data-field="${field}" value="${escapeHtml(r[field])}" title="${escapeHtml(r[field])}">`;
+}
+
+/** Title / meta fields: a 2-line box, so the text is readable without opening anything. Enter = done (no line breaks in these fields). */
+function editableText(r, field) {
+    return `<textarea class="cell-input cell-text" rows="2" data-id="${r.id}" data-field="${field}" spellcheck="false">${escapeHtml(r[field])}</textarea>`;
+}
+
+/** Path only (host is the same on every row) - full URL on hover, copy + open kept. */
+function permalinkCell(url) {
+    if (!url) return '<span class="url-empty">—</span>';
+    const path = splitUrlParts(url).path || '/';
+    return urlCellHtml(url, path);
 }
 
 function toDatetimeLocal(d) {
@@ -148,29 +160,29 @@ function toDatetimeLocal(d) {
 function renderCell(r, key) {
     switch (key) {
         case 'id':
-            return `<td class="mono">${r.id}</td>`;
+            return `<td class="mono col-id">${r.id}</td>`;
         case 'post_type':
-            return `<td><span class="badge badge-neutral">${escapeHtml(r.post_type)}</span></td>`;
+            return `<td class="col-post_type"><span class="badge badge-neutral">${escapeHtml(typeLabel(r.post_type))}</span></td>`;
         case 'title':
-            return `<td>${editableInput(r, 'title')}</td>`;
+            return `<td class="col-title">${editableText(r, 'title')}</td>`;
         case 'slug':
-            return `<td>${editableInput(r, 'slug', 'mono')}</td>`;
+            return `<td class="col-slug">${editableInput(r, 'slug', 'mono')}</td>`;
         case 'permalink':
-            return `<td class="url-col">${urlCellHtml(r.permalink)}</td>`;
+            return `<td class="url-col col-permalink">${permalinkCell(r.permalink)}</td>`;
         case 'status':
-            return `<td><select class="cell-input" data-id="${r.id}" data-field="status">` +
+            return `<td class="col-status"><select class="cell-input" data-id="${r.id}" data-field="status">` +
                 STATUS_OPTIONS.map(s => `<option value="${s}"${s === r.status ? ' selected' : ''}>${s}</option>`).join('') +
                 '</select></td>';
         case 'category':
-            return `<td><span class="truncate" title="${escapeHtml(r.category)}">${escapeHtml(r.category) || '—'}</span></td>`;
+            return `<td class="col-category"><span class="truncate" title="${escapeHtml(decodeEntities(r.category))}">${escapeHtml(decodeEntities(r.category)) || '—'}</span></td>`;
         case 'meta_title':
-            return `<td>${editableInput(r, 'meta_title')}</td>`;
+            return `<td class="col-meta_title">${editableText(r, 'meta_title')}</td>`;
         case 'meta_description':
-            return `<td>${editableInput(r, 'meta_description')}</td>`;
+            return `<td class="col-meta_description">${editableText(r, 'meta_description')}</td>`;
         case 'publish_date':
-            return `<td><input type="datetime-local" class="cell-input mono" data-id="${r.id}" data-field="publish_date" value="${toDatetimeLocal(r.publish_date)}"></td>`;
+            return `<td class="col-publish_date"><input type="datetime-local" class="cell-input mono" data-id="${r.id}" data-field="publish_date" value="${toDatetimeLocal(r.publish_date)}"></td>`;
         case 'link_status':
-            return `<td>${LinkStatus.cell(r.permalink)}</td>`;
+            return `<td class="col-link_status">${LinkStatus.cell(r.permalink)}</td>`;
         default:
             return '<td>—</td>';
     }
@@ -186,7 +198,7 @@ function renderContentTable() {
     }
     tbody.innerHTML = contentRows.map(r =>
         '<tr>' + cols.map(c => renderCell(r, c.key)).join('') +
-        `<td class="actions-cell"><button type="button" class="btn-save-row" data-row-id="${r.id}" disabled>Save</button></td>` +
+        `<td class="actions-cell col-actions"><button type="button" class="btn-save-row" data-row-id="${r.id}" disabled>Save</button></td>` +
         '</tr>').join('');
     applyDirtyOverlay();
 }
@@ -448,10 +460,30 @@ function defaultContentPostType() {
 /** One tab per real content type on this site (sites differ - Botphonic has success-stories, Healthray has whitepaper...). */
 function populateContentPostTypes(postTypes) {
     contentPostTypes = postTypes;
-    if (!postTypes.some(t => t.type === contentState.post_type)) contentState.post_type = defaultContentPostType();
-    document.getElementById('fPostTypeTabs').innerHTML = postTypes.map(t =>
-        `<button type="button" class="tab${t.type === contentState.post_type ? ' active' : ''}" data-type="${escapeHtml(t.type)}" title="${t.published} published of ${t.count} total">` +
-        `${escapeHtml(t.type)} <span class="tab-count">${t.published}</span></button>`).join('');
+    renderContentTypeTabs();
+}
+
+/**
+ * One tab per post type that has posts in the selected status - a type with
+ * nothing to show (e.g. only drafts while "Published" is picked) is hidden.
+ * Returns true when the selected type had to change.
+ */
+function renderContentTypeTabs() {
+    const status = contentState.status;
+    const visible = contentPostTypes.filter(t => typeCountFor(t, status) > 0);
+    let changed = false;
+    if (visible.length && !visible.some(t => t.type === contentState.post_type)) {
+        contentState.post_type = (visible.find(t => t.type === 'post') || visible[0]).type;
+        changed = true;
+    }
+    document.getElementById('fPostTypeTabs').innerHTML = visible.length
+        ? visible.map(t => {
+            const n = typeCountFor(t, status);
+            return `<button type="button" class="tab${t.type === contentState.post_type ? ' active' : ''}" data-type="${escapeHtml(t.type)}" title="${escapeHtml(t.type)} · ${fmtNum(n)} in this status · ${fmtNum(t.count)} in total">` +
+                `${escapeHtml(typeLabel(t.type))} <span class="tab-count">${fmtNum(n)}</span></button>`;
+        }).join('')
+        : '<span class="col-note" style="padding:6px 10px">No posts in this status</span>';
+    return changed;
 }
 
 function populateContentStatuses(statuses) {
@@ -464,7 +496,13 @@ function bindContentTab() {
     const tbody = document.getElementById('tableBody');
     tbody.addEventListener('change', e => {
         const input = e.target.closest('.cell-input');
-        if (input) markDirty(input);
+        if (!input) return;
+        // titles / meta fields are single-line in WordPress - a pasted line break becomes a space
+        if (input.tagName === 'TEXTAREA') input.value = input.value.replace(/\s*[\r\n]+\s*/g, ' ');
+        markDirty(input);
+    });
+    tbody.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target.classList.contains('cell-text')) { e.preventDefault(); e.target.blur(); }
     });
     tbody.addEventListener('click', e => {
         const btn = e.target.closest('.btn-save-row');
@@ -486,6 +524,7 @@ function bindContentTab() {
         document.getElementById(id).addEventListener('change', e => {
             contentState[key] = e.target.value;
             contentState.page = 1;
+            if (key === 'status') renderContentTypeTabs(); // the type tabs follow the status
             loadContent();
         });
     });
@@ -541,7 +580,7 @@ function bindContentTab() {
             post_type: defaultContentPostType(), status: 'publish',
             date_from: '', date_to: '', mod_from: '', mod_to: '', search: '', page: 1,
         });
-        document.querySelectorAll('#fPostTypeTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.type === contentState.post_type));
+        renderContentTypeTabs();
         document.getElementById('fStatus').value = 'publish';
         ['fDateFrom', 'fDateTo', 'fModFrom', 'fModTo', 'fSearch'].forEach(id => { document.getElementById(id).value = ''; });
         loadContent();
@@ -552,9 +591,7 @@ function bindContentTab() {
     document.getElementById('pgNext').addEventListener('click', () => goToContentPage(contentState.page + 1));
     document.getElementById('pgLast').addEventListener('click', () => goToContentPage(parseInt(document.getElementById('stPages').textContent, 10)));
 
-    window.addEventListener('beforeunload', e => {
-        if (hasUnsavedContentEdits()) { e.preventDefault(); e.returnValue = ''; }
-    });
+    // Unsaved-edit prompt on leaving the page: common.js (unsavedTabs) covers every tab.
 
     renderColumnsPanel();
     renderContentHead();

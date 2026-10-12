@@ -10,6 +10,10 @@
     <script>try { var t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.setAttribute('data-theme', t); } catch (e) { }</script>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237c6cf6' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='9' rx='1.5'/%3E%3Crect x='14' y='3' width='7' height='5' rx='1.5'/%3E%3Crect x='14' y='12' width='7' height='9' rx='1.5'/%3E%3Crect x='3' y='16' width='7' height='5' rx='1.5'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="css/menu-order.css">
+    <link rel="stylesheet" href="css/replace.css">
+    <link rel="stylesheet" href="css/keywords.css">
+    <link rel="stylesheet" href="css/history.css">
 </head>
 
 <body>
@@ -27,7 +31,7 @@
             </span>
             <div>
                 <div class="page-title">Master Dashboard</div>
-                <div class="page-sub">Content, links, link fixing, redirects and bulk updates. Nothing is written until you confirm.</div>
+                <div class="page-sub">Every WordPress task for every site. Nothing is written until you confirm.</div>
             </div>
         </div>
 
@@ -37,6 +41,9 @@
             <button type="button" class="tab view-tab" data-view="fixer" role="tab" title="Link Fixer — edit, fix and unlink links in post content (g f)">Link Fixer</button>
             <button type="button" class="tab view-tab" data-view="redirects" role="tab" title="Redirects (g r)">Redirects</button>
             <button type="button" class="tab view-tab" data-view="bulk" role="tab" title="Bulk URL Update (g b)">Bulk URL Update</button>
+            <button type="button" class="tab view-tab" data-view="menu" role="tab" title="Menu Order — reorder and edit title, slug, date (g m)">Menu Order</button>
+            <button type="button" class="tab view-tab" data-view="replace" role="tab" title="Find &amp; Replace — text in titles, content, Elementor, SEO and meta (g s)">Find &amp; Replace</button>
+            <button type="button" class="tab view-tab" data-view="keywords" role="tab" title="Focus Keywords — Yoast keyword duplicates (g k)">Focus Keywords</button>
         </div>
 
         <div class="topbar-end">
@@ -45,10 +52,13 @@
                 <select id="dbSelector" title="Switch which site's database this tool reads/writes"></select>
                 <span class="live-flag" id="dbLiveFlag" hidden title="This is the production site — every save goes live">LIVE</span>
             </div>
-            <button type="button" class="hist-btn" id="historyBtn" title="Link changes on this site — with undo (h)">
+            <button type="button" class="hist-btn" id="historyBtn" title="History — every change made here on this site, with undo (h)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg>
                 <span class="hist-btn-label">History</span>
-                <span class="hist-count" id="historyCount">0</span>
+                <span class="hist-count" id="historyCount" title="Changes in the last 24 hours">0</span>
+            </button>
+            <button type="button" class="theme-toggle" id="densityToggle" title="Table rows: comfortable / compact" aria-label="Toggle compact rows">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
             <button type="button" class="theme-toggle" id="helpBtn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><span aria-hidden="true" style="font-weight:700;font-size:13px">?</span></button>
             <button type="button" class="theme-toggle" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">
@@ -200,31 +210,37 @@
         <div id="linksView" style="display:none">
 
             <!-- ══ Stats ══ -->
-            <div class="stats-grid" id="lStatsGrid">
-                <div class="stat-card">
-                    <div class="stat-label">Posts</div>
-                    <div class="stat-val accent" id="lStatPosts">—</div>
+            <div class="stats-grid kpi-row" id="lStatsGrid">
+                <div class="stat-card k-accent">
+                    <div class="stat-label"><i class="dot"></i>Posts</div>
+                    <div class="stat-val" id="lStatPosts">—</div>
+                    <div class="stat-hint">matching the filters</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">Total Links</div>
+                <div class="stat-card k-neutral">
+                    <div class="stat-label"><i class="dot"></i>Total links</div>
                     <div class="stat-val" id="lStatLinks">—</div>
+                    <div class="stat-hint">in those posts</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">UTM Links</div>
-                    <div class="stat-val warn" id="lStatUtm">—</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Posts w/ UTM</div>
-                    <div class="stat-val warn" id="lStatPostsUtm">—</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Checked</div>
-                    <div class="stat-val ok" id="lStatChecked">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Broken / Error</div>
-                    <div class="stat-val danger" id="lStatBroken">0</div>
-                </div>
+                <button type="button" class="stat-card k-warn" data-lstat="utm" title="Show only posts with UTM links">
+                    <div class="stat-label"><i class="dot"></i>UTM links</div>
+                    <div class="stat-val" id="lStatUtm">—</div>
+                    <div class="stat-hint" id="lStatUtmHint">links carrying utm_ tags</div>
+                </button>
+                <button type="button" class="stat-card k-warn" data-lstat="utm" title="Show only posts with UTM links">
+                    <div class="stat-label"><i class="dot"></i>Posts with UTM</div>
+                    <div class="stat-val" id="lStatPostsUtm">—</div>
+                    <div class="stat-hint">click to show them</div>
+                </button>
+                <button type="button" class="stat-card k-ok" data-lstat="check" title="Live-check every link currently shown">
+                    <div class="stat-label"><i class="dot"></i>Checked</div>
+                    <div class="stat-val" id="lStatChecked">–</div>
+                    <div class="stat-hint" id="lStatCheckedHint">Not checked yet — click to check</div>
+                </button>
+                <button type="button" class="stat-card k-danger" data-lstat="broken" title="Show only posts with broken links">
+                    <div class="stat-label"><i class="dot"></i>Broken / error</div>
+                    <div class="stat-val" id="lStatBroken">–</div>
+                    <div class="stat-hint" id="lStatBrokenHint">known after checking</div>
+                </button>
             </div>
 
             <!-- ══ Filters & search ══ -->
@@ -239,15 +255,10 @@
 
                 <!-- Row 1: what to look at -->
                 <div class="toolbar">
-                    <div class="frow" style="min-width:150px">
-                        <label class="flabel">Post Type</label>
-                        <select id="lPostType"><option value="">All Types</option></select>
-                    </div>
-                    <div class="frow" style="min-width:150px">
-                        <label class="flabel">Status</label>
-                        <select id="lStatus"></select>
-                    </div>
-                    <div class="search-wrap" style="align-self:flex-end">
+                    <select id="lPostType" title="Post type"><option value="">All Types</option></select>
+                    <select id="lStatus" title="Status"></select>
+                    <div class="toolbar-sep" aria-hidden="true"></div>
+                    <div class="search-wrap">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="11" cy="11" r="8" />
                             <path d="m21 21-4.35-4.35" />
@@ -667,19 +678,20 @@
 
             <div class="card-panel">
                 <div class="panel-label">
-                    <span>Bulk URL / slug search</span>
+                    <span>Bulk URL update — change the status of many posts at once</span>
                 </div>
 
-                <p class="col-note" style="margin:0 0 8px">
-                    Paste slugs, site-relative paths, or full permalinks — one per line, or separated by
-                    commas. 5, 10, 100 or more at once.
-                </p>
+                <ol class="bulk-steps" id="bulkSteps">
+                    <li class="is-current"><b>Paste URLs</b><span>Slugs, paths or full permalinks — one per line or comma-separated</span></li>
+                    <li><b>Check matches</b><span>See which posts were found and which weren't</span></li>
+                    <li><b>Set status &amp; apply</b><span>Pick posts and a status (e.g. Draft or Trash) — you confirm before anything is saved</span></li>
+                </ol>
 
                 <textarea id="bulkUrlsInput" class="bulk-textarea" rows="6"
                     placeholder="my-post-slug&#10;https://example.com/another-post/&#10;/a-third-post/"></textarea>
 
                 <div class="toolbar">
-                    <button type="button" class="btn primary" id="bulkSearchBtn">Search</button>
+                    <button type="button" class="btn primary" id="bulkSearchBtn">Find posts</button>
                     <button type="button" class="btn" id="bulkClearBtn">Clear</button>
                     <span class="col-note" id="bulkInputCount"></span>
                 </div>
@@ -734,6 +746,355 @@
                 </div>
             </div>
         </div>
+
+        <!-- ══════════════════ MENU ORDER VIEW (js/menu-order.js, css/menu-order.css) ══════════════════ -->
+        <div id="menuView" style="display:none">
+
+            <div class="card-panel">
+                <div class="panel-label">
+                    <span>Menu order — page order, titles, slugs &amp; dates</span>
+                    <div class="stats-row">
+                        <a class="mo-site-url" id="mo-site-url" target="_blank" rel="noopener" title="Open the site" hidden></a>
+                    </div>
+                </div>
+
+                <div class="toolbar">
+                    <label class="mo-select-wrap" title="Which content type to order">
+                        <span class="mo-select-cap">Type</span>
+                        <select id="mo-type" aria-label="Content type"></select>
+                    </label>
+
+                    <label class="mo-select-wrap" id="mo-parent-wrap" hidden title="Only show children of one parent — menu order is relative to siblings">
+                        <span class="mo-select-cap">Parent</span>
+                        <select id="mo-parent" aria-label="Parent"></select>
+                    </label>
+
+                    <div class="search-wrap mo-search" id="mo-searchbox">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <circle cx="11" cy="11" r="8" />
+                            <path d="m21 21-4.35-4.35" />
+                        </svg>
+                        <input type="text" id="mo-search" placeholder="Search title, slug or ID…" aria-label="Search" autocomplete="off" spellcheck="false">
+                        <button type="button" class="mo-search-clear" id="mo-search-clear" title="Clear search (Esc)" aria-label="Clear search">×</button>
+                    </div>
+
+                    <label class="mo-select-wrap" title="Sort the list">
+                        <span class="mo-select-cap">Sort</span>
+                        <select id="mo-sort" aria-label="Sort">
+                            <option value="newest">Newest first</option>
+                            <option value="order">Menu order</option>
+                            <option value="title">Title A–Z</option>
+                            <option value="date">Publish date</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="toolbar">
+                    <div class="tab-group" id="mo-view-tabs" role="group" aria-label="Show">
+                        <button type="button" class="tab active" data-view="all">All <span class="mo-fc" id="mo-cnt-all">0</span></button>
+                        <button type="button" class="tab" data-view="ties" title="Items whose menu order is shared with another item — their relative order falls back to title">Shared order <span class="mo-fc mo-fc-warn" id="mo-cnt-ties">0</span></button>
+                        <button type="button" class="tab" data-view="changed">Unsaved <span class="mo-fc mo-fc-accent" id="mo-cnt-changed">0</span></button>
+                    </div>
+
+                    <div class="toolbar-end">
+                        <button type="button" class="btn" id="mo-renumber" title="Give the items in view evenly spaced orders, in the order shown">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M4 6h2v6M4 12h4M17 4v16M13 16l4 4 4-4" />
+                                <path d="M5 16.5a1.5 1.5 0 1 1 2.6 1L4 20h4" />
+                            </svg>
+                            Renumber
+                        </button>
+                        <button type="button" class="btn" id="mo-reload" title="Reload this list from the database">↻ Reload</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-panel">
+                <div class="panel-label">
+                    <span>Results</span>
+                    <div class="stats-row">
+                        <span id="mo-footer-info">—</span>
+                    </div>
+                </div>
+
+                <div class="mo-hintbar" id="mo-hintbar"></div>
+
+                <div class="table-wrap mo-table-wrap" id="mo-table-wrap">
+                    <table class="mo-table">
+                        <colgroup>
+                            <col class="mo-col-handle">
+                            <col class="mo-col-order">
+                            <col class="mo-col-title">
+                            <col class="mo-col-slug">
+                            <col class="mo-col-date">
+                            <col class="mo-col-actions">
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th aria-label="Reorder"></th>
+                                <th>Order</th>
+                                <th>Title</th>
+                                <th>Slug <span class="mo-th-sub">→ URL</span></th>
+                                <th class="mo-hide-mob">Published</th>
+                                <th class="mo-th-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mo-tbody">
+                            <tr>
+                                <td colspan="6" class="state-msg"><span class="spinner"></span> Loading…</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mo-footer-hint">
+                    <span class="fx-kbd">Alt</span>+<span class="fx-kbd">↑</span><span class="fx-kbd">↓</span> move row ·
+                    <span class="fx-kbd">Ctrl</span>+<span class="fx-kbd">S</span> review &amp; save ·
+                    <span class="fx-kbd">Esc</span> in a field undoes that field
+                </div>
+            </div>
+
+            <!-- Floating save bar: lives inside #menuView so it hides with the tab -->
+            <div class="mo-save-bar" id="mo-save-bar" role="region" aria-label="Unsaved menu order changes">
+                <span class="mo-save-info"><span class="mo-save-pill" id="mo-save-count">0</span> <span id="mo-save-label">unsaved changes</span></span>
+                <button type="button" class="btn small mo-btn-dark" id="mo-discard">Discard all</button>
+                <button type="button" class="btn small primary" id="mo-review">Review &amp; save</button>
+            </div>
+        </div>
+
+        <!-- ══════════════════ FIND & REPLACE VIEW (js/replace.js, css/replace.css) ══════════════════ -->
+        <div id="replaceView" style="display:none">
+
+            <div class="card-panel">
+                <div class="panel-label">
+                    <span>Find &amp; Replace — posts, pages, Elementor &amp; SEO fields</span>
+                    <div class="stats-row">
+                        <span>Site <b id="fr-site-label">…</b></span>
+                    </div>
+                    <button type="button" class="hist-btn" id="fr-history-btn" title="Find &amp; Replace history on this site — with undo">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg>
+                        <span class="hist-btn-label">Replace history</span>
+                        <span class="hist-count" id="fr-history-count">0</span>
+                    </button>
+                </div>
+
+                <form id="fr-form" autocomplete="off" novalidate>
+                    <div class="fr-row">
+                        <label class="fr-field">
+                            <span class="fr-lbl">Find</span>
+                            <input id="fr-find" class="fr-input fr-input-find" type="text" placeholder="Text or URL to find…" spellcheck="false">
+                        </label>
+                        <button class="btn fr-swap" id="fr-swap" type="button" title="Swap find and replace" aria-label="Swap find and replace">⇄</button>
+                        <label class="fr-field">
+                            <span class="fr-lbl">Replace with <em>(leave empty to delete)</em></span>
+                            <input id="fr-replace" class="fr-input fr-input-replace" type="text" placeholder="New text…" spellcheck="false">
+                        </label>
+                        <button class="btn primary fr-search-btn" id="fr-search-btn" type="submit"><span class="spinner fr-spin" aria-hidden="true"></span><span>Search</span></button>
+                    </div>
+
+                    <div class="toolbar fr-opt-row">
+                        <span class="fr-lbl">Match</span>
+                        <label class="col-check" title="Healthray ≠ healthray"><input type="checkbox" id="fr-opt-case"> Match case</label>
+                        <label class="col-check" title="“emr” won't match inside “emrs”"><input type="checkbox" id="fr-opt-word"> Whole word</label>
+                        <label class="col-check" title="Only replace in visible text — never inside &lt;tags&gt;, links or image paths"><input type="checkbox" id="fr-opt-tags"> Skip HTML tags</label>
+                        <div class="toolbar-end">
+                            <button class="btn" id="fr-filters-btn" type="button" aria-expanded="false" aria-controls="fr-filters">Filters <span class="fr-filter-count" id="fr-filter-count"></span> ▾</button>
+                        </div>
+                    </div>
+
+                    <div class="toolbar fr-scopes" role="group" aria-label="Where to search">
+                        <span class="fr-lbl">Search in</span>
+                        <span class="fr-chips" id="fr-scopes"></span>
+                    </div>
+
+                    <div class="toolbar secondary fr-filters" id="fr-filters">
+                        <div class="fr-filter-group">
+                            <span class="fr-lbl">Post types <button class="fr-link-btn" type="button" id="fr-types-all">all</button></span>
+                            <div class="fr-chips" id="fr-types"></div>
+                        </div>
+                        <div class="fr-filter-group">
+                            <span class="fr-lbl">Status</span>
+                            <div class="fr-chips" id="fr-statuses"></div>
+                        </div>
+                        <label class="fr-field fr-ids">
+                            <span class="fr-lbl">Only these post IDs <em>(optional, comma separated)</em></span>
+                            <input id="fr-ids" class="fr-input" type="text" placeholder="e.g. 1234, 5678" inputmode="numeric">
+                        </label>
+                    </div>
+                </form>
+            </div>
+
+            <section id="fr-results" aria-live="polite">
+                <div class="card-panel fr-intro">
+                    <h2>Search first, then choose what to change</h2>
+                    <p>Nothing is written until you press <b>Replace</b> and confirm. Every replace is backed up and can be undone from <b>History</b>.</p>
+                    <ul class="fr-tips">
+                        <li><b>Elementor</b> pages keep their text in Elementor data — leave it ticked or the page won't change.</li>
+                        <li>Replacing a URL? Untick <b>Skip HTML tags</b> so links are included.</li>
+                        <li>Press <span class="fx-kbd">/</span> to jump to Find, <span class="fx-kbd">↵</span> to search.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <div class="fr-actionbar" id="fr-actionbar" hidden>
+                <label class="fr-check"><input type="checkbox" id="fr-sel-all"><span id="fr-sel-text">0 selected</span></label>
+                <span class="fr-grow"></span>
+                <button class="btn danger" id="fr-replace-btn" type="button" disabled>Replace selected</button>
+            </div>
+        </div>
+
+        <!-- ══════════════════ FOCUS KEYWORDS VIEW (js/keywords.js, css/keywords.css) ══════════════════ -->
+        <div id="keywordsView" style="display:none">
+
+            <!-- Stat cards double as filter shortcuts -->
+            <div class="stats-grid kpi-row kw-stats" id="kw-stats">
+                <button type="button" class="stat-card kw-stat k-accent" data-kw-stat="all" title="Show everything — clear all filters">
+                    <div class="stat-label"><i class="dot"></i>Total posts</div>
+                    <div class="stat-val" id="kw-stat-total">—</div>
+                    <div class="stat-hint kw-stat-sub">in selected type</div>
+                </button>
+                <button type="button" class="stat-card kw-stat k-ok" data-kw-stat="with" title="Show only posts that have a focus keyword">
+                    <div class="stat-label"><i class="dot"></i>With keyword</div>
+                    <div class="stat-val" id="kw-stat-with">—</div>
+                    <div class="stat-hint kw-stat-sub">focus keyword set</div>
+                </button>
+                <button type="button" class="stat-card kw-stat k-warn" data-kw-stat="dup" title="Toggle duplicates only">
+                    <div class="stat-label"><i class="dot"></i>Duplicates</div>
+                    <div class="stat-val" id="kw-stat-dup">—</div>
+                    <div class="stat-hint kw-stat-sub">posts sharing a keyword</div>
+                </button>
+                <button type="button" class="stat-card kw-stat k-danger" data-kw-stat="uniq" title="Open the conflicting keyword list">
+                    <div class="stat-label"><i class="dot"></i>Unique dup keywords</div>
+                    <div class="stat-val" id="kw-stat-uniq">—</div>
+                    <div class="stat-hint kw-stat-sub">distinct conflicting terms</div>
+                </button>
+                <button type="button" class="stat-card kw-stat" data-kw-stat="without" title="Show only posts missing a focus keyword">
+                    <div class="stat-label">Missing keyword</div>
+                    <div class="stat-val" id="kw-stat-without">—</div>
+                    <div class="kw-stat-sub">no focus keyword set</div>
+                </button>
+            </div>
+
+            <!-- Filters -->
+            <div class="card-panel">
+                <div class="panel-label">
+                    <span>Focus keywords · duplicate audit</span>
+                    <div class="stats-row">
+                        <span class="kw-site" title="URLs on this tab belong to this site">Site <b id="kw-site-host">—</b></span>
+                        <span class="kw-perf" id="kw-perf" title="Time to fetch the last result set">Fetch <b id="kw-perf-total">—</b><em class="kw-perf-server" id="kw-perf-server"></em></span>
+                    </div>
+                </div>
+
+                <div class="toolbar">
+                    <select id="kw-post-type" title="Post type" aria-label="Post type"><option value="post">Loading…</option></select>
+                    <select id="kw-status" title="Status" aria-label="Status"><option value="publish">Published</option></select>
+                    <select id="kw-category" title="Category" aria-label="Category"><option value="">All categories</option></select>
+                    <div class="toolbar-sep" aria-hidden="true"></div>
+                    <div class="search-wrap">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <circle cx="11" cy="11" r="8" />
+                            <path d="m21 21-4.35-4.35" />
+                        </svg>
+                        <input type="search" id="kw-search" placeholder="Search URL, title, slug, keyword…" autocomplete="off" aria-label="Search posts">
+                    </div>
+                </div>
+
+                <div class="toolbar kw-actions">
+                    <label class="col-check" title="Only posts whose focus keyword is used more than once (d)">
+                        <input type="checkbox" id="kw-only-dup"> Duplicates only
+                    </label>
+                    <button type="button" class="btn" id="kw-refresh" title="Reload posts (r)">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
+                        Refresh
+                    </button>
+
+                    <div class="toolbar-sep" aria-hidden="true"></div>
+
+                    <div class="export-wrap kw-menu-wrap">
+                        <button type="button" class="btn" id="kw-cols-btn" data-kw-menu="kw-cols-menu" aria-haspopup="true" aria-expanded="false" title="Show or hide columns">Columns ▾</button>
+                        <div class="export-menu kw-menu kw-menu-left" id="kw-cols-menu">
+                            <div class="export-menu-header">Visible columns</div>
+                            <div class="kw-cols-list" id="kw-cols-list"></div>
+                        </div>
+                    </div>
+
+                    <div class="toolbar-end">
+                        <div class="export-wrap kw-menu-wrap">
+                            <button type="button" class="btn primary" id="kw-export-btn" data-kw-menu="kw-export-menu" aria-haspopup="true" aria-expanded="false">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                                Export ▾
+                            </button>
+                            <div class="export-menu kw-menu" id="kw-export-menu">
+                                <div class="export-menu-header">Export CSV</div>
+                                <div class="export-item" role="button" tabindex="0" data-kw-export="visible">Visible rows (all pages) <span class="ei-badge">CSV</span></div>
+                                <div class="export-item" role="button" tabindex="0" data-kw-export="dups">Duplicates only <span class="ei-badge">CSV</span></div>
+                                <div class="export-item" role="button" tabindex="0" data-kw-export="grouped">Grouped by keyword <span class="ei-badge">CSV</span></div>
+                                <div class="export-menu-header">Clipboard</div>
+                                <div class="export-item" role="button" tabindex="0" data-kw-export="urls">Copy visible URLs <span class="ei-badge">TXT</span></div>
+                                <div class="export-item" role="button" tabindex="0" data-kw-export="ids">Copy visible IDs <span class="ei-badge">TXT</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active filter chips (category · exact keyword · presence), rendered by js/keywords.js -->
+                <div class="kw-chips" id="kw-chips" hidden></div>
+            </div>
+
+            <!-- Conflicting keywords (opened from the "Unique dup keywords" card) -->
+            <div class="card-panel kw-panel" id="kw-panel" hidden>
+                <div class="panel-label">
+                    <span>Conflicting keywords</span>
+                    <span class="kw-panel-hint" id="kw-panel-hint"></span>
+                    <button type="button" class="btn small kw-panel-close" data-kw-action="close-panel" title="Hide panel" aria-label="Hide panel">✕</button>
+                </div>
+                <div class="kw-panel-body" id="kw-panel-body"></div>
+            </div>
+
+            <!-- Table -->
+            <div class="card-panel" id="kw-table-card">
+                <div class="panel-label">
+                    <span>Posts</span>
+                    <span class="kw-legend" aria-hidden="true"><i class="kw-dot kw-g1"></i><i class="kw-dot kw-g2"></i><i class="kw-dot kw-g3"></i><i class="kw-dot kw-g4"></i> rows sharing a keyword share a tint</span>
+                    <div class="stats-row">
+                        <span>Showing <b id="kw-st-shown">0</b> of <b id="kw-st-total">0</b></span>
+                    </div>
+                </div>
+
+                <div class="table-shell">
+                    <div class="loading-overlay" id="kw-loading"><span class="spinner"></span><span>Loading posts…</span></div>
+                    <div class="table-wrap">
+                        <table id="kw-table">
+                            <thead id="kw-thead"></thead>
+                            <tbody id="kw-tbody">
+                                <tr><td class="state-msg"><span class="spinner"></span> Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="pagination">
+                    <span id="kw-pg-info">—</span>
+                    <div class="pager-btns">
+                        <select id="kw-page-len" class="btn small" title="Rows per page" aria-label="Rows per page">
+                            <option value="10">10 / page</option>
+                            <option value="25">25 / page</option>
+                            <option value="50">50 / page</option>
+                            <option value="100" selected>100 / page</option>
+                            <option value="250">250 / page</option>
+                            <option value="500">500 / page</option>
+                        </select>
+                        <button type="button" class="btn" data-kw-page="first" title="First page">«</button>
+                        <button type="button" class="btn" data-kw-page="prev" title="Previous page (←)">‹ Prev</button>
+                        <span class="kw-pg-cur">Page <b id="kw-pg-cur">1</b> of <b id="kw-pg-total">1</b></span>
+                        <button type="button" class="btn" data-kw-page="next" title="Next page (→)">Next ›</button>
+                        <button type="button" class="btn" data-kw-page="last" title="Last page">»</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    
     </div>
 
     <!-- ══ Post link-detail modal ══ -->
@@ -853,7 +1214,8 @@
                     <div class="keys"><span class="fx-kbd">?</span></div><div>This list</div>
                     <div class="keys"><span class="fx-kbd">/</span></div><div>Focus the current tab's search</div>
                     <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">c</span> <span class="fx-kbd">l</span> <span class="fx-kbd">f</span> <span class="fx-kbd">r</span> <span class="fx-kbd">b</span></div><div>Go to Content / Links / Fixer / Redirects / Bulk</div>
-                    <div class="keys"><span class="fx-kbd">h</span></div><div>Open link-change history</div>
+                    <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">m</span> <span class="fx-kbd">s</span> <span class="fx-kbd">k</span></div><div>Go to Menu Order / Find &amp; Replace / Focus Keywords</div>
+                    <div class="keys"><span class="fx-kbd">h</span></div><div>Open History — every change on this site, with undo</div>
                     <div class="keys"><span class="fx-kbd">Esc</span></div><div>Close dialogs, clear search or selection</div>
 
                     <div class="help-section-title">Link Fixer</div>
@@ -865,6 +1227,24 @@
                     <div class="keys"><span class="fx-kbd">←</span> <span class="fx-kbd">→</span></div><div>Previous / next page of posts</div>
                     <div class="keys"><span class="fx-kbd">1</span>…<span class="fx-kbd">6</span></div><div>All / OK / Redirects / Broken / Unchecked / Duplicates</div>
                     <div class="keys"><span class="fx-kbd">↵</span></div><div>Save, in the edit dialog</div>
+
+                    <div class="help-section-title">Menu Order</div>
+                    <div class="keys"><span class="fx-kbd">Alt</span>+<span class="fx-kbd">↑</span> <span class="fx-kbd">↓</span></div><div>Move the focused row (sort by Order)</div>
+                    <div class="keys"><span class="fx-kbd">Ctrl</span>+<span class="fx-kbd">S</span></div><div>Review &amp; save</div>
+                    <div class="keys"><span class="fx-kbd">Esc</span></div><div>In a field: undo that field · otherwise clear search / close Renumber</div>
+
+                    <div class="help-section-title">Find &amp; Replace</div>
+                    <div class="keys"><span class="fx-kbd">↵</span></div><div>Search, in the Find box</div>
+                    <div class="keys"><span class="fx-kbd">a</span></div><div>Select / clear all visible fields</div>
+                    <div class="keys"><span class="fx-kbd">r</span></div><div>Replace selected (asks first)</div>
+                    <div class="keys"><span class="fx-kbd">e</span></div><div>Show / hide filters</div>
+                    <div class="keys"><span class="fx-kbd">u</span></div><div>Replace history (with undo)</div>
+
+                    <div class="help-section-title">Focus Keywords</div>
+                    <div class="keys"><span class="fx-kbd">d</span></div><div>Duplicates only</div>
+                    <div class="keys"><span class="fx-kbd">k</span></div><div>Conflicting keywords panel</div>
+                    <div class="keys"><span class="fx-kbd">r</span></div><div>Reload</div>
+                    <div class="keys"><span class="fx-kbd">←</span> <span class="fx-kbd">→</span></div><div>Previous / next page</div>
                 </div>
             </div>
             <div class="fx-modal-actions">
@@ -873,26 +1253,82 @@
         </div>
     </div>
 
-    <!-- ══ History drawer (js/history.js) ══ -->
+    <!-- ══ History drawer (js/history.js, css/history.css) ══ -->
     <div class="drawer-scrim" id="drawerScrim"></div>
-    <aside class="drawer" id="historyDrawer" aria-label="Link changes on this site" aria-hidden="true">
+    <aside class="drawer hx-drawer" id="historyDrawer" aria-label="Change history for this site" aria-hidden="true">
         <div class="drawer-head">
             <div>
-                <h3>Link change history</h3>
-                <span class="drawer-sub">Every Link Fixer edit, fix and unlink on this site — undo any of them</span>
+                <h3>History</h3>
+                <span class="drawer-sub">Every change made in this dashboard on this site, newest first. Undo puts a value back only if nothing changed it since.</span>
             </div>
             <button type="button" class="modal-close" id="historyClose" title="Close (Esc)" aria-label="Close">×</button>
         </div>
+        <div class="hx-chips" id="historyChips" role="toolbar" aria-label="Filter by tab"></div>
         <div class="drawer-tools">
-            <input type="search" id="historySearch" placeholder="Filter by post, title or URL…" autocomplete="off">
+            <input type="search" id="historySearch" placeholder="Search summary, post ID, field, redirect…" autocomplete="off">
             <button type="button" class="btn small" id="historyReload" title="Reload">↻</button>
         </div>
         <div class="drawer-body" id="historyList"></div>
         <div class="drawer-foot">
-            <span class="col-note">Saved on the server in backups/</span>
+            <span class="col-note">Saved on the server in backups/ · badge = last 24 h</span>
             <button type="button" class="btn primary small" id="historyCsv">Export CSV</button>
         </div>
     </aside>
+
+    <!-- ══ Menu Order: renumber dialog ══ -->
+    <div class="fx-modal-overlay" id="mo-renumber-modal" role="dialog" aria-modal="true" aria-labelledby="mo-renumber-title">
+        <div class="fx-modal-box fx-modal-narrow">
+            <div class="fx-modal-head">
+                <h3 id="mo-renumber-title">Renumber</h3>
+                <button type="button" class="modal-close" data-mo-close title="Close (Esc)" aria-label="Close">×</button>
+            </div>
+            <div class="fx-modal-scroll">
+                <p class="mo-modal-text" id="mo-renumber-text"></p>
+                <div class="mo-form-grid">
+                    <label class="mo-form-field">
+                        <span>Start at</span>
+                        <input type="number" id="mo-rn-start" value="10" step="1">
+                    </label>
+                    <label class="mo-form-field">
+                        <span>Step</span>
+                        <input type="number" id="mo-rn-step" value="10" min="1" step="1">
+                    </label>
+                </div>
+                <label class="mo-form-check">
+                    <input type="checkbox" id="mo-rn-reverse">
+                    <span>Count down instead of up (first row gets the highest number)</span>
+                </label>
+                <div class="mo-rn-preview" id="mo-rn-preview"></div>
+            </div>
+            <div class="fx-modal-actions">
+                <span class="fx-kbd-hint">Nothing is saved until you review</span>
+                <button type="button" class="btn" data-mo-close>Cancel</button>
+                <button type="button" class="btn primary" id="mo-rn-apply">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ Find & Replace: history drawer (js/replace.js) ══ -->
+    <div class="drawer-scrim" id="fr-drawer-scrim"></div>
+    <aside class="drawer" id="fr-drawer" aria-label="Find &amp; Replace history" aria-hidden="true">
+        <div class="drawer-head">
+            <div>
+                <h3>Find &amp; Replace history · <span id="fr-drawer-site"></span></h3>
+                <span class="drawer-sub">Every replace on this site — undo any of them (fields edited since are left alone)</span>
+            </div>
+            <button type="button" class="modal-close" id="fr-drawer-close" title="Close (Esc)" aria-label="Close">×</button>
+        </div>
+        <div class="drawer-tools">
+            <input type="search" id="fr-drawer-search" placeholder="Filter by find / replace text…" autocomplete="off">
+            <button type="button" class="btn small" id="fr-drawer-reload" title="Reload">↻</button>
+        </div>
+        <div class="drawer-body" id="fr-drawer-list"></div>
+        <div class="drawer-foot">
+            <span class="col-note">Saved on the server in backups/</span>
+        </div>
+    </aside>
+
+    <!-- (none: the Focus Keywords tab needs no extra modal markup) -->
 
     <div id="toast" aria-live="polite"></div>
 
@@ -903,6 +1339,10 @@
     <script src="js/history.js"></script>
     <script src="js/redirects.js"></script>
     <script src="js/bulk.js"></script>
+    <script src="js/menu-order.js"></script>
+    <script src="js/replace.js"></script>
+    <script src="js/keywords.js"></script>
+    <script src="js/views.js"></script>
     <script src="js/app.js"></script>
 </body>
 

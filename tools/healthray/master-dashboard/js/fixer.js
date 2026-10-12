@@ -287,12 +287,14 @@ function fxRenderTypeOptions() {
         box.innerHTML = '<div class="fx-pt-empty">No content types found.</div>';
         return;
     }
-    box.innerHTML = fx.availableTypes.map(t => `
+    // Only types with posts in the selected status (a ticked type always stays visible so it can be unticked)
+    const shown = fx.availableTypes.filter(t => typeCountFor(t, fx.status) > 0 || fx.draftTypes.has(t.type));
+    box.innerHTML = shown.length ? shown.map(t => `
         <label class="fx-pt-option">
             <input type="checkbox" class="fx-pt-checkbox" value="${escapeHtml(t.type)}" ${fx.draftTypes.has(t.type) ? 'checked' : ''}>
             <span class="fx-pt-label" title="${escapeHtml(t.type)}">${escapeHtml(fxTypeLabel(t.type))}</span>
-            <span class="fx-pt-count">${fmtNum(t.count)}</span>
-        </label>`).join('');
+            <span class="fx-pt-count">${fmtNum(typeCountFor(t, fx.status))}</span>
+        </label>`).join('') : '<div class="fx-pt-empty">No content in this status.</div>';
 }
 
 function fxUpdateTypeLabel() {
@@ -610,8 +612,8 @@ function fxRenderTable() {
             <button type="button" class="fx-group-toggle" data-act="toggle" data-post-id="${id}" title="${collapsed ? 'Expand' : 'Collapse'} this post" aria-label="Toggle post group" aria-expanded="${!collapsed}">${FX_ICON.chevron}</button>
             <span class="fx-type ${fxTypeClass(g.type)}">${escapeHtml(fxTypeLabel(g.type))}</span>
             ${g.permalink
-                ? `<a class="fx-group-title" href="${escapeHtml(g.permalink)}" target="_blank" rel="noopener" title="${escapeHtml(g.title)} — open on the site">${fxHl(g.title, terms)}</a>`
-                : `<span class="fx-group-title">${fxHl(g.title, terms)}</span>`}
+                ? `<a class="fx-group-title" href="${escapeHtml(g.permalink)}" target="_blank" rel="noopener" title="${escapeHtml(decodeEntities(g.title))} — open on the site">${fxHl(decodeEntities(g.title), terms)}</a>`
+                : `<span class="fx-group-title">${fxHl(decodeEntities(g.title), terms)}</span>`}
             <span class="fx-group-id">#${id}</span>
             <span class="fx-group-meta">${meta.join('')}</span>
             <span class="fx-group-actions">
@@ -846,7 +848,7 @@ async function fxFixGroup(postId) {
     if (!links.length) { toast('No redirecting links in this post', 'err'); return; }
     const ok = await confirmDialog({
         title: `Fix ${pluralize(links.length, 'redirect')}`,
-        message: `Each URL in “${g.title}” is replaced with the target it redirects to.`,
+        message: `Each URL in “${decodeEntities(g.title)}” is replaced with the target it redirects to.`,
         changes: links.map(l => ({ post: fxPostLabel(l), from: l.url, to: fxResult(l.url).redirect_url })),
         okLabel: `Fix ${pluralize(links.length, 'link')}`, tone: 'warn',
     });
@@ -997,7 +999,7 @@ function fxOpenEdit(key) {
 
     fx$('fx-modal-meta').innerHTML = [
         `<span class="fx-type ${fxTypeClass(link.post_type)}">${escapeHtml(fxTypeLabel(link.post_type))}</span>`,
-        `<span class="fx-badge s-ext" title="${escapeHtml(link.post_title || '')}">${escapeHtml(truncate(link.post_title || '', 50))}</span>`,
+        `<span class="fx-badge s-ext" title="${escapeHtml(decodeEntities(link.post_title))}">${escapeHtml(truncate(decodeEntities(link.post_title), 50))}</span>`,
         link.source === 'faq'
             ? `<span class="fx-badge s-faq" title="Stored in postmeta key ${escapeHtml(link.meta_key || '')}">FAQ · ${escapeHtml(link.meta_key || '')}</span>`
             : '<span class="fx-badge s-ext">Post content</span>',

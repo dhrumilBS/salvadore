@@ -1,10 +1,9 @@
 <?php
 /*
- * Find & Replace - shared backend.
+ * Find & Replace tab - shared backend (ported from ../../replace/api/lib.php).
  *
- * Site selection: the page pins the site it was opened on and sends it as
- * ?db= / POST db on every call, so two tabs on different sites can't write
- * into each other's database. Unknown keys fall back to the default site.
+ * Loaded after api/bootstrap.php, which already gives us $conn pinned to the
+ * ?db= site, $ACTIVE_DB, json_out() and require_post_method().
  *
  * Matching is done in PHP (the SQL LIKE is only a cheap pre-filter), so the
  * count shown, the preview and the actual write always agree. Values are
@@ -16,25 +15,19 @@
  *   - PHP-serialized      unserialized, replaced string by string, serialized
  *                         again so byte lengths stay right; values holding
  *                         objects are reported and never written
+ *
+ * Journal (undo): backups/replace-history-<site>.jsonl is the index (one JSON
+ * line per event) and backups/replace-op-<id>.json holds every changed
+ * field's before/after value. backups/ is web-blocked by its .htaccess.
  */
-// POST bodies are JSON (not form fields), so the site comes from the body or ?db=.
-$FR_BODY = json_decode(file_get_contents('php://input') ?: '', true);
-$FR_BODY = is_array($FR_BODY) ? $FR_BODY : [];
-$requested = $_GET['db'] ?? $FR_BODY['db'] ?? 'landing';
-$ACTIVE_DB = is_string($requested) ? $requested : 'landing';
-require __DIR__ . '/../../conn.php';
-// conn.php falls back to the shared "db" cookie for an unknown key; pin to the default instead.
-if (!isset($DATABASES[$ACTIVE_DB])) {
-    $ACTIVE_DB = $DEFAULT_DB;
-    $conn = db_connect($ACTIVE_DB);
-}
-$conn->set_charset('utf8mb4');
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+header('Cache-Control: no-store');
 
-const FR_MAX_FIELDS   = 1000;  // fields returned by one search
+const FR_MAX_FIELDS   = 1000;  // fields returned by one search / replaced by one request
 const FR_MAX_SNIPPETS = 4;     // previews per field
 const FR_CONTEXT      = 60;    // characters of context either side of a match
-const FR_BACKUP_DIR   = __DIR__ . '/../backups';
+const FR_BACKUP_DIR   = __DIR__ . '/../../backups';
+const FR_POST_COLS    = ['post_title', 'post_content', 'post_excerpt'];
 
 /** Meta keys that are caches, file paths or editor locks - never content. */
 const FR_SKIP_META = [
@@ -53,7 +46,7 @@ const FR_SKIP_TYPES = [
 
 const FR_STATUSES = ['publish', 'draft', 'pending', 'private', 'future'];
 
-/** Searchable areas: key => [label, how it's stored]. */
+/** Searchable areas: key => label. */
 const FR_SCOPES = [
     'title'     => 'Titles',
     'content'   => 'Content',
@@ -63,42 +56,15 @@ const FR_SCOPES = [
     'meta'      => 'Other custom fields',
 ];
 
-function json_out(bool $ok, string $msg, array $extra = []): void
-{
-    header('Content-Type: application/json; charset=utf-8');
-    header('Cache-Control: no-store');
-    echo json_encode(['success' => $ok, 'msg' => $msg] + $extra, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
-    exit;
-}
-
-/**
- * Writes must come from this tool's own page. There is no login, so without
- * this any website open in the same browser could POST here. A custom header
- * can't be sent cross-site without a CORS preflight this server never grants.
- */
-function require_write_request(): void
-{
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        http_response_code(405);
-        json_out(false, 'Use POST.');
-    }
-    $fetchSite = $_SERVER['HTTP_SEC_FETCH_SITE'] ?? '';
-    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    $originHost = $origin === '' ? '' : (parse_url($origin, PHP_URL_HOST) . (parse_url($origin, PHP_URL_PORT) ? ':' . parse_url($origin, PHP_URL_PORT) : ''));
-    $ok = ($_SERVER['HTTP_X_FIND_REPLACE'] ?? '') === '1'
-        && ($fetchSite === '' || $fetchSite === 'same-origin')
-        && ($origin === '' || strcasecmp($originHost, $_SERVER['HTTP_HOST'] ?? '') === 0);
-    if (!$ok) {
-        http_response_code(403);
-        json_out(false, 'Request refused: it did not come from the Find & Replace page.');
-    }
-}
-
-/** The JSON body of a POST request. */
+/** The JSON body of a POST request (api() sends JSON.stringify(...) as the body). */
 function fr_body(): array
 {
-    global $FR_BODY;
-    return $FR_BODY;
+    static $body = null;
+    if ($body === null) {
+        $decoded = json_decode(file_get_contents('php://input') ?: '', true);
+        $body = is_array($decoded) ? $decoded : [];
+    }
+    return $body;
 }
 
 /* ───────────────────────── Options ───────────────────────── */
@@ -106,7 +72,7 @@ function fr_body(): array
 /** Validate and normalise the search options sent by the page. */
 function fr_options(array $in): array
 {
-    $find = (string) ($in['find'] ?? '');
+    $find = is_string($in['find'] ?? null) ? $in['find'] : '';
     if (mb_strlen(trim($find)) < 2) {
         json_out(false, 'Type at least 2 characters to find.');
     }
@@ -115,14 +81,14 @@ function fr_options(array $in): array
     $types = array_values(array_filter((array) ($in['types'] ?? []), fn($t) => is_string($t) && preg_match('/^[a-z0-9_\-]{1,40}$/i', $t)));
     return [
         'find'      => $find,
-        'replace'   => (string) ($in['replace'] ?? ''),
+        'replace'   => is_scalar($in['replace'] ?? null) ? (string) $in['replace'] : '',
         'case'      => !empty($in['case']),
         'word'      => !empty($in['word']),
         'skipTags'  => !empty($in['skipTags']),
         'scopes'    => $scopes ?: array_keys(FR_SCOPES),
         'statuses'  => $statuses ?: FR_STATUSES,
         'types'     => $types,
-        'ids'       => array_values(array_filter(array_map('intval', preg_split('/[\s,]+/', (string) ($in['ids'] ?? ''))))),
+        'ids'       => array_values(array_filter(array_map('intval', preg_split('/[\s,]+/', is_scalar($in['ids'] ?? null) ? (string) $in['ids'] : '')))),
     ];
 }
 
@@ -205,7 +171,7 @@ function fr_replace_string(string $text, array $o, string $format, bool $wantSni
         // Not valid UTF-8 (old latin1 rows): retry byte-wise.
         $count = 0;
         $snips = [];
-        $out = preg_replace_callback(substr($regex, 0, strrpos($regex, '/')) . '/' . ($o['case'] ? '' : 'i'), $cb, $text, -1, $n, PREG_OFFSET_CAPTURE);
+        $out = @preg_replace_callback(substr($regex, 0, strrpos($regex, '/')) . '/' . ($o['case'] ? '' : 'i'), $cb, $text, -1, $n, PREG_OFFSET_CAPTURE);
         $out ??= $text;
     }
     return [$out, $count, $snips];
@@ -242,7 +208,7 @@ function fr_unjson(string $s): string
 /** What a stored value is: 'serialized', 'json' or 'text'. */
 function fr_format(string $value): string
 {
-    if (is_serialized_value($value)) {
+    if (fr_is_serialized($value)) {
         return 'serialized';
     }
     $c = $value[0] ?? '';
@@ -252,7 +218,7 @@ function fr_format(string $value): string
     return 'text';
 }
 
-function is_serialized_value(string $v): bool
+function fr_is_serialized(string $v): bool
 {
     if ($v === 'b:0;' || $v === 'N;') {
         return true;
@@ -356,10 +322,19 @@ function fr_meta_scope(string $key): string
     return 'meta';
 }
 
+/** Scope key for a candidate row. */
+function fr_row_scope(array $r): string
+{
+    return $r['kind'] === 'post'
+        ? ['post_title' => 'title', 'post_content' => 'content', 'post_excerpt' => 'excerpt'][$r['field']]
+        : fr_meta_scope($r['field']);
+}
+
 /**
  * Candidate fields for a search, as rows:
  *   ['kind' => 'post'|'meta', 'id' => postID|metaID, 'post_id', 'field' => column|meta_key, 'value']
- * Returns [rows, truncated].
+ * Returns [rows, truncated]. truncated is true when any query hit its row limit,
+ * i.e. there may be more matching rows than were looked at.
  */
 function fr_candidates(mysqli $conn, array $o, int $limit): array
 {
@@ -367,11 +342,16 @@ function fr_candidates(mysqli $conn, array $o, int $limit): array
     $likes = fr_like_patterns($o);
     $bin = $o['case'] ? 'BINARY ' : '';
     $rows = [];
+    $truncated = false;
 
     $cols = array_intersect_key(['title' => 'post_title', 'content' => 'post_content', 'excerpt' => 'post_excerpt'], array_flip($o['scopes']));
     foreach ($cols as $col) {
         $cond = implode(' OR ', array_map(fn() => "p.$col LIKE $bin?", $likes));
         $found = fr_run($conn, "SELECT p.ID, p.$col AS v FROM wp_posts p WHERE $where AND ($cond) ORDER BY p.ID DESC LIMIT " . ($limit + 1), array_merge($params, $likes));
+        if (count($found) > $limit) {
+            $truncated = true;
+            $found = array_slice($found, 0, $limit);
+        }
         foreach ($found as $r) {
             $rows[] = ['kind' => 'post', 'id' => (int) $r['ID'], 'post_id' => (int) $r['ID'], 'field' => $col, 'value' => (string) $r['v']];
         }
@@ -398,14 +378,18 @@ function fr_candidates(mysqli $conn, array $o, int $limit): array
              WHERE ' . $where . ' AND (' . implode(' OR ', $keySql) . ") AND ($cond) ORDER BY m.post_id DESC, m.meta_id LIMIT " . ($limit + 1),
             array_merge($params, $keyParams, $likes)
         );
+        if (count($found) > $limit) {
+            $truncated = true;
+            $found = array_slice($found, 0, $limit);
+        }
         foreach ($found as $r) {
             $rows[] = ['kind' => 'meta', 'id' => (int) $r['meta_id'], 'post_id' => (int) $r['post_id'], 'field' => $r['meta_key'], 'value' => (string) $r['meta_value']];
         }
     }
-    return $rows;
+    return [$rows, $truncated];
 }
 
-/** title / type / status / links for a set of post IDs. */
+/** title / type / status for a set of post IDs. */
 function fr_posts_info(mysqli $conn, array $ids): array
 {
     if (!$ids) {
@@ -432,15 +416,19 @@ function fr_home_url(mysqli $conn): string
 
 function fr_journal_index(string $site): string
 {
-    return FR_BACKUP_DIR . '/history-' . preg_replace('/[^a-z0-9_\-]/i', '', $site) . '.jsonl';
+    return FR_BACKUP_DIR . '/replace-history-' . preg_replace('/[^a-z0-9_\-]/i', '', $site) . '.jsonl';
 }
 
 function fr_journal_file(string $id): string
 {
-    return FR_BACKUP_DIR . '/op-' . preg_replace('/[^a-z0-9\-]/i', '', $id) . '.json';
+    return FR_BACKUP_DIR . '/replace-op-' . preg_replace('/[^a-z0-9\-]/i', '', $id) . '.json';
 }
 
-/** Every operation for a site, newest first, with undo state merged in. */
+/**
+ * Every operation for a site, newest first, with undo state merged in.
+ * Index events: 'replace' (written before the commit), 'aborted' (the commit
+ * failed after that, so the replace never happened) and 'undo'.
+ */
 function fr_journal_list(string $site): array
 {
     $file = fr_journal_index($site);
@@ -450,14 +438,19 @@ function fr_journal_list(string $site): array
     $ops = [];
     foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
         $e = json_decode($line, true);
-        if (!is_array($e) || empty($e['id'])) {
+        if (!is_array($e) || empty($e['id']) || !is_string($e['id'])) {
             continue;
         }
-        if (($e['event'] ?? 'replace') === 'undo') {
+        $event = $e['event'] ?? 'replace';
+        if ($event === 'undo') {
             if (isset($ops[$e['id']])) {
                 $ops[$e['id']]['undone'] = $e['time'];
                 $ops[$e['id']]['undoSkipped'] = $e['skipped'] ?? 0;
             }
+            continue;
+        }
+        if ($event === 'aborted') {
+            unset($ops[$e['id']]);
             continue;
         }
         $ops[$e['id']] = $e;
@@ -465,10 +458,83 @@ function fr_journal_list(string $site): array
     return array_reverse(array_values($ops));
 }
 
-function fr_journal_append(string $site, array $entry): void
+function fr_ensure_backup_dir(): bool
 {
-    if (!is_dir(FR_BACKUP_DIR)) {
-        mkdir(FR_BACKUP_DIR, 0775, true);
+    return is_dir(FR_BACKUP_DIR) || @mkdir(FR_BACKUP_DIR, 0775, true) || is_dir(FR_BACKUP_DIR);
+}
+
+/** Append one event line to the site's index. Returns false if it could not be written. */
+function fr_journal_append(string $site, array $entry): bool
+{
+    if (!fr_ensure_backup_dir()) {
+        return false;
     }
-    file_put_contents(fr_journal_index($site), json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n", FILE_APPEND | LOCK_EX);
+    $line = json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    if ($line === false) {
+        return false;
+    }
+    return @file_put_contents(fr_journal_index($site), $line . "\n", FILE_APPEND | LOCK_EX) !== false;
+}
+
+/**
+ * Undo one replace operation (shared by replace_undo.php and the unified
+ * History's activity_undo.php). Restores a field only while it still equals
+ * what the replace wrote; anything edited since is skipped and reported.
+ * Returns ['success' => bool, 'msg' => string, + restored/skipped/logged on success].
+ */
+function fr_undo_op(mysqli $conn, string $site, string $id): array
+{
+    $op = null;
+    foreach (fr_journal_list($site) as $e) {
+        if ($e['id'] === $id) {
+            $op = $e;
+        }
+    }
+    $file = fr_journal_file($id);
+    if ($id === '' || !$op || !is_file($file)) {
+        return ['success' => false, 'msg' => 'That operation was not found for this site.'];
+    }
+    if (!empty($op['undone'])) {
+        return ['success' => false, 'msg' => 'Already undone.'];
+    }
+    $data = json_decode((string) file_get_contents($file), true);
+    if (!is_array($data) || ($data['site'] ?? '') !== $site || !is_array($data['changes'] ?? null)) {
+        return ['success' => false, 'msg' => 'The backup for this operation is unreadable.'];
+    }
+
+    $restored = 0;
+    $skipped = [];
+    $conn->begin_transaction();
+    try {
+        foreach ($data['changes'] as $c) {
+            if ($c['kind'] === 'post' && in_array($c['field'], FR_POST_COLS, true)) {
+                $cur = fr_run($conn, "SELECT {$c['field']} AS v FROM wp_posts WHERE ID = ? FOR UPDATE", [$c['id']])[0]['v'] ?? null;
+                $sql = "UPDATE wp_posts SET {$c['field']} = ? WHERE ID = ?";
+            } elseif ($c['kind'] === 'meta') {
+                $cur = fr_run($conn, 'SELECT meta_value AS v FROM wp_postmeta WHERE meta_id = ? FOR UPDATE', [$c['id']])[0]['v'] ?? null;
+                $sql = 'UPDATE wp_postmeta SET meta_value = ? WHERE meta_id = ?';
+            } else {
+                continue;
+            }
+            if ($cur === null || $cur !== $c['after']) {
+                $skipped[] = ['post_id' => $c['post_id'], 'field' => $c['field'], 'reason' => $cur === null ? 'Deleted since.' : 'Edited again since - left as is.'];
+                continue;
+            }
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param('si', $c['before'], $c['id']);
+            $stmt->execute();
+            $restored++;
+        }
+        $conn->commit();
+    } catch (Throwable $e) {
+        $conn->rollback();
+        return ['success' => false, 'msg' => $e->getMessage()];
+    }
+
+    $logged = fr_journal_append($site, ['event' => 'undo', 'id' => $id, 'time' => date('c'), 'restored' => $restored, 'skipped' => count($skipped)]);
+    $msg = "Restored $restored " . ($restored === 1 ? 'field' : 'fields') . ($skipped ? ', ' . count($skipped) . ' skipped (edited again since)' : '') . '.';
+    if (!$logged) {
+        $msg .= ' History could not be updated, so it may still show Undo.';
+    }
+    return ['success' => true, 'msg' => $msg, 'restored' => $restored, 'skipped' => $skipped, 'logged' => $logged, 'op' => $op];
 }

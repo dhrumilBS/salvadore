@@ -51,6 +51,23 @@ function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+/**
+ * WordPress stores some titles HTML-encoded ("Alternatives &amp; Competitors").
+ * Decode before escapeHtml() for display, or "&amp;" shows up on screen.
+ * Edit inputs keep the raw stored value - only use this for read-only text.
+ */
+const decodeBox = document.createElement('textarea');
+function decodeEntities(s) {
+    s = String(s ?? '');
+    // some titles are encoded twice ("&amp;amp;") - decode until stable (max 3 passes)
+    for (let i = 0; i < 3 && s.includes('&'); i++) {
+        decodeBox.innerHTML = s;
+        if (decodeBox.value === s) break;
+        s = decodeBox.value;
+    }
+    return s;
+}
+
 function truncate(s, n) {
     s = String(s ?? '');
     return s.length > n ? s.slice(0, n) + '…' : s;
@@ -504,6 +521,27 @@ function applyTheme(theme) {
     document.getElementById('iconSun').style.display = theme === 'light' ? 'block' : 'none';
 }
 
+/* ---------- table density (comfortable / compact), remembered per browser ---------- */
+function applyDensity(compact) {
+    document.body.classList.toggle('density-compact', compact);
+    const btn = document.getElementById('densityToggle');
+    if (btn) {
+        btn.classList.toggle('active', compact);
+        btn.title = compact ? 'Compact rows - click for comfortable' : 'Comfortable rows - click for compact';
+    }
+}
+
+function initDensity() {
+    let compact = false;
+    try { compact = localStorage.getItem('md.density') === 'compact'; } catch (e) { }
+    applyDensity(compact);
+    document.getElementById('densityToggle')?.addEventListener('click', () => {
+        const next = !document.body.classList.contains('density-compact');
+        applyDensity(next);
+        try { localStorage.setItem('md.density', next ? 'compact' : 'comfortable'); } catch (e) { }
+    });
+}
+
 function initTheme() {
     let stored = null;
     try { stored = localStorage.getItem('theme'); } catch (e) { /* storage blocked */ }
@@ -567,22 +605,66 @@ function renderDatabaseSwitcher() {
     document.getElementById('dbLiveFlag').hidden = !live;
 }
 
+/* Tabs that can hold unsaved work. Each check is looked up at call time, so a
+ * tab whose script isn't loaded simply counts as clean. */
+const UNSAVED_CHECKS = [
+    ['Content', () => typeof hasUnsavedContentEdits === 'function' && hasUnsavedContentEdits()],
+    ['Menu Order', () => typeof moHasUnsaved === 'function' && moHasUnsaved()],
+    ['Find & Replace', () => typeof frHasUnsaved === 'function' && frHasUnsaved()],
+    ['Focus Keywords', () => typeof kwHasUnsaved === 'function' && kwHasUnsaved()],
+];
+let skipUnloadPrompt = false;
+
+/** Names of the tabs that have unsaved edits right now, e.g. ['Content', 'Menu Order']. */
+function unsavedTabs() {
+    return UNSAVED_CHECKS.filter(([, check]) => check()).map(([name]) => name);
+}
+
+window.addEventListener('beforeunload', e => {
+    if (!skipUnloadPrompt && unsavedTabs().length) { e.preventDefault(); e.returnValue = ''; }
+});
+
 function bindDatabaseSwitcher() {
     document.getElementById('dbSelector').addEventListener('change', async e => {
         const next = e.target.value;
-        if (hasUnsavedContentEdits()) {
+        const unsaved = unsavedTabs();
+        if (unsaved.length) {
             renderDatabaseSwitcher(); // put the dropdown back while asking
             const ok = await confirmDialog({
                 title: 'Discard unsaved edits?',
-                message: 'You have unsaved Content edits. Switching site discards them.',
+                message: `You have unsaved ${unsaved.join(' and ')} edits. Switching site discards them.`,
                 okLabel: 'Switch site', tone: 'danger', writes: false,
             });
             if (!ok) return;
         }
         contentDirty = {}; // already confirmed above - don't let beforeunload ask a second time
+        skipUnloadPrompt = true;
         document.cookie = `md_db=${encodeURIComponent(next)}; path=${cookieDir()}; max-age=${60 * 60 * 24 * 365}`;
         location.reload();
     });
+}
+
+/* ---------- KPI / stat cards ---------- */
+/** Set a stat card's number; zero reads calm (muted) instead of a loud coloured 0. `text` overrides the shown value. */
+function setKpi(id, n, text = null) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text !== null ? text : fmtNum(n);
+    el.closest('.stat-card')?.classList.toggle('is-zero', text !== null || !n);
+}
+
+/* ---------- post type helpers ---------- */
+/** How many posts of a type are in `status` ('any' = every real row, auto-drafts excluded). */
+function typeCountFor(t, status) {
+    const by = t.by_status || {};
+    if (status === 'any') return (t.count || 0) - (by['auto-draft'] || 0);
+    return by[status] || 0;
+}
+
+/** "case-studies" -> "Case studies", "e_landing_page" -> "E landing page" (WordPress labels live in PHP, not the DB). */
+function typeLabel(type) {
+    const s = String(type || '').replace(/[-_]+/g, ' ').trim();
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : type;
 }
 
 /* ---------- filter options (statuses + post types), shared by every tab ---------- */

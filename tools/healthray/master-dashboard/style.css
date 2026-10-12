@@ -2922,3 +2922,192 @@ body.fx-has-bulk #toast { bottom: 80px; } /* stack toasts above the floating bul
     .fx-find { flex-basis: 100%; }
     .fx-filterbar-end { margin-left: 0; }
 }
+
+/* ── Top bar: two deliberate rows ────────────────────────────
+   Row 1: brand | site, LIVE, history, help, theme. Row 2: every view tab as a
+   full-width underline nav. Eight tabs no longer fit beside the site controls,
+   and letting flex-wrap decide left the site picker stranded on its own row. */
+.topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "brand end" "tabs tabs";
+    column-gap: 18px;
+    row-gap: 0;
+    padding: 10px 24px 0;
+}
+.topbar .brand { grid-area: brand; }
+.topbar .topbar-end { grid-area: end; margin-left: 0; }
+.page-sub { display: block; }
+
+.topbar .view-tab-group {
+    grid-area: tabs;
+    display: flex;
+    gap: 4px;
+    width: auto;
+    margin: 10px -24px 0;
+    padding: 0 18px;
+    background: none;
+    border: 0;
+    border-top: 1px solid var(--border-soft);
+    border-radius: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.topbar .view-tab-group::-webkit-scrollbar { display: none; }
+
+.topbar .view-tab {
+    position: relative;
+    flex: none;
+    padding: 11px 12px 12px;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--text2);
+    font-size: 13px;
+}
+.topbar .view-tab:hover { color: var(--text); background: none; }
+.topbar .view-tab.active { color: var(--accent); background: none; box-shadow: none; }
+.topbar .view-tab::after {
+    content: "";
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 0;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--accent);
+    transform: scaleX(0);
+    transition: transform .18s ease;
+}
+.topbar .view-tab.active::after { transform: scaleX(1); }
+.topbar .view-tab:focus-visible { outline: none; box-shadow: inset var(--focus-ring); border-radius: var(--r-sm); }
+
+@media (max-width: 980px) {
+    .topbar { padding: 10px 14px 0; }
+    .topbar .view-tab-group { margin: 10px -14px 0; padding: 0 8px; }
+    .page-sub { display: none; }
+}
+
+@media (max-width: 640px) {
+    .topbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "brand" "end" "tabs"; row-gap: 10px; }
+    .topbar .topbar-end { width: 100%; flex-wrap: wrap; gap: 8px; }
+    .topbar .db-switch { flex: 1 1 auto; }
+    .topbar .db-switch select { flex: 1; min-width: 0; }
+    .topbar .view-tab-group { margin-top: 0; }
+    .topbar .view-tab { flex: none; padding: 10px 10px 11px; }
+}
+
+/* ── Content table: readable columns ─────────────────────────
+   Fixed sensible widths instead of letting every cell squeeze to ~15
+   characters; title / meta fields are 2-line boxes; ID + Title stay
+   pinned while the rest scrolls sideways. */
+#dataTable { width: max-content; min-width: 100%; }
+#dataTable td { max-width: none; vertical-align: middle; }
+#dataTable .col-id { width: 72px; min-width: 72px; }
+#dataTable .col-post_type { width: 110px; min-width: 110px; }
+#dataTable .col-title { width: 300px; min-width: 300px; }
+#dataTable .col-slug { width: 220px; min-width: 220px; }
+#dataTable .col-permalink { width: 260px; min-width: 260px; max-width: 260px; }
+#dataTable .col-status { width: 120px; min-width: 120px; }
+#dataTable .col-category { width: 170px; min-width: 170px; max-width: 170px; }
+#dataTable .col-meta_title { width: 280px; min-width: 280px; }
+#dataTable .col-meta_description { width: 340px; min-width: 340px; }
+#dataTable .col-publish_date { width: 200px; min-width: 200px; }
+#dataTable .col-link_status { width: 120px; min-width: 120px; }
+#dataTable .col-actions { width: 84px; min-width: 84px; }
+
+/* pinned columns */
+#dataTable .col-id,
+#dataTable .col-title { position: sticky; z-index: 2; background: var(--surface); }
+#dataTable .col-id { left: 0; }
+#dataTable .col-title { left: 72px; box-shadow: inset -1px 0 0 var(--border-soft); }
+#dataTable thead .col-id,
+#dataTable thead .col-title { z-index: 6; background: var(--surface2); }
+#dataTable tbody tr:hover .col-id,
+#dataTable tbody tr:hover .col-title { background: var(--surface2); }
+
+/* permalink: one line, path only, ellipsis */
+#dataTable .col-permalink .url-cell { align-items: center; }
+#dataTable .col-permalink .url-full { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#dataTable .col-category .truncate { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 2-line text boxes for title / meta */
+.cell-input.cell-text {
+    height: auto;
+    min-height: 40px;
+    padding: 4px 7px;
+    line-height: 1.4;
+    resize: none;
+    overflow: hidden;
+    font-family: inherit;
+    white-space: normal;
+}
+.cell-input.cell-text:focus { overflow: auto; min-height: 56px; }
+
+/* ── Bulk URL Update: 1-2-3 guide ── */
+.bulk-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0 0 12px; padding: 0; list-style: none; counter-reset: bstep; }
+.bulk-steps li { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px 10px 44px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface2); counter-increment: bstep; }
+.bulk-steps li::before { content: counter(bstep); position: absolute; left: 12px; top: 10px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface3); color: var(--text2); font-size: 12px; font-weight: 700; }
+.bulk-steps li b { font-size: 13px; color: var(--text); }
+.bulk-steps li span { font-size: 12px; color: var(--text3); line-height: 1.4; }
+.bulk-steps li.is-current { border-color: var(--accent); background: var(--accent-dim); }
+.bulk-steps li.is-current::before { background: var(--accent); color: #fff; }
+.bulk-steps li.is-done::before { content: "✓"; background: var(--ok); color: #fff; }
+@media (max-width: 760px) { .bulk-steps { grid-template-columns: 1fr; } }
+
+/* ── Shared KPI card look (same as Link Fixer's .fx-stat) ──────
+   .stat-card is used by Links & UTM (and any tab that wants a KPI row).
+   --c = the card's meaning colour; .is-zero mutes a 0 so it reads calm. */
+.stats-grid.kpi-row { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.stat-card {
+    --c: var(--text3);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px 12px;
+    text-align: left;
+    font-family: inherit;
+    color: var(--text);
+    overflow: hidden;
+    transition: border-color .15s, transform .12s, background .15s;
+}
+button.stat-card { cursor: pointer; }
+button.stat-card:hover { border-color: var(--c); transform: translateY(-1px); }
+.stat-card:not(button):hover { border-color: var(--border); }
+.stat-card .stat-label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 10.5px; letter-spacing: .05em; white-space: nowrap; }
+.stat-card .stat-label .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); flex: none; }
+.stat-card .stat-val { font-family: var(--font); font-size: 22px; font-weight: 750; color: var(--c); }
+.stat-card .stat-hint { font-size: 11.5px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-card.k-accent { --c: var(--accent); }
+.stat-card.k-neutral { --c: var(--text3); }
+.stat-card.k-neutral .stat-val { color: var(--text); }
+.stat-card.k-ok { --c: var(--ok); }
+.stat-card.k-warn { --c: var(--warn); }
+.stat-card.k-danger { --c: var(--danger); }
+.stat-card.is-zero .stat-val { color: var(--text3); font-weight: 600; }
+
+/* ── Compact table density (top-bar toggle, every tab's tables) ── */
+.theme-toggle.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+body.density-compact tbody td { padding-top: 3px; padding-bottom: 3px; }
+body.density-compact thead th { padding-top: 7px; padding-bottom: 7px; }
+body.density-compact .cell-input { height: 25px; }
+body.density-compact .cell-input.cell-text { min-height: 30px; padding-top: 2px; padding-bottom: 2px; }
+body.density-compact .rev-table td,
+body.density-compact .fx-table td { padding-top: 4px; padding-bottom: 4px; }
+
+/* ── Saved views menu (js/views.js) ── */
+.sv-wrap { position: relative; margin-left: auto; margin-right: 8px; }
+.panel-label .sv-wrap + .stats-row { margin-left: 0; }
+.sv-btn { font-weight: 600; }
+.sv-wrap.open .sv-btn { border-color: var(--accent); color: var(--accent); }
+.sv-menu { display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 300px; padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-md); text-transform: none; letter-spacing: 0; font-weight: 400; }
+.sv-wrap.open .sv-menu { display: block; }
+.sv-head { padding: 4px 6px 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text3); }
+.sv-item { display: flex; align-items: center; gap: 4px; }
+.sv-apply { flex: 1; min-width: 0; padding: 7px 8px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-apply:hover { background: var(--accent-dim); color: var(--accent); }
+.sv-del { width: 26px; height: 26px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text3); font-size: 16px; cursor: pointer; }
+.sv-del:hover { background: var(--danger-dim); color: var(--danger); }
+.sv-empty { padding: 4px 6px 8px; font-size: 12px; color: var(--text3); line-height: 1.45; }
+.sv-save { display: flex; gap: 6px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
+.sv-save input { flex: 1; min-width: 0; height: 27px; font-size: 12px; }

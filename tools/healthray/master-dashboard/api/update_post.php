@@ -1,5 +1,6 @@
 <?php
 require __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/lib/activity.php';
 require_post_method();
 
 /*
@@ -14,6 +15,24 @@ $value = (string) ($_POST['value'] ?? '');
 
 if ($id <= 0) {
     json_out(false, 'Invalid ID');
+}
+
+// Activity history: read the "before" values under a row lock in the same
+// transaction as the write, so the logged before/after is exactly what changed.
+// (An early json_out() exits without commit - the connection closing rolls back.)
+$conn->begin_transaction();
+$stmt = $conn->prepare('SELECT post_title, post_name, post_status, post_date, post_date_gmt FROM wp_posts WHERE ID = ? FOR UPDATE');
+$stmt->bind_param('i', $id);
+$stmt->execute();
+$beforeRow = $stmt->get_result()->fetch_assoc() ?: null;
+$metaKeyFor = ['meta_title' => '_yoast_wpseo_title', 'meta_description' => '_yoast_wpseo_metadesc'];
+$beforeMeta = null;
+if (isset($metaKeyFor[$field])) {
+    $stmt = $conn->prepare('SELECT meta_value FROM wp_postmeta WHERE post_id = ? AND meta_key = ? ORDER BY meta_id LIMIT 1 FOR UPDATE');
+    $stmt->bind_param('is', $id, $metaKeyFor[$field]);
+    $stmt->execute();
+    $mrow = $stmt->get_result()->fetch_assoc();
+    $beforeMeta = $mrow ? $mrow['meta_value'] : null;
 }
 
 switch ($field) {
@@ -100,6 +119,37 @@ switch ($field) {
         json_out(false, 'Unknown or non-editable field');
 }
 
-$ok
-    ? json_out(true, 'Saved', ['id' => $id, 'field' => $field, 'value' => $saved] + (isset($previous) ? ['previous' => $previous] : []))
-    : json_out(false, 'Update failed: ' . $conn->error);
+if (!$ok) {
+    $err = $conn->error;
+    $conn->rollback();
+    json_out(false, 'Update failed: ' . $err);
+}
+$conn->commit();
+
+$activityId = null;
+if ($beforeRow || isset($metaKeyFor[$field])) {
+    $changes = [];
+    $colFor = ['title' => 'post_title', 'slug' => 'post_name', 'status' => 'post_status'];
+    if (isset($colFor[$field]) && $beforeRow) {
+        $changes[] = ['kind' => 'post', 'post_id' => $id, 'field' => $colFor[$field], 'before' => $beforeRow[$colFor[$field]], 'after' => $saved];
+    } elseif ($field === 'publish_date' && $beforeRow) {
+        $changes[] = ['kind' => 'post', 'post_id' => $id, 'field' => 'post_date', 'before' => $beforeRow['post_date'], 'after' => $localStr];
+        $changes[] = ['kind' => 'post', 'post_id' => $id, 'field' => 'post_date_gmt', 'before' => $beforeRow['post_date_gmt'], 'after' => $gmtStr];
+    } elseif (isset($metaKeyFor[$field])) {
+        $changes[] = ['kind' => 'meta', 'post_id' => $id, 'key' => $metaKeyFor[$field], 'before' => $beforeMeta, 'after' => $saved];
+    }
+    $changes = array_values(array_filter($changes, fn($c) => (string) $c['before'] !== (string) $c['after'] || $c['before'] === null));
+    if ($changes) {
+        $labels = ['title' => 'title', 'slug' => 'slug', 'status' => 'status', 'publish_date' => 'publish date', 'meta_title' => 'meta title', 'meta_description' => 'meta description'];
+        $title  = $beforeRow ? md_activity_short($beforeRow['post_title'], 50) : '';
+        $activityId = md_activity_log($ACTIVE_DB, [
+            'source'  => 'content',
+            'action'  => $field,
+            'summary' => "Post #{$id}" . ($title !== '' ? " \"{$title}\"" : '') . ": {$labels[$field]} "
+                . (md_activity_short($changes[0]['before'] ?? '', 40) ?: '(empty)') . ' → ' . (md_activity_short($changes[0]['after'], 40) ?: '(empty)'),
+            'changes' => $changes,
+        ]);
+    }
+}
+
+json_out(true, 'Saved', ['id' => $id, 'field' => $field, 'value' => $saved] + (isset($previous) ? ['previous' => $previous] : []) + ($activityId ? ['activity_id' => $activityId] : []));

@@ -38,7 +38,7 @@ function renderRedirectsHead() {
 
 function matchBadge(post) {
     const cls = post.status === 'publish' ? 'badge-publish' : (post.status === 'trash' ? 'badge-trash' : 'badge-neutral');
-    return `<span class="badge ${cls}" title="#${post.id} · ${escapeHtml(post.post_type)} · ${escapeHtml(post.status)}">${escapeHtml(truncate(post.title, 36))}</span>`;
+    return `<span class="badge ${cls}" title="#${post.id} · ${escapeHtml(post.post_type)} · ${escapeHtml(post.status)}">${escapeHtml(truncate(decodeEntities(post.title), 36))}</span>`;
 }
 
 function renderRedirectRow(r) {

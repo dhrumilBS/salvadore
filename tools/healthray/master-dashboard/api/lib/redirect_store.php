@@ -621,3 +621,51 @@ function dw_redirect_delete(mysqli $conn, $origin, $dbKey = '', $home = null)
     }
 }
 
+
+/**
+ * Put one plain rule back to an earlier state - used by the unified History's
+ * undo (activity_undo.php). Only acts while the rule is still exactly what the
+ * logged write left ($expect: {url,type} or null = no rule); $restore {url,type}
+ * recreates/rewrites it, null removes it. Same backup-before-write and
+ * base + export persistence as dw_redirect_upsert().
+ *
+ * @return array{status:string, msg:string, ...} status: restored | skipped | error
+ */
+function dw_redirect_restore(mysqli $conn, $origin, ?array $expect, ?array $restore, $dbKey = '')
+{
+    $conn->begin_transaction();
+    try {
+        $store    = dw_redirect_load($conn, true);
+        $existing = dw_redirect_find($store, (string) $origin);
+        $current  = $existing ? ['url' => (string) $existing['url'], 'type' => (int) $existing['type']] : null;
+        $same = fn($a, $b) => $a === null || $b === null
+            ? $a === $b
+            : (int) $a['type'] === (int) $b['type'] && dw_redirect_key((string) $a['url']) === dw_redirect_key((string) $b['url']);
+
+        if (!$same($current, $expect)) {
+            $conn->rollback();
+            return ['status' => 'skipped', 'msg' => $current === null ? 'The rule was removed since.' : 'The rule was changed since - left as is.', 'current' => $current];
+        }
+        if ($same($current, $restore)) {
+            $conn->rollback();
+            return ['status' => 'skipped', 'msg' => 'Already in the earlier state.', 'current' => $current];
+        }
+
+        $rules = $store['rules'];
+        if ($restore === null) {
+            unset($rules[$existing['index']]);
+        } elseif ($existing) {
+            $rules[$existing['index']] = ['origin' => $existing['origin'], 'url' => (string) $restore['url'], 'type' => (int) $restore['type'], 'format' => 'plain'];
+        } else {
+            $rules[dw_redirect_next_index($rules)] = ['origin' => (string) $origin, 'url' => (string) $restore['url'], 'type' => (int) $restore['type'], 'format' => 'plain'];
+        }
+
+        $backup = dw_redirect_backup($store['options'], $dbKey);
+        dw_redirect_persist($conn, $store, $rules);
+        $conn->commit();
+        return ['status' => 'restored', 'msg' => $restore === null ? 'Redirect removed.' : 'Redirect restored.', 'backup_file' => $backup !== '' ? basename($backup) : ''];
+    } catch (\Throwable $e) {
+        $conn->rollback();
+        return ['status' => 'error', 'msg' => 'Redirect not restored: ' . $e->getMessage()];
+    }
+}

@@ -1,3 +1,11 @@
+/** Highlight the current step of the 1-2-3 guide (1 paste, 2 check matches, 3 apply). */
+function setBulkStep(n) {
+    document.querySelectorAll('#bulkSteps li').forEach((li, i) => {
+        li.classList.toggle('is-done', i + 1 < n);
+        li.classList.toggle('is-current', i + 1 === n);
+    });
+}
+
 /* ══════════════════════════ Bulk URL Update tab ══════════════════════════
  * Paste any mix of slugs / site-relative paths / full permalinks (5, 10,
  * 100+, comma- and/or newline-separated), resolve each to a real post via
@@ -21,7 +29,7 @@ function renderBulkTable() {
             <td><input type="checkbox" class="bulk-row-cb" data-id="${r.id}"${bulkSelected.has(r.id) ? ' checked' : ''}></td>
             <td class="mono">${r.id}</td>
             <td><span class="badge badge-neutral">${escapeHtml(r.post_type)}</span></td>
-            <td>${escapeHtml(r.title)}</td>
+            <td>${escapeHtml(decodeEntities(r.title))}</td>
             <td class="mono">${escapeHtml(r.slug)}</td>
             <td class="url-col">${urlCellHtml(r.permalink)}</td>
             <td>${statusBadge(r.status)}</td>
@@ -32,10 +40,12 @@ function renderBulkTable() {
 function updateBulkApplyState() {
     document.getElementById('bulkApplyBtn').disabled = bulkSelected.size === 0;
     document.getElementById('bulkSelectAll').checked = bulkMatched.length > 0 && bulkSelected.size === bulkMatched.length;
+    if (bulkMatched.length) setBulkStep(bulkSelected.size ? 3 : 2);
 }
 
 function renderBulkResults() {
     document.getElementById('bulkResultsPanel').style.display = '';
+    setBulkStep(2);
     document.getElementById('bulkMatchedCount').textContent = bulkMatched.length;
     document.getElementById('bulkUnmatchedCount').textContent = bulkUnmatched.length;
 
@@ -65,7 +75,7 @@ function runBulkSearch() {
                 toast(json.msg || 'Search failed', 'err');
                 bulkMatched = [];
                 bulkUnmatched = [];
-                document.getElementById('bulkResultsPanel').style.display = 'none';
+                document.getElementById('bulkResultsPanel').style.display = 'none'; setBulkStep(1);
                 return;
             }
             bulkMatched = json.matched;
@@ -91,7 +101,7 @@ async function applyBulkStatusUpdate() {
     const ok = await confirmDialog({
         title: `Set status to "${status}" for ${pluralize(ids.length, 'post')}?`,
         changes: bulkMatched.filter(r => bulkSelected.has(r.id)).map(r => ({
-            post: `#${r.id} · ${truncate(r.title, 70)}`, from: r.status, to: status,
+            post: `#${r.id} · ${truncate(decodeEntities(r.title), 70)}`, from: r.status, to: status,
         })),
         okLabel: `Update ${pluralize(ids.length, 'post')}`,
         tone: status === 'trash' ? 'danger' : 'primary',
@@ -142,7 +152,7 @@ function bindBulkTab() {
         bulkMatched = [];
         bulkUnmatched = [];
         bulkSelected = new Set();
-        document.getElementById('bulkResultsPanel').style.display = 'none';
+        document.getElementById('bulkResultsPanel').style.display = 'none'; setBulkStep(1);
     });
 
     document.getElementById('bulkTableBody').addEventListener('change', e => {
