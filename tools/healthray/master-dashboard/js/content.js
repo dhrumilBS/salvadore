@@ -31,6 +31,7 @@ const contentState = {
     mod_from: '',
     mod_to: '',
     search: '',
+    seo: '',      // SEO gap filter: missing_title | missing_desc | missing_kw | dup_title
     sort: 'post_date',
     dir: 'DESC',
     page: 1,
@@ -472,12 +473,16 @@ function renderContentTypeTabs() {
     const status = contentState.status;
     const visible = contentPostTypes.filter(t => typeCountFor(t, status) > 0);
     let changed = false;
-    if (visible.length && !visible.some(t => t.type === contentState.post_type)) {
+    if (visible.length && contentState.post_type !== 'any' && !visible.some(t => t.type === contentState.post_type)) {
         contentState.post_type = (visible.find(t => t.type === 'post') || visible[0]).type;
         changed = true;
     }
+    const allCount = visible.reduce((sum, t) => sum + typeCountFor(t, status), 0);
+    const allTab = visible.length > 1
+        ? `<button type="button" class="tab${contentState.post_type === 'any' ? ' active' : ''}" data-type="any" title="Every post type">All <span class="tab-count">${fmtNum(allCount)}</span></button>`
+        : '';
     document.getElementById('fPostTypeTabs').innerHTML = visible.length
-        ? visible.map(t => {
+        ? allTab + visible.map(t => {
             const n = typeCountFor(t, status);
             return `<button type="button" class="tab${t.type === contentState.post_type ? ' active' : ''}" data-type="${escapeHtml(t.type)}" title="${escapeHtml(t.type)} · ${fmtNum(n)} in this status · ${fmtNum(t.count)} in total">` +
                 `${escapeHtml(typeLabel(t.type))} <span class="tab-count">${fmtNum(n)}</span></button>`;
@@ -520,7 +525,7 @@ function bindContentTab() {
         loadContent();
     }, 350));
 
-    [['fStatus', 'status'], ['fSort', 'sort']].forEach(([id, key]) => {
+    [['fStatus', 'status'], ['fSort', 'sort'], ['fSeo', 'seo']].forEach(([id, key]) => {
         document.getElementById(id).addEventListener('change', e => {
             contentState[key] = e.target.value;
             contentState.page = 1;
@@ -578,8 +583,9 @@ function bindContentTab() {
     document.getElementById('clearFiltersBtn').addEventListener('click', () => {
         Object.assign(contentState, {
             post_type: defaultContentPostType(), status: 'publish',
-            date_from: '', date_to: '', mod_from: '', mod_to: '', search: '', page: 1,
+            date_from: '', date_to: '', mod_from: '', mod_to: '', search: '', seo: '', page: 1,
         });
+        document.getElementById('fSeo').value = '';
         renderContentTypeTabs();
         document.getElementById('fStatus').value = 'publish';
         ['fDateFrom', 'fDateTo', 'fModFrom', 'fModTo', 'fSearch'].forEach(id => { document.getElementById(id).value = ''; });

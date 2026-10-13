@@ -118,6 +118,8 @@ function dw_parse_input(array $input, array $knownPostTypes)
         'mod_from'   => dw_valid_date($input['mod_from'] ?? null) ? $input['mod_from'] : null,
         'mod_to'     => dw_valid_date($input['mod_to'] ?? null) ? $input['mod_to'] : null,
         'search'     => trim((string) ($input['search'] ?? '')),
+        // SEO gap filter (Content tab + Overview deep links) - same definitions as api/lib/overview.php
+        'seo'        => in_array($input['seo'] ?? '', ['missing_title', 'missing_desc', 'missing_kw', 'dup_title'], true) ? $input['seo'] : '',
         'sort'       => $sortKey,
         'dir'        => $sortDir,
     ];
@@ -184,6 +186,26 @@ function dw_build_where(array $f)
                 AND spm.meta_value LIKE ?))";
         for ($i = 0; $i < 4; $i++) {
             $params[] = ['type' => 's', 'value' => $like];
+        }
+    }
+
+    // SEO gaps. "Missing" = no row or only whitespace. Duplicate meta title = the same literal
+    // custom title (case-insensitive; %%variable%% templates ignored) on another published post.
+    $seoMeta = ['missing_title' => '_yoast_wpseo_title', 'missing_desc' => '_yoast_wpseo_metadesc', 'missing_kw' => '_yoast_wpseo_focuskw'];
+    if (isset($seoMeta[$f['seo'] ?? ''])) {
+        $conditions[] = "NOT EXISTS (SELECT 1 FROM wp_postmeta sm WHERE sm.post_id = p.ID AND sm.meta_key = ? AND TRIM(sm.meta_value) <> '')";
+        $params[]     = ['type' => 's', 'value' => $seoMeta[$f['seo']]];
+    } elseif (($f['seo'] ?? '') === 'dup_title') {
+        $excluded = dw_excluded_post_types();
+        $ph = implode(',', array_fill(0, count($excluded), '?'));
+        $conditions[] = "EXISTS (SELECT 1 FROM wp_postmeta m1
+            INNER JOIN wp_postmeta m2 ON m2.meta_key = '_yoast_wpseo_title' AND m2.post_id <> m1.post_id
+                AND LOWER(TRIM(m2.meta_value)) = LOWER(TRIM(m1.meta_value))
+            INNER JOIN wp_posts p2 ON p2.ID = m2.post_id AND p2.post_status = 'publish' AND p2.post_type NOT IN ($ph)
+            WHERE m1.post_id = p.ID AND m1.meta_key = '_yoast_wpseo_title'
+                AND TRIM(m1.meta_value) <> '' AND LOCATE('%%', m1.meta_value) = 0)";
+        foreach ($excluded as $t) {
+            $params[] = ['type' => 's', 'value' => $t];
         }
     }
 

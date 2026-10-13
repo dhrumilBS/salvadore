@@ -1162,20 +1162,24 @@ function fxWriteHash() {
     const h = '#fixer' + (p.toString() ? '?' + p : '');
     if (location.hash !== h) history.replaceState(null, '', h);
 }
+/**
+ * The hash is Link Fixer's full filter state (fxWriteHash writes all of it), so
+ * anything a link leaves out goes back to its default - e.g. a deep link from
+ * Overview with only ?status=error must not keep an old search. A changed
+ * site-wide find means a different post set, so the list is marked for reload.
+ */
 function fxReadHash(query) {
     const p = new URLSearchParams(query || '');
+    const prevFind = fx.find;
     const page = parseInt(p.get('page'), 10);
-    if (page > 0) fx.page = page;
-    if (['ok', 'redirect', 'error', 'pending', 'duplicate'].includes(p.get('status'))) fx.filter = p.get('status');
-    if (['internal', 'external', 'utm', 'faq'].includes(p.get('type'))) fx.linkType = p.get('type');
-    if (p.get('q')) {
-        fx$('fx-search').value = fx.search = p.get('q');
-        fx.terms = fx.search.toLowerCase().split(/\s+/).filter(Boolean);
-    }
-    if (p.get('find')) {
-        fx$('fx-find').value = fx.find = p.get('find');
-        fx$('fx-find-wrap').classList.add('has-value');
-    }
+    fx.page = page > 0 ? page : 1;
+    fx.filter = ['ok', 'redirect', 'error', 'pending', 'duplicate'].includes(p.get('status')) ? p.get('status') : 'all';
+    fx.linkType = ['internal', 'external', 'utm', 'faq'].includes(p.get('type')) ? p.get('type') : 'all';
+    fx$('fx-search').value = fx.search = p.get('q') || '';
+    fx.terms = fx.search.toLowerCase().split(/\s+/).filter(Boolean);
+    fx$('fx-find').value = fx.find = p.get('find') || '';
+    fx$('fx-find-wrap').classList.toggle('has-value', !!fx.find);
+    if (fx.find !== prevFind) viewNeedsLoad.fixer = true;
     fxSyncFilterUi();
 }
 

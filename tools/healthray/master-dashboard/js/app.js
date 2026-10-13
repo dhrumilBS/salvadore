@@ -9,6 +9,7 @@
  * "?" (#fixer?page=2) and Find & Replace accepts #replace?find=...&replace=... */
 
 const VIEWS = {
+    overview:  { el: 'overviewView',  load: loadOverview, search: null,         key: e => ovHandleKey(e) },
     content:   { el: 'contentView',   load: loadContent,  search: 'fSearch' },
     links:     { el: 'linksView',     load: loadLinks,    search: 'lSearch' },
     fixer:     { el: 'fixerView',     load: loadFixer,    search: 'fx-search' },
@@ -19,8 +20,8 @@ const VIEWS = {
     keywords:  { el: 'keywordsView',  load: loadKeywords, search: 'kw-search',  key: e => kwHandleKey(e) },
 };
 
-let activeView = 'content';
-const viewNeedsLoad = { content: true, links: true, fixer: true, redirects: true, bulk: false, menu: true, replace: true, keywords: true };
+let activeView = 'overview';
+const viewNeedsLoad = { overview: true, content: true, links: true, fixer: true, redirects: true, bulk: false, menu: true, replace: true, keywords: true };
 
 /** "#fixer?page=2" -> ['fixer', 'page=2'] */
 function parseHash() {
@@ -29,7 +30,7 @@ function parseHash() {
 }
 
 function showView(view, { skipLoad = false } = {}) {
-    if (!VIEWS[view]) view = 'content';
+    if (!VIEWS[view]) view = 'overview';
     activeView = view;
     document.querySelectorAll('#viewTabs .view-tab').forEach(b => {
         const on = b.dataset.view === view;
@@ -58,17 +59,17 @@ function markStale(views) {
 /** A post's status/slug/title/order changed (Content save, Bulk status apply, Menu Order save).
  * The tab that made the change keeps its own rows in sync, so it is never reloaded here. */
 function onPostsChanged() {
-    markStale(['content', 'links', 'redirects', 'fixer', 'menu', 'keywords'].filter(v => v !== activeView));
+    markStale(['overview', 'content', 'links', 'redirects', 'fixer', 'menu', 'keywords'].filter(v => v !== activeView));
 }
 
 /** Post content / meta changed (Link Fixer write or undo, Find & Replace apply or undo). */
 function onLinksChanged() {
-    markStale(['links', 'content', 'fixer', 'menu', 'keywords'].filter(v => v !== activeView));
+    markStale(['overview', 'links', 'content', 'fixer', 'menu', 'keywords'].filter(v => v !== activeView));
 }
 
 /** A Yoast redirect rule was added/replaced (trash -> 410 prompts). */
 function onRedirectsChanged() {
-    markStale(['redirects']);
+    markStale(['redirects', 'overview'].filter(v => v !== activeView));
 }
 
 /* ══════════════════════════ Keyboard ══════════════════════════
@@ -119,7 +120,7 @@ function onGlobalKey(e) {
     const k = e.key.toLowerCase();
     if (Date.now() - gPending < 1200) {
         gPending = 0;
-        const target = { c: 'content', l: 'links', f: 'fixer', r: 'redirects', b: 'bulk', m: 'menu', s: 'replace', k: 'keywords' }[k];
+        const target = { o: 'overview', c: 'content', l: 'links', f: 'fixer', r: 'redirects', b: 'bulk', m: 'menu', s: 'replace', k: 'keywords' }[k];
         if (target) { e.preventDefault(); showView(target); }
         return;
     }
@@ -145,6 +146,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindMenuTab();
     bindReplaceTab();
     bindKeywordsTab();
+    bindOverviewTab();
     bindSavedViews();
 
     bindDatabaseSwitcher();
@@ -180,5 +182,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     const [view, query] = parseHash();
     if (view === 'fixer') fxReadHash(query);
     if (view === 'replace' && query) frReadHash(query);
-    showView(view || 'content');
+    showView(view || 'overview');
 });
