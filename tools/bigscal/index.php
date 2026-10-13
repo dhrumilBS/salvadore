@@ -67,7 +67,7 @@ $nodes = tree(__DIR__);
     <meta name="color-scheme" content="dark light">
     <title>Bigscal · Directory Viewer</title>
     <script>try { var t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.setAttribute('data-theme', t); } catch (e) { }</script>
-    <link rel="icon" href="../../assets/brand/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="../../assets/icons/bigscal-viewer.svg" type="image/svg+xml">
     <style>
         :root {
             --bg: #0a0c14; --surface: #12151f; --surface2: #1a1e2c; --border: #262b40; --accent: #7c6cf6;
