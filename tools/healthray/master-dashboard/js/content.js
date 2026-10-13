@@ -491,10 +491,19 @@ function renderContentTypeTabs() {
     return changed;
 }
 
+let contentStatuses = {};
+
 function populateContentStatuses(statuses) {
-    const sel = document.getElementById('fStatus');
-    sel.innerHTML = Object.entries(statuses).map(([k, label]) =>
-        `<option value="${escapeHtml(k)}"${k === contentState.status ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('');
+    contentStatuses = statuses;
+    renderContentStatusCounts();
+}
+
+/** Status options with how many posts of the selected type ("All" = every type) each holds: "Draft (12)". */
+function renderContentStatusCounts() {
+    const types = contentState.post_type === 'any' ? contentPostTypes : contentPostTypes.filter(t => t.type === contentState.post_type);
+    const count = k => types.reduce((sum, t) => sum + typeCountFor(t, k), 0);
+    document.getElementById('fStatus').innerHTML = Object.entries(contentStatuses).map(([k, label]) =>
+        `<option value="${escapeHtml(k)}"${k === contentState.status ? ' selected' : ''}>${escapeHtml(label)}${contentPostTypes.length ? ` (${fmtNum(count(k))})` : ''}</option>`).join('');
 }
 
 function bindContentTab() {
@@ -529,7 +538,7 @@ function bindContentTab() {
         document.getElementById(id).addEventListener('change', e => {
             contentState[key] = e.target.value;
             contentState.page = 1;
-            if (key === 'status') renderContentTypeTabs(); // the type tabs follow the status
+            if (key === 'status' && renderContentTypeTabs()) renderContentStatusCounts(); // the type tabs follow the status; the type may have changed
             loadContent();
         });
     });
@@ -541,6 +550,7 @@ function bindContentTab() {
         tab.classList.add('active');
         contentState.post_type = tab.dataset.type;
         contentState.page = 1;
+        renderContentStatusCounts();
         loadContent();
     });
 
@@ -587,7 +597,7 @@ function bindContentTab() {
         });
         document.getElementById('fSeo').value = '';
         renderContentTypeTabs();
-        document.getElementById('fStatus').value = 'publish';
+        renderContentStatusCounts(); // back on "publish", counted for the default type
         ['fDateFrom', 'fDateTo', 'fModFrom', 'fModTo', 'fSearch'].forEach(id => { document.getElementById(id).value = ''; });
         loadContent();
     });
