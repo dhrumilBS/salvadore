@@ -357,6 +357,8 @@ async function exportHistoryCsv() {
 const isHistoryOpen = () => document.body.classList.contains('drawer-open');
 
 function openHistory() {
+    // Never stack on top of the Find & Replace drawer.
+    if (document.getElementById('fr-drawer')?.classList.contains('fr-open')) document.getElementById('fr-drawer-close').click();
     document.body.classList.add('drawer-open');
     document.getElementById('historyDrawer').setAttribute('aria-hidden', 'false');
     document.getElementById('historyClose').focus();

@@ -1843,8 +1843,9 @@ tbody tr.has-utm:hover td {
     transition: transform .22s ease, visibility 0s .22s;
 }
 
-body.drawer-open .drawer { transform: none; visibility: visible; transition: transform .22s ease; }
-body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
+/* Only the unified History drawer: #fr-drawer is also a .drawer but has its own open state (.fr-open). */
+body.drawer-open #historyDrawer { transform: none; visibility: visible; transition: transform .22s ease; }
+body.drawer-open #drawerScrim { opacity: 1; pointer-events: auto; }
 
 .drawer-head {
     display: flex;

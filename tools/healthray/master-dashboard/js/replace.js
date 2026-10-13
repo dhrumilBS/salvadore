@@ -451,6 +451,7 @@
     const isDrawerOpen = () => $('fr-drawer').classList.contains('fr-open');
 
     function openHistory() {
+        if (document.body.classList.contains('drawer-open')) window.closeHistory();  // the unified History drawer
         $('fr-drawer').classList.add('fr-open');
         $('fr-drawer-scrim').classList.add('fr-open');
         $('fr-drawer').setAttribute('aria-hidden', 'false');
