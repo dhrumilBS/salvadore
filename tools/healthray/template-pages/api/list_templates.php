@@ -1,6 +1,12 @@
-﻿<?php
+<?php
+// Same pinned site as the save endpoints (see bootstrap.php) - never the shared "db" cookie.
+require __DIR__ . '/bootstrap.php';
 header('Content-Type: application/json; charset=utf-8');
-require __DIR__ . '/../../conn.php';
+
+// Yoast canonical override of a page (empty = the page's own URL).
+$canonicalSql = fn($alias) => "(SELECT cm.meta_value FROM wp_postmeta cm
+        WHERE cm.post_id = $alias.id AND cm.meta_key = '_yoast_wpseo_canonical'
+        ORDER BY cm.meta_id DESC LIMIT 1)";
 
 $validTemplates = [
     'HIMS' => 'templates/template-city-page.php',
@@ -65,6 +71,8 @@ if ($templateKey === 'OTHER') {
             p.post_name AS post_name,
             p.post_title AS post_title,
             p.post_status AS post_status,
+            p.menu_order AS menu_order,
+            {$canonicalSql('p')} AS canonical,
             (SELECT pm.meta_value FROM wp_postmeta pm
                 WHERE pm.post_id = p.id AND pm.meta_key = '_wp_page_template'
                 ORDER BY pm.meta_id DESC LIMIT 1) AS page_template
@@ -87,6 +95,8 @@ if ($templateKey === 'OTHER') {
                 'post_name' => $row['post_name'],
                 'post_title' => $row['post_title'],
                 'post_status' => $row['post_status'],
+                'menu_order' => $row['menu_order'],
+                'canonical' => (string) $row['canonical'],
                 'template' => $rawTemplate === '' || $rawTemplate === 'default' ? 'Elementor / Default' : $rawTemplate,
             ];
         }
@@ -107,9 +117,13 @@ if ($templateKey === 'ALL') {
     $headerText = 'All Templates';
 } elseif ($templateKey === 'META') {
     $bestKey = $best !== '' ? strtolower($best) : 'hms';
-    $bestClean = $conn->real_escape_string($bestKey);
-    $tArray = ['META' => "templates/template-{$bestClean}-state.php"];
-    $headerText = 'Meta Template: ' . htmlspecialchars($bestClean);
+    if (!in_array($bestKey, ['hms', 'emr', 'ehr', 'pms', 'lab'], true)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Unknown meta variant']);
+        exit;
+    }
+    $tArray = ['META' => "templates/template-{$bestKey}-state.php"];
+    $headerText = 'Meta template: ' . strtoupper($bestKey);
 } else {
     $tArray = [$templateKey => $validTemplates[$templateKey]];
     $headerText = ucfirst(strtolower($templateKey));
@@ -122,11 +136,15 @@ foreach ($tArray as $t_name => $t_value) {
         p.post_name AS main_post_name,
         p.post_title AS main_post_title,
         p.post_status AS main_post_status,
+        p.menu_order AS main_menu_order,
+        {$canonicalSql('p')} AS main_canonical,
         sub_p.id AS sub_id,
         sub_p.guid AS sub_guid,
         sub_p.post_name AS sub_post_name,
         sub_p.post_title AS sub_post_title,
-        sub_p.post_status AS sub_post_status
+        sub_p.post_status AS sub_post_status,
+        sub_p.menu_order AS sub_menu_order,
+        {$canonicalSql('sub_p')} AS sub_canonical
     FROM wp_posts p
     INNER JOIN wp_postmeta pm ON p.id = pm.post_id
     LEFT JOIN wp_postmeta sub_pm ON sub_pm.meta_value = p.id
@@ -153,6 +171,8 @@ foreach ($tArray as $t_name => $t_value) {
                     'post_name' => $row['main_post_name'],
                     'post_title' => $row['main_post_title'],
                     'post_status' => $row['main_post_status'],
+                    'menu_order' => $row['main_menu_order'],
+                    'canonical' => (string) $row['main_canonical'],
                     'template' => $t_name,
                 ];
                 $last_main_id = $main_id;
@@ -165,6 +185,8 @@ foreach ($tArray as $t_name => $t_value) {
                     'post_name' => $row['sub_post_name'],
                     'post_title' => $row['sub_post_title'],
                     'post_status' => $row['sub_post_status'],
+                    'menu_order' => $row['sub_menu_order'],
+                    'canonical' => (string) $row['sub_canonical'],
                 ];
             }
         }

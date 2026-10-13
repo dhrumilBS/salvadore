@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Template Pages · Healthray</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="shell">
+        <header class="topbar">
+            <div class="brand">
+                <span class="brand-mark" aria-hidden="true">H</span>
+                <div>
+                    <h1>Template Pages</h1>
+                    <p>Every page built on a WordPress page template — state pages with their city pages. Check live URLs, fix titles, slugs and status.</p>
+                </div>
+            </div>
+            <span class="site-pill" title="Every read and every save goes to this site">healthray.com · <b>Live</b></span>
+        </header>
+
+        <section class="panel controls" aria-label="Choose pages">
+            <div class="field-group">
+                <label for="templateSelect">Template</label>
+                <select id="templateSelect" class="form-select">
+                    <option value="HIMS">HIMS</option>
+                    <option value="HMS">HMS (state-city)</option>
+                    <option value="EMR">EMR</option>
+                    <option value="EHR">EHR</option>
+                    <option value="PMS">PMS</option>
+                    <option value="LAB">Lab</option>
+                    <option value="SPECIALITY">Speciality</option>
+                    <option value="INTERNATIONAL">International</option>
+                    <option value="META">Meta (per-product state template)</option>
+                    <option value="All">All state-city templates</option>
+                    <option value="OTHER">Other — Elementor / no template</option>
+                </select>
+            </div>
+            <div class="field-group" id="bestWrap" hidden>
+                <label for="bestSelect">Meta variant</label>
+                <select id="bestSelect" class="form-select">
+                    <option value="hms">HMS</option>
+                    <option value="emr">EMR</option>
+                    <option value="ehr">EHR</option>
+                    <option value="pms">PMS</option>
+                    <option value="lab">Lab</option>
+                </select>
+            </div>
+            <button type="button" id="reloadBtn" class="btn btn-outline-secondary" title="Load the list again from the database">↻ Reload</button>
+            <div class="spacer"></div>
+            <button type="button" id="checkBtn" class="btn btn-primary" title="Request every listed page on healthray.com and show its HTTP status">Check URLs</button>
+            <button type="button" id="csvBtn" class="btn btn-outline-secondary" title="Download the rows that match the filters">Export CSV</button>
+            <button type="button" id="jsonBtn" class="btn btn-outline-secondary" title="Copy the loaded pages as JSON">Copy JSON</button>
+        </section>
+
+        <section class="panel results" aria-labelledby="heading">
+            <div class="results-head">
+                <div>
+                    <h2 id="heading">Loading…</h2>
+                    <p id="subheading" class="muted"></p>
+                </div>
+                <div class="stats">
+                    <div class="stat"><span>Parent pages</span><b id="statParents">0</b></div>
+                    <div class="stat"><span>Child pages</span><b id="statChildren">0</b></div>
+                    <div class="stat"><span>Showing</span><b id="statShown">0</b></div>
+                    <div class="stat stat-warn" id="statDirtyBox" hidden><span>Unsaved</span><b id="statDirty">0</b></div>
+                </div>
+            </div>
+
+            <div class="url-chips" id="urlChips" aria-label="Filter by live URL status"></div>
+
+            <div class="toolbar">
+                <div class="search-box">
+                    <span aria-hidden="true">⌕</span>
+                    <input type="search" id="searchInput" class="form-control" placeholder="Search title, slug, ID, canonical…  ( / )" autocomplete="off">
+                </div>
+                <select id="statusFilter" class="form-select status-filter" aria-label="Filter by post status">
+                    <option value="">All statuses</option>
+                    <option value="publish">publish</option>
+                    <option value="draft">draft</option>
+                    <option value="pending">pending</option>
+                    <option value="private">private</option>
+                    <option value="future">future</option>
+                    <option value="trash">trash</option>
+                </select>
+                <button type="button" id="expandBtn" class="btn btn-outline-secondary btn-sm">Expand all</button>
+                <button type="button" id="clearFiltersBtn" class="btn btn-link btn-sm" hidden>Clear filters</button>
+                <div class="spacer"></div>
+                <form class="adhoc" id="adhocForm">
+                    <input type="text" id="adhocInput" class="form-control form-control-sm" placeholder="Check any healthray.com URL or slug" aria-label="URL or slug to check">
+                    <button type="submit" class="btn btn-outline-primary btn-sm">Check</button>
+                    <span id="adhocResult" class="adhoc-result" aria-live="polite"></span>
+                </form>
+            </div>
+
+            <div class="table-wrap">
+                <table class="tp-table" id="table">
+                    <thead>
+                        <tr>
+                            <th class="c-check"><input type="checkbox" id="selectAll" class="form-check-input" title="Select every row shown" aria-label="Select every row shown"></th>
+                            <th class="c-idx">#</th>
+                            <th data-sort="id" class="c-id">ID</th>
+                            <th data-sort="title" class="c-title">Title</th>
+                            <th data-sort="slug" class="c-slug">Slug</th>
+                            <th data-sort="status" class="c-status">Status</th>
+                            <th data-sort="order" class="c-order" title="Menu order">Order</th>
+                            <th data-sort="template" class="c-tpl">Template</th>
+                            <th data-sort="url" class="c-url">Live URL</th>
+                            <th data-sort="canonical" class="c-canon" title="Yoast canonical URL">Canonical</th>
+                            <th class="c-act"><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody"></tbody>
+                </table>
+                <div id="tableMsg" class="table-msg"></div>
+            </div>
+        </section>
+
+        <p class="foot-note muted">
+            Nothing is saved until you press <b>Save</b> (one row) or <b>Review &amp; save</b> (every change).
+            Shortcuts: <kbd>/</kbd> search · <kbd>Enter</kbd> in a field saves that row · <kbd>Esc</kbd> undoes the field · <kbd>Ctrl</kbd>+<kbd>S</kbd> review &amp; save all.
+        </p>
+    </div>
+
+    <div class="action-bar" id="actionBar" hidden>
+        <div class="action-group" id="selBox" hidden>
+            <span><b id="selCount">0</b> selected</span>
+            <label class="action-field">Set status
+                <select id="bulkStatus" class="form-select form-select-sm">
+                    <option value="publish">publish</option>
+                    <option value="draft">draft</option>
+                    <option value="pending">pending</option>
+                    <option value="private">private</option>
+                    <option value="future">future</option>
+                    <option value="trash">trash</option>
+                </select>
+            </label>
+            <button type="button" id="bulkApplyBtn" class="btn btn-light btn-sm" title="Stage this status on the selected rows (saved with Review & save)">Apply</button>
+            <button type="button" id="selClearBtn" class="btn btn-link btn-sm">Clear selection</button>
+        </div>
+        <div class="action-group" id="dirtyBox" hidden>
+            <span><b id="dirtyCount">0</b> unsaved</span>
+            <button type="button" id="discardBtn" class="btn btn-light btn-sm">Discard</button>
+            <button type="button" id="saveAllBtn" class="btn btn-warning btn-sm">Review &amp; save</button>
+        </div>
+    </div>
+
+    <dialog id="confirmDlg" class="tp-dialog" aria-labelledby="dlgTitle">
+        <form method="dialog">
+            <h3 id="dlgTitle"></h3>
+            <div id="dlgBody" class="dlg-body"></div>
+            <div class="dlg-actions">
+                <button value="cancel" class="btn btn-outline-secondary">Cancel</button>
+                <button value="ok" id="dlgOk" class="btn btn-primary">OK</button>
+            </div>
+        </form>
+    </dialog>
+
+    <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -13,7 +13,7 @@ salvadore/
 ├── tools/             Real work tools
 │   ├── healthray/     WordPress tools: master-dashboard (content, links, redirects,
 │   │                  menu order, find & replace, focus keywords), lead, wp_options,
-│   │                  stateCity, template, version, …
+│   │                  template-pages, version, …
 │   │                  conn.php + .env = the database connection for all of them
 │   ├── botphonic/     Botphonic database API (no page)
 │   ├── bigscal/       Directory viewer + box/ (Node blog content builder)

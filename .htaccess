@@ -27,6 +27,8 @@ Options -Indexes
     RewriteRule ^(?:healthray-sql|tools/healthray)/menu-order(/.*)?$     tools/healthray/master-dashboard/#menu     [R=308,NE,L]
     RewriteRule ^(?:healthray-sql|tools/healthray)/replace(/.*)?$        tools/healthray/master-dashboard/#replace  [R=308,NE,L]
     RewriteRule ^(?:healthray-sql|tools/healthray)/focus-keyword(/.*)?$  tools/healthray/master-dashboard/#keywords [R=308,NE,L]
+    # StateCity Browser + Template Explorer became Template Pages (October 2026)
+    RewriteRule ^(?:healthray-sql|tools/healthray)/(?:stateCity|template)(?:/.*)?$  tools/healthray/template-pages/ [R=308,L]
     RewriteRule ^healthray-sql(/.*)?$        tools/healthray$1             [R=308,L]
     RewriteRule ^botphonic-sql(/.*)?$        tools/botphonic$1             [R=308,L]
     RewriteRule ^bigscal-section(/.*)?$      tools/bigscal$1               [R=308,L]
