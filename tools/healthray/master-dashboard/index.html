@@ -670,6 +670,8 @@
                     <button type="button" class="btn" id="rClearFiltersBtn">Clear filters</button>
 
                     <div class="toolbar-end">
+                        <button type="button" class="btn ok" id="rAddBtn" title="Add a redirect (n)">＋ Add redirect</button>
+                        <button type="button" class="btn" id="rImportBtn" title="Add or replace many redirects from pasted lines or an exported CSV">⇪ Import</button>
                         <a class="btn primary" id="redirectsExportCsv" href="#" title="Export CSV - respects current filters, sort &amp; search">⬇ Export CSV</a>
                     </div>
                 </div>
@@ -1190,6 +1192,120 @@
         <button type="button" class="fx-bulk-close" id="fx-bulk-clear" title="Clear selection (Esc)" aria-label="Clear selection">×</button>
     </div>
 
+    <!-- ══ Redirects: floating bulk action bar ══ -->
+    <div class="fx-bulk-bar" id="rBulkBar" role="region" aria-label="Redirect bulk actions">
+        <span class="fx-bulk-info"><span class="fx-bulk-pill" id="rBulkCount">0</span> selected</span>
+        <div class="fx-bulk-replace">
+            <select id="rBulkType" title="New redirect type for every selected rule">
+                <option value="301">Set type 301</option>
+                <option value="302">Set type 302</option>
+                <option value="307">Set type 307</option>
+                <option value="410">Set type 410 Gone</option>
+                <option value="451">Set type 451</option>
+            </select>
+            <button type="button" class="btn small ok" id="rBulkTypeApply">Apply</button>
+        </div>
+        <span class="fx-bulk-sep" aria-hidden="true"></span>
+        <div class="fx-bulk-replace">
+            <input type="text" id="rBulkDest" placeholder="New destination for all selected…" autocomplete="off" spellcheck="false" aria-label="New destination">
+            <button type="button" class="btn small ok" id="rBulkDestApply">Set destination</button>
+        </div>
+        <span class="fx-bulk-sep" aria-hidden="true"></span>
+        <button type="button" class="btn small danger" id="rBulkDelete">Delete</button>
+        <button type="button" class="fx-bulk-close" id="rBulkClear" title="Clear selection (Esc)" aria-label="Clear selection">×</button>
+    </div>
+
+    <!-- ══ Redirects: add / edit modal ══ -->
+    <div class="fx-modal-overlay" id="rEditModal" role="dialog" aria-modal="true" aria-labelledby="rEditTitle">
+        <div class="fx-modal-box fx-modal-narrow">
+            <div class="fx-modal-head">
+                <h3 id="rEditTitle">Add redirect</h3>
+                <span class="fx-modal-sub" id="rEditSub"></span>
+                <button type="button" class="modal-close" data-r-close title="Close (Esc)" aria-label="Close">×</button>
+            </div>
+            <form class="fx-modal-scroll" id="rEditForm" autocomplete="off">
+                <div class="r-form-row">
+                    <div class="fx-modal-field">
+                        <div class="fx-modal-field-head"><label for="rEditType">Type</label></div>
+                        <select id="rEditType">
+                            <option value="301">301 Moved Permanently</option>
+                            <option value="302">302 Found</option>
+                            <option value="307">307 Temporary Redirect</option>
+                            <option value="410">410 Content Deleted</option>
+                            <option value="451">451 Unavailable For Legal Reasons</option>
+                        </select>
+                    </div>
+                    <div class="fx-modal-field">
+                        <div class="fx-modal-field-head"><label for="rEditFormat">Format</label></div>
+                        <select id="rEditFormat">
+                            <option value="plain">Plain</option>
+                            <option value="regex">Regex</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="fx-modal-field">
+                    <div class="fx-modal-field-head">
+                        <label for="rEditOrigin" id="rEditOriginLabel">Old URL (origin)</label>
+                        <span class="fx-modal-field-actions">
+                            <a class="btn small" id="rEditOpenOrigin" target="_blank" rel="noopener" hidden title="Open the origin URL in a new tab">Open ↗</a>
+                        </span>
+                    </div>
+                    <input type="text" class="fx-url-input" id="rEditOrigin" spellcheck="false" placeholder="/old-page/  or  https://site.com/old-page/">
+                </div>
+                <div class="fx-modal-field" id="rEditDestField">
+                    <div class="fx-modal-field-head">
+                        <label for="rEditDest">New URL (destination)</label>
+                        <span class="fx-modal-field-actions">
+                            <a class="btn small" id="rEditOpenDest" target="_blank" rel="noopener" hidden title="Open the destination URL in a new tab">Open ↗</a>
+                        </span>
+                    </div>
+                    <input type="text" class="fx-url-input" id="rEditDest" spellcheck="false" placeholder="/new-page/  or  https://other-site.com/page">
+                </div>
+                <div class="fx-modal-hint" id="rEditHint"></div>
+                <button type="submit" hidden></button>
+            </form>
+            <div class="fx-modal-actions">
+                <button type="button" class="btn danger" id="rEditDelete" hidden style="margin-right:auto">Delete</button>
+                <button type="button" class="btn" data-r-close>Cancel</button>
+                <button type="button" class="btn primary" id="rEditSave">Review &amp; save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ Redirects: import modal ══ -->
+    <div class="fx-modal-overlay" id="rImportModal" role="dialog" aria-modal="true" aria-labelledby="rImportTitle">
+        <div class="fx-modal-box">
+            <div class="fx-modal-head">
+                <h3 id="rImportTitle">Import redirects</h3>
+                <button type="button" class="modal-close" data-r-close title="Close (Esc)" aria-label="Close">×</button>
+            </div>
+            <div class="fx-modal-scroll">
+                <p class="confirm-msg r-import-help">One redirect per line: <code>origin, destination, type</code> (comma or tab separated; type defaults below).
+                    For 410/451 leave the destination empty (<code>/old/, , 410</code> or <code>/old/, 410</code>).
+                    A CSV from <b>Export CSV</b> works too (its header row is detected). Lines starting with <code>#</code> are ignored.</p>
+                <textarea class="fx-url-input r-import-text" id="rImportText" rows="10" spellcheck="false" placeholder="/old-page/, /new-page/, 301&#10;https://site.com/retired-post/, , 410"></textarea>
+                <div class="r-form-row r-import-opts">
+                    <label class="col-check">Default type
+                        <select id="rImportType">
+                            <option value="301">301</option>
+                            <option value="302">302</option>
+                            <option value="307">307</option>
+                            <option value="410">410</option>
+                            <option value="451">451</option>
+                        </select>
+                    </label>
+                    <label class="col-check"><input type="checkbox" id="rImportReplace"> Replace rules that already exist for an origin</label>
+                </div>
+                <div class="fx-modal-hint" id="rImportHint"></div>
+                <ol class="change-list r-import-errors" id="rImportErrors" hidden></ol>
+            </div>
+            <div class="fx-modal-actions">
+                <button type="button" class="btn" data-r-close>Cancel</button>
+                <button type="button" class="btn primary" id="rImportRun">Review &amp; import</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ══ Link Fixer: edit modal ══ -->
     <div class="fx-modal-overlay" id="fx-edit-modal" role="dialog" aria-modal="true" aria-labelledby="fx-modal-title">
         <div class="fx-modal-box">
@@ -1270,6 +1386,7 @@
                     <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">o</span></div><div>Go to Overview</div>
                     <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">m</span> <span class="fx-kbd">s</span> <span class="fx-kbd">k</span></div><div>Go to Menu Order / Find &amp; Replace / Focus Keywords</div>
                     <div class="keys"><span class="fx-kbd">h</span></div><div>Open History — every change on this site, with undo</div>
+                    <div class="keys"><span class="fx-kbd">n</span></div><div>Redirects: add a redirect (<span class="fx-kbd">Esc</span> clears the selection)</div>
                     <div class="keys"><span class="fx-kbd">Esc</span></div><div>Close dialogs, clear search or selection</div>
 
                     <div class="help-section-title">Link Fixer</div>

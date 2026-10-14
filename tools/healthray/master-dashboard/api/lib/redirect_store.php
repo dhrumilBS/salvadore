@@ -281,20 +281,55 @@ function dw_redirect_load(mysqli $conn, $forUpdate = false)
         $base['rules'] = $rules;
     }
 
+    return [
+        'rules'   => $base['rules'],
+        'shape'   => $base['shape'],
+        'by_key'  => dw_redirect_index_plain($base['rules']),
+        'options' => $options,
+    ];
+}
+
+/** dedupe key => rule index for the plain rules. */
+function dw_redirect_index_plain(array $rules)
+{
     $byKey = [];
-    foreach ($base['rules'] as $i => $r) {
+    foreach ($rules as $i => $r) {
         if ($r['format'] === 'plain') {
             // First rule wins, mirroring Yoast's own first-match behaviour.
             $byKey[dw_redirect_key($r['origin'])] ??= $i;
         }
     }
+    return $byKey;
+}
 
-    return [
-        'rules'   => $base['rules'],
-        'shape'   => $base['shape'],
-        'by_key'  => $byKey,
-        'options' => $options,
-    ];
+/**
+ * One rule by format: plain rules by their dedupe key (as dw_redirect_find()),
+ * regex rules by their exact pattern.
+ */
+function dw_redirect_find_rule(array $store, $origin, $format = 'plain')
+{
+    if ($format !== 'regex') {
+        return dw_redirect_find($store, $origin);
+    }
+    foreach ($store['rules'] as $i => $r) {
+        if ($r['format'] === 'regex' && $r['origin'] === (string) $origin) {
+            return $r + ['index' => $i];
+        }
+    }
+    return null;
+}
+
+/** True when $pattern compiles the way dw_redirect_matching_regexes() runs it. */
+function dw_redirect_regex_valid($pattern)
+{
+    set_error_handler(fn() => true);
+    try {
+        return @preg_match('~' . str_replace('~', '\~', (string) $pattern) . '~', '') !== false;
+    } catch (\Throwable $e) {
+        return false;
+    } finally {
+        restore_error_handler();
+    }
 }
 
 /**
@@ -631,12 +666,13 @@ function dw_redirect_delete(mysqli $conn, $origin, $dbKey = '', $home = null)
  *
  * @return array{status:string, msg:string, ...} status: restored | skipped | error
  */
-function dw_redirect_restore(mysqli $conn, $origin, ?array $expect, ?array $restore, $dbKey = '')
+function dw_redirect_restore(mysqli $conn, $origin, ?array $expect, ?array $restore, $dbKey = '', $format = 'plain')
 {
+    $format = $format === 'regex' ? 'regex' : 'plain';
     $conn->begin_transaction();
     try {
         $store    = dw_redirect_load($conn, true);
-        $existing = dw_redirect_find($store, (string) $origin);
+        $existing = dw_redirect_find_rule($store, (string) $origin, $format);
         $current  = $existing ? ['url' => (string) $existing['url'], 'type' => (int) $existing['type']] : null;
         $same = fn($a, $b) => $a === null || $b === null
             ? $a === $b
@@ -655,9 +691,9 @@ function dw_redirect_restore(mysqli $conn, $origin, ?array $expect, ?array $rest
         if ($restore === null) {
             unset($rules[$existing['index']]);
         } elseif ($existing) {
-            $rules[$existing['index']] = ['origin' => $existing['origin'], 'url' => (string) $restore['url'], 'type' => (int) $restore['type'], 'format' => 'plain'];
+            $rules[$existing['index']] = ['origin' => $existing['origin'], 'url' => (string) $restore['url'], 'type' => (int) $restore['type'], 'format' => $format];
         } else {
-            $rules[dw_redirect_next_index($rules)] = ['origin' => (string) $origin, 'url' => (string) $restore['url'], 'type' => (int) $restore['type'], 'format' => 'plain'];
+            $rules[dw_redirect_next_index($rules)] = ['origin' => (string) $origin, 'url' => (string) $restore['url'], 'type' => (int) $restore['type'], 'format' => $format];
         }
 
         $backup = dw_redirect_backup($store['options'], $dbKey);
@@ -668,4 +704,201 @@ function dw_redirect_restore(mysqli $conn, $origin, ?array $expect, ?array $rest
         $conn->rollback();
         return ['status' => 'error', 'msg' => 'Redirect not restored: ' . $e->getMessage()];
     }
+}
+
+/**
+ * Add / edit / delete rules from the Redirects tab - one transaction, all or
+ * nothing, against one locked snapshot (each op sees the ones before it, so
+ * two rows of one import can't both claim an origin).
+ *
+ *   {action:'add',    origin, format, type, url}   refused if the origin already
+ *        has a rule, unless $replace (then that rule is overwritten in place)
+ *   {action:'edit',   from:{origin,format,url,type}, origin, format, type, url}
+ *   {action:'delete', from:{origin,format,url,type}}
+ *
+ * `from` is the rule as the client saw it: edit/delete are refused when it was
+ * removed or changed since (optimistic lock). An edit keeps the rule's position.
+ * $dryRun validates + reports without writing.
+ *
+ * @return array{status:string, msg:string, results:array, changes:array, backup_file?:string, total_rules?:int}
+ *   status: saved | unchanged | preview | invalid | error. changes are History
+ *   'redirect' changes ({kind, origin, format, before, after}).
+ */
+function dw_redirect_apply(mysqli $conn, array $ops, $dbKey = '', $dryRun = false, $replace = false, $home = null)
+{
+    $home = $home ?? dw_home_url($conn);
+    $conn->begin_transaction();
+    try {
+        $store   = dw_redirect_load($conn, true);
+        $results = [];
+        $changes = [];
+        $failed  = 0;
+
+        foreach (array_values($ops) as $i => $op) {
+            $res = dw_redirect_apply_one($store, is_array($op) ? $op : [], $home, $replace);
+            $res['i'] = $i;
+            if ($res['ok']) {
+                array_push($changes, ...$res['changes']);
+            } else {
+                $failed++;
+            }
+            unset($res['changes']);
+            $results[] = $res;
+        }
+
+        if ($failed) {
+            $conn->rollback();
+            return ['status' => 'invalid', 'msg' => $failed . ' of ' . count($results) . ' could not be applied - nothing was saved.', 'results' => $results, 'changes' => []];
+        }
+        if ($dryRun || !$changes) {
+            $conn->rollback();
+            return ['status' => $dryRun ? 'preview' : 'unchanged', 'msg' => $changes ? 'Ready to save.' : 'Nothing to change.', 'results' => $results, 'changes' => $changes];
+        }
+
+        $backup = dw_redirect_backup($store['options'], $dbKey);
+        dw_redirect_persist($conn, $store, $store['rules']);
+        $conn->commit();
+
+        return [
+            'status'      => 'saved',
+            'msg'         => 'Redirects saved.',
+            'results'     => $results,
+            'changes'     => $changes,
+            'backup_file' => $backup !== '' ? basename($backup) : '',
+            'total_rules' => count($store['rules']),
+        ];
+    } catch (\Throwable $e) {
+        $conn->rollback();
+        return ['status' => 'error', 'msg' => 'Redirects not saved: ' . $e->getMessage(), 'results' => [], 'changes' => []];
+    }
+}
+
+/**
+ * One op of dw_redirect_apply(), applied to the in-memory $store (rules and
+ * by_key kept current). Returns {ok, error, action, origin, format, before,
+ * after, warnings, unchanged?, existing?, changes}.
+ */
+function dw_redirect_apply_one(array &$store, array $op, $home, $replace)
+{
+    $action = (string) ($op['action'] ?? '');
+    $out    = ['ok' => false, 'error' => '', 'action' => $action, 'origin' => '', 'format' => 'plain', 'before' => null, 'after' => null, 'warnings' => [], 'changes' => []];
+    $pick   = fn($r) => $r ? ['url' => (string) $r['url'], 'type' => (int) $r['type']] : null;
+    $same   = fn($a, $b) => $a === null || $b === null
+        ? $a === $b
+        : (int) $a['type'] === (int) $b['type'] && dw_redirect_key($a['url']) === dw_redirect_key($b['url']);
+
+    // edit / delete: the rule must still be what the client saw.
+    $from = null;
+    if ($action === 'edit' || $action === 'delete') {
+        $f = is_array($op['from'] ?? null) ? $op['from'] : [];
+        $out['origin'] = (string) ($f['origin'] ?? '');
+        $out['format'] = ($f['format'] ?? '') === 'regex' ? 'regex' : 'plain';
+        $from = dw_redirect_find_rule($store, $out['origin'], $out['format']);
+        if (!$from) {
+            $out['error'] = 'This rule was removed since the list was loaded - reload and try again.';
+            return $out;
+        }
+        if (!$same($pick($from), ['url' => (string) ($f['url'] ?? ''), 'type' => (int) ($f['type'] ?? 0)])) {
+            $out['error'] = 'This rule was changed since the list was loaded (now ' . $from['type'] . ($from['url'] !== '' ? ' → /' . $from['url'] . '/' : ' Gone') . ') - reload and try again.';
+            return $out;
+        }
+        $out['before'] = $pick($from);
+    } elseif ($action !== 'add') {
+        $out['error'] = 'Unknown action.';
+        return $out;
+    }
+
+    if ($action === 'delete') {
+        unset($store['rules'][$from['index']]);
+        $store['by_key'] = dw_redirect_index_plain($store['rules']);
+        $out['origin']  = $from['origin'];
+        $out['ok']      = true;
+        $out['changes'] = [['kind' => 'redirect', 'origin' => $from['origin'], 'format' => $from['format'], 'before' => $pick($from), 'after' => null]];
+        return $out;
+    }
+
+    // add / edit: validate the new values. The rule being edited must not
+    // count as "already exists" or as a chain target while doing so.
+    $format = ($op['format'] ?? '') === 'regex' ? 'regex' : 'plain';
+    $type   = (int) ($op['type'] ?? 0);
+    $out['format'] = $format;
+    $probe = $store;
+    if ($from) {
+        unset($probe['rules'][$from['index']]);
+        $probe['by_key'] = dw_redirect_index_plain($probe['rules']);
+    }
+
+    if ($format === 'plain') {
+        $check = dw_redirect_validate($probe, (string) ($op['origin'] ?? ''), $type, (string) ($op['url'] ?? ''), $home);
+        if (!$check['ok']) {
+            $out['error'] = $check['error'];
+            return $out;
+        }
+        $origin   = $check['origin'];
+        $target   = $check['target'];
+        $existing = $check['existing'];
+        $out['warnings'] = $check['warnings'];
+    } else {
+        $origin = trim((string) ($op['origin'] ?? ''));
+        if (!in_array($type, dw_redirect_types(), true)) {
+            $out['error'] = 'Unsupported redirect type ' . $type . '.';
+            return $out;
+        }
+        if ($origin === '') {
+            $out['error'] = 'The regex pattern is required.';
+            return $out;
+        }
+        if (!dw_redirect_regex_valid($origin)) {
+            $out['error'] = 'That is not a valid regular expression.';
+            return $out;
+        }
+        $target = '';
+        if (!dw_redirect_type_is_gone($type)) {
+            $target = dw_redirect_normalize((string) ($op['url'] ?? ''), $home)['value'];
+            if ($target === '') {
+                $out['error'] = 'A ' . $type . ' redirect needs a destination URL.';
+                return $out;
+            }
+        }
+        $existing = dw_redirect_find_rule($probe, $origin, 'regex');
+    }
+
+    $out['origin'] = $origin;
+    $after = ['url' => $target, 'type' => $type];
+    $out['after'] = $after;
+
+    if ($existing) {
+        if ($action === 'edit' || !$replace) {
+            $out['error'] = 'Another rule already uses this origin (' . $existing['type'] . ($existing['url'] !== '' ? ' → /' . $existing['url'] . '/' : ' Gone') . ').';
+            $out['existing'] = $pick($existing);
+            return $out;
+        }
+        // add + replace: becomes an edit of the existing rule.
+        $from = $existing;
+        $out['before'] = $pick($existing);
+    }
+
+    $rule = ['origin' => $origin, 'url' => $target, 'type' => $type, 'format' => $format];
+    if ($from) {
+        if ($from['format'] === $format && $from['origin'] === $origin && $same($pick($from), $after)) {
+            $out['ok'] = true;
+            $out['unchanged'] = true;
+            return $out;
+        }
+        $store['rules'][$from['index']] = $rule;
+        $renamed = $from['format'] !== $format
+            || ($format === 'plain' ? dw_redirect_key($from['origin']) !== dw_redirect_key($origin) : $from['origin'] !== $origin);
+        $out['changes'] = $renamed
+            ? [
+                ['kind' => 'redirect', 'origin' => $from['origin'], 'format' => $from['format'], 'before' => $pick($from), 'after' => null],
+                ['kind' => 'redirect', 'origin' => $origin, 'format' => $format, 'before' => null, 'after' => $after],
+            ]
+            : [['kind' => 'redirect', 'origin' => $origin, 'format' => $format, 'before' => $pick($from), 'after' => $after]];
+    } else {
+        $store['rules'][dw_redirect_next_index($store['rules'])] = $rule;
+        $out['changes'] = [['kind' => 'redirect', 'origin' => $origin, 'format' => $format, 'before' => null, 'after' => $after]];
+    }
+    $store['by_key'] = dw_redirect_index_plain($store['rules']);
+    $out['ok'] = true;
+    return $out;
 }

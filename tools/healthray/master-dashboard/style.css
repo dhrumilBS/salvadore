@@ -1717,6 +1717,7 @@ tbody tr.has-utm:hover td {
     font-size: 13.5px;
     line-height: 1.55;
     color: var(--text2);
+    white-space: pre-line; /* multi-part messages (e.g. redirect warnings) are joined with \n */
 }
 
 .confirm-msg:empty { display: none; }
@@ -3112,3 +3113,25 @@ body.density-compact .fx-table td { padding-top: 4px; padding-bottom: 4px; }
 .sv-empty { padding: 4px 6px 8px; font-size: 12px; color: var(--text3); line-height: 1.45; }
 .sv-save { display: flex; gap: 6px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
 .sv-save input { flex: 1; min-width: 0; height: 27px; font-size: 12px; }
+
+/* ── Redirects tab: selection, row actions, add/edit + import dialogs ── */
+#redirectsTable .r-sel-col { width: 30px; text-align: center; }
+#redirectsTable .r-sel-col input { cursor: pointer; accent-color: var(--accent); }
+#redirectsTable .r-act-col { width: 1%; white-space: nowrap; }
+#redirectsTable tr.r-selected td { background: var(--accent-dim); }
+.r-row-actions { display: inline-flex; gap: 4px; }
+.r-form-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.r-form-row > .fx-modal-field { flex: 1 1 180px; }
+.r-form-row select { width: 100%; }
+#rEditModal input.fx-url-input { height: 36px; }
+#rEditModal .fx-url-input:disabled { opacity: .6; cursor: not-allowed; }
+.r-import-help { white-space: normal; margin-bottom: 10px; }
+.r-import-text { min-height: 180px; }
+.r-import-opts { align-items: center; margin-top: 10px; }
+.r-import-opts select { margin-left: 6px; height: 26px; }
+.r-import-errors { margin-top: 8px; max-height: 220px; overflow-y: auto; }
+
+@media (max-width: 640px) {
+    .r-row-actions { flex-direction: column; }
+    #rBulkBar input[type="text"] { width: 100%; }
+}

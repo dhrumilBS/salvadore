@@ -273,7 +273,7 @@ foreach ($changes as $c) {
         continue;
     }
     $o = (string) ($c['origin'] ?? '');
-    $r = dw_redirect_restore($conn, $o, is_array($c['after'] ?? null) ? $c['after'] : null, is_array($c['before'] ?? null) ? $c['before'] : null, $ACTIVE_DB);
+    $r = dw_redirect_restore($conn, $o, is_array($c['after'] ?? null) ? $c['after'] : null, is_array($c['before'] ?? null) ? $c['before'] : null, $ACTIVE_DB, $c['format'] ?? 'plain');
     if ($r['status'] === 'restored') {
         $restoredChanges[] = $c;
         $refresh[] = 'redirects';

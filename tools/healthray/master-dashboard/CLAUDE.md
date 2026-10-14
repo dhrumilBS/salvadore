@@ -66,7 +66,7 @@ js/content.js       Content tab (staged edits, confirmed saves)
 js/links.js         Links & UTM tab (client-side utm/domain/status filters, detail modal -> "Fix in Link Fixer")
 js/fixer.js         Link Fixer tab: edit / fix-redirect / unlink / find-replace links in post_content + FAQ fields
 js/history.js       unified History drawer (every write on this site, filters, diff, Undo, CSV) - see "Activity history"
-js/redirects.js     Redirects tab
+js/redirects.js     Redirects tab (list + add/edit/duplicate/delete, selection bulk bar, import)
 js/bulk.js          Bulk URL Update tab
 js/menu-order.js    Menu Order tab (IIFE; mo- ids): inline edit order/title/slug/date, drag reorder, renumber, review & save
 js/replace.js       Find & Replace tab (IIFE; fr- ids): literal text search over title/content/excerpt/Elementor/Yoast/meta,
@@ -133,10 +133,10 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
   `activity-<site>-<date>.jsonl` past 20 MB - rotated files are not listed). It never
   throws: a failed log returns null + `error_log()`, the write stands. Responses add `activity_id`.
 - `changes`: `{kind:'post', post_id, field:<wp_posts column>, before, after}`,
-  `{kind:'meta', post_id, key, before|null, after}`, `{kind:'redirect', origin, before:{url,type}|null, after}`;
+  `{kind:'meta', post_id, key, before|null, after}`, `{kind:'redirect', origin, format?, before:{url,type}|null, after|null}`;
   `link`/`text` kinds are display-only (Link Fixer / Find & Replace, whose own journals do the undo -
   `ref: {journal:'fixer'|'replace', id, ids?}`). "Before" values are read under the same row lock as the write.
-- Who logs: `update_post` (content), `bulk_update_status` (bulk, one entry), `add_redirect` (redirects),
+- Who logs: `update_post` (content), `bulk_update_status` (bulk, one entry), `add_redirect` / `redirect_save` (redirects, one entry per save),
   `menu_save` (menu, one entry per save), `replace_apply`/`replace_undo`, `fixer_write`/`fixer_undo`, `kw_save` (keywords).
   A new write endpoint must log too.
 - `activity_list.php` merges the older journals at read time (`fx-<id>` / `fr-<op>` entries) unless an activity
@@ -179,8 +179,17 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
   (Content save or Bulk apply). It only adds/replaces a redirect, never removes.
   "Moved into trash" is decided by the server (`update_post.php` returns
   `previous`; `bulk_update_status.php` returns `newly_trashed`), not by a row
-  on screen. Content "Save all" asks once for the whole batch. To undo a 410,
-  use `dw_redirect_delete()` from the CLI (there is no delete UI).
+  on screen. Content "Save all" asks once for the whole batch. A 410 is removed
+  from the Redirects tab (Delete) or by undoing it in History.
+- **Redirects tab editing** (`redirect_save.php` -> `dw_redirect_apply()`): add / edit /
+  duplicate / delete per row, bulk type / destination / delete on the selection, and
+  Import (pasted `origin, destination, type` lines or an Export CSV). Every write is a
+  dry run first (server validation + warnings), then `confirmDialog()`, then the save:
+  one locked transaction, all-or-nothing, backup first. Edit/delete send the rule as
+  loaded (`from`) and are refused if it changed since. An edit keeps the rule's position;
+  renaming an origin logs two History changes (old removed, new added). Regex rules are
+  editable too (pattern must compile); they are matched by exact pattern, plain rules by
+  `dw_redirect_key()`.
 - **Yoast meta keys** use the `_yoast_wpseo_*` prefix on these installs.
 - **Permalinks** come from each site's real `permalink_structure` option
   (Healthray `/%category%/%postname%/`, Botphonic flat). Pages/CPTs use the
@@ -207,7 +216,8 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 | `check_url_status.php` | GET | live-check one URL |
 | `check_links_bulk.php` | POST | live-check up to 300 URLs |
 | `redirects.php` / `redirects_export.php` | GET | Yoast redirects list / CSV |
-| `add_redirect.php` | POST | upsert one Yoast redirect (backup first) |
+| `add_redirect.php` | POST | upsert one Yoast redirect (backup first) - trash -> 410 prompts |
+| `redirect_save.php` | POST | Redirects tab: `ops` JSON `[{action:add|edit|delete, from?, origin, format, type, url}]` (max 1000), `dry_run=1` validates only, `replace=1` lets add overwrite. All-or-nothing; per-op `results` with errors/warnings |
 | `bulk_find_posts.php` | POST | resolve pasted slugs/URLs to posts |
 | `bulk_update_status.php` | POST | one status for many post IDs |
 | `fixer_list.php` | GET | Link Fixer: one page of posts + every link (content + FAQ), `link=` site-wide find |

@@ -13,7 +13,7 @@ const VIEWS = {
     content:   { el: 'contentView',   load: loadContent,  search: 'fSearch' },
     links:     { el: 'linksView',     load: loadLinks,    search: 'lSearch' },
     fixer:     { el: 'fixerView',     load: loadFixer,    search: 'fx-search' },
-    redirects: { el: 'redirectsView', load: loadRedirects, search: 'rSearch' },
+    redirects: { el: 'redirectsView', load: loadRedirects, search: 'rSearch',    key: e => rHandleKey(e) },
     bulk:      { el: 'bulkView',      load: null,         search: 'bulkUrlsInput' }, // only searches on demand
     menu:      { el: 'menuView',      load: loadMenu,     search: 'mo-search',  key: e => moHandleKey(e) },
     replace:   { el: 'replaceView',   load: loadReplace,  search: 'fr-find',    key: e => frHandleKey(e) },
@@ -40,7 +40,8 @@ function showView(view, { skipLoad = false } = {}) {
     Object.entries(VIEWS).forEach(([key, v]) => {
         document.getElementById(v.el).style.display = key === view ? '' : 'none';
     });
-    fxUpdateBulkBar(); // the floating bar belongs to Link Fixer only
+    fxUpdateBulkBar(); // each floating bulk bar belongs to its own tab
+    syncRedirectSelection();
     if (viewNeedsLoad[view] && VIEWS[view].load) {
         viewNeedsLoad[view] = false;
         if (!skipLoad) VIEWS[view].load();
@@ -67,7 +68,7 @@ function onLinksChanged() {
     markStale(['overview', 'links', 'content', 'fixer', 'menu', 'keywords'].filter(v => v !== activeView));
 }
 
-/** A Yoast redirect rule was added/replaced (trash -> 410 prompts). */
+/** A Yoast redirect rule was added/edited/deleted (Redirects tab, trash -> 410 prompts, History undo). */
 function onRedirectsChanged() {
     markStale(['redirects', 'overview'].filter(v => v !== activeView));
 }

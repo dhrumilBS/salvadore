@@ -144,7 +144,8 @@ function histValue(c, side) {
     const v = c[side];
     if (c.kind === 'redirect') {
         if (!v) return '(no redirect)';
-        return Number(v.type) === 410 || Number(v.type) === 451 ? `${v.type} Gone` : `${v.type} → /${v.url}/`;
+        return Number(v.type) === 410 || Number(v.type) === 451 ? `${v.type} Gone`
+            : `${v.type} → ${/^([a-z][a-z0-9+.-]*:)?\/\//i.test(v.url) ? v.url : '/' + v.url + '/'}`;
     }
     if (v === null || v === undefined) return side === 'before' ? '(did not exist)' : '(deleted)';
     if (c.kind === 'link' && v === '') return side === 'after' ? '(link removed — anchor text kept)' : '(unlinked text)';
@@ -153,7 +154,7 @@ function histValue(c, side) {
 }
 
 function histChangeLabel(c) {
-    if (c.kind === 'redirect') return `Redirect /${c.origin}/`;
+    if (c.kind === 'redirect') return c.format === 'regex' ? `Redirect ${c.origin} (regex)` : `Redirect /${c.origin}/`;
     const field = c.kind === 'meta' ? c.key : c.field;
     const label = HISTORY_FIELD_LABEL[field] || field || '';
     const post = c.post_id ? `#${c.post_id}` : '';
