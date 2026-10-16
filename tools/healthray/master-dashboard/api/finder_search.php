@@ -110,6 +110,7 @@ $opts = fd_options_map($optRows);
 $home = rtrim((string) ($opts['home'] ?? ''), '/');
 $structure = fd_structure($opts['permalink_structure'] ?? '');
 $catPaths = fd_category_path_map($terms);
+$typeBases = dw_post_type_bases($conn);
 $frontId = (int) ($opts['page_on_front'] ?? 0);
 if ($mode === 'url') {
     $wantPath = fd_path_key(preg_match('#^www\.#i', $q) ? 'https://' . $q : $q, $home);
@@ -117,7 +118,7 @@ if ($mode === 'url') {
 
 $out = [];
 foreach ($rows as $r) {
-    $path = fd_row_path($r, $structure, $catPaths);
+    $path = fd_row_path($r, $structure, $catPaths, $typeBases);
     $match = 'title';
     if ($mode === 'id' && (int) $r['id'] === (int) $q) {
         $match = 'id';

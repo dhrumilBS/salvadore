@@ -123,7 +123,7 @@ $opts[DW_OPT_REDIRECT_PLAIN] = $res['opt_plain'];
 $home      = rtrim((string) ($opts['home'] ?? ''), '/');
 $siteUrl   = rtrim((string) ($opts['siteurl'] ?? $home), '/');
 $structure = fd_structure($opts['permalink_structure'] ?? '');
-$path      = fd_row_path($p, $structure, fd_category_path_map($catTerms));
+$path      = fd_row_path($p, $structure, fd_category_path_map($catTerms), dw_post_type_bases($conn));
 // The static front page is served at the site root, not at its own slug (path stays the slug path for redirect matching).
 $isFront   = (int) ($opts['page_on_front'] ?? 0) === (int) $p['id'];
 $permalink = $home . '/' . ($path !== '' && !$isFront ? $path . '/' : '');

@@ -175,9 +175,10 @@ function fd_structure($raw)
 /**
  * Site-relative permalink path (no slashes around it) for a row carrying
  * id, post_type, slug, post_date, anc1..ancN, primary_cat, min_cat -
- * identical to what dw_hydrate_batch() would produce.
+ * identical to what dw_hydrate_batch() would produce. $typeBases is
+ * dw_post_type_bases() (custom post types' URL prefix).
  */
-function fd_row_path(array $row, $structure, array $catPaths)
+function fd_row_path(array $row, $structure, array $catPaths, array $typeBases = [])
 {
     if ($row['post_type'] === 'post') {
         $primary = (string) ($row['primary_cat'] ?? '');
@@ -192,8 +193,8 @@ function fd_row_path(array $row, $structure, array $catPaths)
             $segments[] = dw_clean_slug($slug);
         }
     }
-    $segments[] = dw_clean_slug($row['slug'] ?? '');
-    return trim(implode('/', $segments), '/');
+    $slug = dw_clean_slug($row['slug'] ?? '');
+    return trim(dw_build_hierarchical_path($typeBases, $row['post_type'], implode('/', $segments), $slug), '/');
 }
 
 /** Lower-cased path with no surrounding slashes, query or fragment - the comparison key for redirect matching. */

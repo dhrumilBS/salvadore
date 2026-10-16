@@ -531,6 +531,60 @@ function dw_parent_paths(mysqli $conn, array $postIdToParentId)
 }
 
 /**
+ * URL prefix of each custom post type, e.g. case-studies => "case-studies",
+ * faq => "faqs" (a CPT's rewrite slug can differ from its name, and that
+ * lives in PHP code, not the database). Learned from the real permalinks
+ * Yoast stores in wp_yoast_indexable: a published top-level post's path minus
+ * its slug. Types with no usable sample are left out (no prefix - the old
+ * behaviour), since guessing the type name would be wrong for types served at
+ * the root (Elementor's e-landing-page). post / page never get a prefix.
+ */
+function dw_post_type_bases(mysqli $conn)
+{
+    static $bases = null;
+    if ($bases !== null) {
+        return $bases;
+    }
+    $bases = [];
+    try {
+        $homePath = trim((string) parse_url(dw_home_url($conn), PHP_URL_PATH), '/');
+        $res = $conn->query("SELECT p.post_type, p.post_name, i.permalink
+            FROM wp_yoast_indexable i
+            INNER JOIN wp_posts p ON p.ID = i.object_id
+            WHERE i.object_type = 'post' AND p.post_status = 'publish' AND p.post_parent = 0
+              AND p.post_type NOT IN ('post', 'page', 'attachment')
+              AND i.permalink LIKE 'http%' AND i.permalink NOT LIKE '%?%'
+            ORDER BY p.ID DESC LIMIT 5000");
+        while ($row = $res->fetch_assoc()) {
+            $type = $row['post_type'];
+            if (array_key_exists($type, $bases)) {
+                continue;
+            }
+            $path = strtolower(rawurldecode(trim((string) parse_url($row['permalink'], PHP_URL_PATH), '/')));
+            if ($homePath !== '' && str_starts_with($path, strtolower($homePath) . '/')) {
+                $path = substr($path, strlen($homePath) + 1);
+            }
+            $slug = strtolower(rawurldecode(dw_clean_slug($row['post_name'])));
+            if ($path === $slug) {
+                $bases[$type] = '';
+            } elseif ($slug !== '' && str_ends_with($path, '/' . $slug)) {
+                $bases[$type] = substr($path, 0, -strlen($slug) - 1);
+            }
+        }
+    } catch (\Throwable $e) {
+        // No Yoast indexables table (or no access) - keep building paths without a type prefix.
+    }
+    return $bases;
+}
+
+/** A non-"post" row's path: CPT prefix (dw_post_type_bases) + ancestor slugs + own slug. */
+function dw_build_hierarchical_path(array $bases, $postType, $ancestorPath, $slug)
+{
+    $parts = [$bases[$postType] ?? '', $ancestorPath, $slug];
+    return implode('/', array_filter($parts, fn($p) => $p !== ''));
+}
+
+/**
  * Hydrate a batch of basic rows with exactly what's displayed/exported:
  * meta title + meta description (from a targeted postmeta lookup, not a
  * full dump) and a real permalink reconstructed from the site's actual
@@ -640,8 +694,7 @@ function dw_hydrate_batch(mysqli $conn, array $rows)
             $catPath   = $catTermId !== null ? ($categoryPaths[$catTermId] ?? '') : '';
             $path      = dw_build_post_path($postPermalinkStructure, $row, $catPath);
         } else {
-            $prefix = $parentPaths[$id] ?? '';
-            $path   = ($prefix !== '' ? $prefix . '/' : '') . $cleanSlug;
+            $path = dw_build_hierarchical_path(dw_post_type_bases($conn), $row['post_type'], $parentPaths[$id] ?? '', $cleanSlug);
         }
         $permalink = $home . '/' . $path . '/';
 

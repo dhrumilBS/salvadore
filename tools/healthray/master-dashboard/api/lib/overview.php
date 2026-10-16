@@ -245,7 +245,8 @@ function ov_redirect_fingerprint(mysqli $conn)
          FROM wp_postmeta WHERE meta_key = '_yoast_wpseo_primary_category'",
     ]);
     $parts = array_map(fn($r) => ($r[0]['n'] ?? '') . '/' . ($r[0]['h'] ?? ''), $rows);
-    return md5(implode('#', $parts));
+    // Bump when the matching logic changes, so memos computed by older code are dropped (v2: CPT URL prefixes).
+    return md5('v2#' . implode('#', $parts));
 }
 
 /** Memo file for one site's redirect metrics (system temp dir - not web-reachable, not the DB). */

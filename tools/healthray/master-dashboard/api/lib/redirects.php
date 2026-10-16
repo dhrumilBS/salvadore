@@ -159,8 +159,7 @@ function dw_resolve_paths_to_posts(mysqli $conn, array $paths)
             $catPath   = $catTermId !== null ? ($categoryPaths[$catTermId] ?? '') : '';
             $fullPath  = dw_build_post_path($postPermalinkStructure, $row, $catPath);
         } else {
-            $prefix   = $parentPaths[$id] ?? '';
-            $fullPath = ($prefix !== '' ? $prefix . '/' : '') . dw_clean_slug($row['slug']);
+            $fullPath = dw_build_hierarchical_path(dw_post_type_bases($conn), $row['post_type'], $parentPaths[$id] ?? '', dw_clean_slug($row['slug']));
         }
 
         foreach ($byLastSegment[dw_clean_slug($row['slug'])] ?? [] as $origPath) {

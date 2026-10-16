@@ -15,8 +15,7 @@ Internal tools for the Healthray, Botphonic and Bigscal WordPress sites. Served 
 | **Healthray File Browser** | `tools/healthray/` | Browse the PHP/HTML files of the tool folders (the file listing works on the office LAN only). |
 | **Botphonic API** | `tools/botphonic/` | Endpoints for the Botphonic database. No page. |
 | **Image Downloader** | `tools/image-downloader/` | Pull every image from a site into a local folder. LAN only. |
-| **Bigscal Directory Viewer** | `tools/bigscal/` | Browse the Bigscal section folders. |
-| **Blog Content Builder** | `tools/bigscal/box/` | Blog content builder (Google APIs). Needs `node server.js`. |
+| **Blog Content Builder** | `tools/bigscal/` | Bigscal blog post, content boxes and CTAs in WordPress paste format; loads Google Docs (office network only). |
 | **Browser Snippets** | `tools/browser-snippets/` | DevTools snippets: alt-text fixer, schema generator, link editor… |
 | **Timestamp Converter** / **Phone Validator** | `tools/timestamp/`, `tools/phone-validator/` | Small standalone helpers. |
 
@@ -29,15 +28,15 @@ salvadore/
 ├── index.php          Dashboard: every tool as a card (read-only launcher)
 ├── registry.php       The list the dashboard shows — add new tools here
 ├── .htaccess          Security rules + redirects from old URLs
-├── assets/
+├── assets/            Open /salvadore/assets/ for a gallery (see assets/README.md)
 │   ├── home.css, home.js   Dashboard styles + search / filter / "Recently opened"
 │   ├── icons/         One SVG per tool — its dashboard card icon and its favicon
-│   └── brand/         Company logos and the site favicon
+│   └── brand/         Company logos and the site favicon (linked from outside — never rename)
 └── tools/
     ├── healthray/     WordPress tools (table above)
     │                  conn.php + .env = the database connection for all of them
     ├── botphonic/     Botphonic database API (own conn.php + .env)
-    ├── bigscal/       Directory viewer + box/ (Node blog content builder)
+    ├── bigscal/       Blog Content Builder (page + api/read_doc.php for Google Docs)
     └── image-downloader/  browser-snippets/  timestamp/  phone-validator/
 ```
 
@@ -51,12 +50,12 @@ Bigger tools keep their own notes next to the code: `tools/healthray/master-dash
    - `tools/botphonic/.env`
 2. **PHP dependencies** — `composer install` in `tools/healthray/` and `tools/botphonic/`
    (installs `vendor/`, used for `.env` loading).
-3. **Blog Content Builder only** — `npm install` in `tools/bigscal/box/`, put the Google
-   service-account key next to `server.js` as `service-account.json`, then `node server.js`.
+3. **Blog Content Builder** — put the Google service-account key (Docs API enabled) in `tools/bigscal/` as
+   `service-account.json`. No Node needed: `api/read_doc.php` reads the docs.
 4. **WP Options Panel** — set your own password: `php tools/healthray/wp_options/api/_hash.php "new-password"`
    and paste the hash into `api/_config.php`.
 
-`.env` files, service-account keys, `backups/` contents, `vendor/` and `node_modules/` are never
+`.env` files, service-account keys, `backups/` contents and `vendor/` are never
 committed (see `.gitignore`).
 
 ## Rules
@@ -81,7 +80,7 @@ committed (see `.gitignore`).
 1. Put it under `tools/<name>/`.
 2. Add an entry to `registry.php` — `name`, `path`, `tags`, `desc` (tooltip + search) and `icon`.
    Until you do, it still appears on the dashboard under **Unlisted**.
-3. Icon: copy any file in `assets/icons/` (a 32×32 rounded square in the tool's accent colour with
+3. Icon: see `assets/README.md` — copy any file in `assets/icons/` (a 32×32 rounded square in the tool's accent colour with
    a white stroke icon), change the colour and paths, and use it as the tool's favicon too:
    `<link rel="icon" href="../../assets/icons/<name>.svg" type="image/svg+xml">`.
 
@@ -101,3 +100,4 @@ permanently redirect (HTTP 308, POSTs kept) to the new ones — see the bottom o
 | `post-content/` | Master Dashboard → **Link Fixer** tab |
 | `menu-order/`, `replace/`, `focus-keyword/` | Master Dashboard → **Menu Order**, **Find & Replace**, **Focus Keywords** tabs |
 | `stateCity/`, `template/` (Template Explorer), `stateCity/keyphrase.php` | **Template Pages** |
+| `bigscal/` Directory Viewer, `bigscal/box/` | **Blog Content Builder**, now at `tools/bigscal/` |

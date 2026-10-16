@@ -526,9 +526,10 @@ ${toggles}
         loadBtn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> Loading';
 
         try {
-            const res = await fetch('http://localhost:3000/api/read-doc', {
+            // Served by Apache (api/read_doc.php) - works from every PC, nothing to start.
+            const res = await fetch('api/read_doc.php', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-Blog-Builder': '1' },
                 body: JSON.stringify({ documentId })
             });
             const data = await res.json().catch(() => ({}));
@@ -541,8 +542,7 @@ ${toggles}
         } catch (err) {
             setError('blogError',
                 'Could not load the document: ' + err.message +
-                '\n- Is the doc server running? (node server.js)' +
-                '\n- Is the doc shared with the service account or "Anyone with the link"?');
+                (/share the doc|service-account/.test(err.message) ? '' : '\n- Is the doc shared with the service account or "Anyone with the link"?'));
         } finally {
             loadBtn.disabled = false;
             loadBtn.classList.remove('is-loading');

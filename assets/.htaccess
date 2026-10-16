@@ -1,0 +1,15 @@
+# assets/ - static files for the dashboard and every tool.
+AddType image/svg+xml .svg
+AddCharset utf-8 .css .js .svg
+
+<IfModule mod_headers.c>
+    # home.css / home.js are requested with ?v=<mtime>, so a long cache is safe.
+    <FilesMatch "\.(css|js)$">
+        Header set Cache-Control "public, max-age=604800"
+    </FilesMatch>
+    # Logos and icons keep fixed URLs (other sites link to brand/*): one day.
+    <FilesMatch "\.svg$">
+        Header set Cache-Control "public, max-age=86400"
+        Header set X-Content-Type-Options "nosniff"
+    </FilesMatch>
+</IfModule>

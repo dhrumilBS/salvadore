@@ -40,10 +40,8 @@ return [
         'items' => [
             ['name' => 'Image Downloader', 'path' => 'tools/image-downloader/', 'icon' => 'image-downloader', 'tags' => ['lan'],
                 'desc' => 'Pull every image from a site into a local folder.'],
-            ['name' => 'Bigscal Directory Viewer', 'path' => 'tools/bigscal/', 'icon' => 'bigscal-viewer', 'tags' => [],
-                'desc' => 'Browse the Bigscal section folders.'],
-            ['name' => 'Blog Content Builder', 'path' => 'tools/bigscal/box/', 'icon' => 'blog-builder', 'tags' => ['node'],
-                'desc' => 'Blog content builder (Google APIs). Run `node server.js` in tools/bigscal/box first.'],
+            ['name' => 'Blog Content Builder', 'path' => 'tools/bigscal/', 'icon' => 'blog-builder', 'tags' => [],
+                'desc' => 'Bigscal blog content builder: blog post, content boxes and CTAs in WordPress paste format, loads Google Docs directly (office network).'],
             ['name' => 'Browser Snippets', 'path' => 'tools/browser-snippets/', 'icon' => 'browser-snippets', 'tags' => [],
                 'desc' => 'DevTools snippets: alt-text fixer, schema generator, link editor, auto-logins…'],
             ['name' => 'Timestamp Converter', 'path' => 'tools/timestamp/', 'icon' => 'timestamp', 'tags' => [],
@@ -55,7 +53,8 @@ return [
     'assets' => [
         'label' => 'Assets',
         'items' => [
-            ['name' => 'Brand logos', 'path' => 'assets/brand/', 'icon' => 'assets/brand/favicon.svg', 'tags' => ['api'], 'desc' => 'Bigscal and Healthray logos + favicon (SVG).', 'brand' => true],
+            ['name' => 'Brand & Icons', 'path' => 'assets/', 'icon' => 'assets/brand/favicon.svg', 'tags' => [],
+                'desc' => 'Company logos and every tool icon: preview, copy URL, download.', 'brand' => true],
         ],
     ],
 ];
