@@ -88,7 +88,8 @@ css/*.css           one stylesheet per tab, scoped to its view (css/links.css = 
 js/finder.js        Ctrl/Cmd+K palette + post drawer (read-only; finder_search.php / finder_post.php): search
                     posts by title/slug/ID/URL, jump to tabs, run actions. Gets every key first (onGlobalKey)
 js/overview.js      Overview cards; each number deep-links into its tab pre-filtered (incl. Canonical URLs,
-                    from canonical_report.php?summary=1)
+                    from canonical_report.php?summary=1). Search visibility card = every site side by side
+                    (robots_summary.php); another site's number switches site, then opens (sessionStorage md.ov.pendingGo)
 js/app.js           view switching, lazy loading, cross-tab staleness, global keyboard shortcuts, init
 api/                endpoints (below); api/lib/ shared PHP (lib/link_editor.php = Link Fixer)
 backups/            activity-<site>.jsonl (unified History log, lib/activity.php),
@@ -221,6 +222,12 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
   syncs `wp_yoast_indexable.canonical`, does not bump `post_modified`, logs source `canonical`
   (undo = the generic meta undo + indexable sync in `activity_undo.php`).
 - **Yoast meta keys** use the `_yoast_wpseo_*` prefix on these installs.
+- **Robots (Yoast "Advanced": noindex / nofollow)** are Content-tab fields `robots_index` (`''` = post type default,
+  `index`, `noindex`) and `robots_follow` (`follow`, `nofollow`), stored as Yoast does (`DW_ROBOTS_META` in
+  lib/query.php: `meta-robots-noindex` 1/2/no row, `meta-robots-nofollow` 1/no row). Every write and undo also
+  syncs `wp_yoast_indexable.is_robots_noindex/_nofollow` (`dw_robots_sync_indexable()`) - Yoast's front end reads
+  the indexable. The "Default (Yes/No)" label comes from `wpseo_titles` `noindex-<type>`. SEO filter `noindex` /
+  `nofollow` = set on the post itself.
 - **Permalinks** come from each site's real `permalink_structure` option
   (Healthray `/%category%/%postname%/`, Botphonic flat). Pages/CPTs use the
   parent/slug chain. Trashed slugs are cleaned of `__trashed` before building URLs.
@@ -266,6 +273,7 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 | `kw_save.php` | POST | Focus Keywords: save staged keyword edits (JSON `changes:[{post_id, focus_keyword, expected}]`, max 500). All-or-nothing; each row's stored `_yoast_wpseo_focuskw` must still equal `expected` (else 409 + per-row `conflict` errors). Empty = meta deleted; syncs `wp_yoast_indexable.primary_focus_keyword`, bumps `post_modified`. Edits in the tab stage inline and save only via the save bar's Review & save (`confirmDialog`) |
 | `canonical_report.php` | GET/POST | Canonicals: posts whose canonical hits a 410 / 3xx rule / retired post (`paths=` restricts to those URLs, `unmatched=0`, `format=csv`, `summary=1` counts only) |
 | `canonical_fix.php` | POST | `items` JSON `[{post_id, expected, canonical}]` (max 1000, `''` = remove). All-or-nothing, 409 on conflict |
+| `robots_summary.php` | GET | Overview Search visibility: published posts per site (all `$DATABASES`, own connection each) by indexed / noindex on post / noindex by type default / nofollow, + `by_type` |
 | `finder_search.php` / `finder_post.php` | GET | Ctrl+K palette: post search / one post's detail (read-only) |
 | `_test_store.php` | CLI | redirect-store self test |
 

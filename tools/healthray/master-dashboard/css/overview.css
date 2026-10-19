@@ -330,6 +330,26 @@
 
 /* Activity */
 #overviewView .ov-card-activity { grid-column: 1 / -1; }
+
+/* Search visibility: one column per site */
+#overviewView .ov-card-wide { grid-column: 1 / -1; }
+#overviewView .ov-vis-wrap { overflow-x: auto; }
+#overviewView .ov-vis { width: 100%; border-collapse: collapse; font-size: 13px; }
+#overviewView .ov-vis th,
+#overviewView .ov-vis td { padding: 6px 8px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--border-soft); }
+#overviewView .ov-vis tbody tr:last-child > * { border-bottom: 0; }
+#overviewView .ov-vis thead th { font-size: 12px; font-weight: 700; color: var(--text2); white-space: nowrap; }
+#overviewView .ov-vis thead th .ov-chip,
+#overviewView .ov-vis thead th .btn { margin-left: 8px; }
+#overviewView .ov-vis tbody th { font-weight: 400; min-width: 220px; }
+#overviewView .ov-vis tbody th > span { display: block; }
+#overviewView .ov-vis-site { font-size: 13px; color: var(--text); }
+#overviewView .ov-vis-cell {
+    display: flex; align-items: center; gap: 10px; width: 100%; min-width: 160px;
+    padding: 4px 6px; border: 0; border-radius: var(--r-sm); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+#overviewView .ov-vis-cell:hover { background: var(--surface2); }
+#overviewView .ov-vis-cell:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 #overviewView .ov-acts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 #overviewView .ov-act {
     display: flex;

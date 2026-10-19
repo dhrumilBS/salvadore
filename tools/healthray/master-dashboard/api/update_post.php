@@ -25,7 +25,7 @@ $stmt = $conn->prepare('SELECT post_title, post_name, post_status, post_date, po
 $stmt->bind_param('i', $id);
 $stmt->execute();
 $beforeRow = $stmt->get_result()->fetch_assoc() ?: null;
-$metaKeyFor = ['meta_title' => '_yoast_wpseo_title', 'meta_description' => '_yoast_wpseo_metadesc'];
+$metaKeyFor = ['meta_title' => '_yoast_wpseo_title', 'meta_description' => '_yoast_wpseo_metadesc'] + DW_ROBOTS_META;
 $beforeMeta = null;
 if (isset($metaKeyFor[$field])) {
     $stmt = $conn->prepare('SELECT meta_value FROM wp_postmeta WHERE post_id = ? AND meta_key = ? ORDER BY meta_id LIMIT 1 FOR UPDATE');
@@ -115,6 +115,27 @@ switch ($field) {
         $saved = $value;
         break;
 
+    case 'robots_index':
+    case 'robots_follow':
+        // Yoast "Advanced" settings: the default ("type default" / follow) is no meta row, like Yoast's editor saves it.
+        $metaValue = dw_robots_meta_value($field, $value);
+        if ($metaValue === false) {
+            json_out(false, 'Invalid value');
+        }
+        $metaKey = DW_ROBOTS_META[$field];
+        if ($metaValue === null) {
+            $stmt = $conn->prepare('DELETE FROM wp_postmeta WHERE post_id = ? AND meta_key = ?');
+            $stmt->bind_param('is', $id, $metaKey);
+            $ok = $stmt->execute();
+        } else {
+            $ok = dw_upsert_postmeta($conn, $id, $metaKey, $metaValue);
+        }
+        if ($ok) {
+            dw_robots_sync_indexable($conn, $id, $metaKey, $metaValue);
+        }
+        $saved = $value;
+        break;
+
     default:
         json_out(false, 'Unknown or non-editable field');
 }
@@ -136,17 +157,26 @@ if ($beforeRow || isset($metaKeyFor[$field])) {
         $changes[] = ['kind' => 'post', 'post_id' => $id, 'field' => 'post_date', 'before' => $beforeRow['post_date'], 'after' => $localStr];
         $changes[] = ['kind' => 'post', 'post_id' => $id, 'field' => 'post_date_gmt', 'before' => $beforeRow['post_date_gmt'], 'after' => $gmtStr];
     } elseif (isset($metaKeyFor[$field])) {
-        $changes[] = ['kind' => 'meta', 'post_id' => $id, 'key' => $metaKeyFor[$field], 'before' => $beforeMeta, 'after' => $saved];
+        $changes[] = ['kind' => 'meta', 'post_id' => $id, 'key' => $metaKeyFor[$field], 'before' => $beforeMeta, 'after' => isset(DW_ROBOTS_META[$field]) ? $metaValue : $saved];
     }
-    $changes = array_values(array_filter($changes, fn($c) => (string) $c['before'] !== (string) $c['after'] || $c['before'] === null));
+    $changes = array_values(array_filter($changes, fn($c) => !($c['before'] === null && $c['after'] === null)
+        && ((string) $c['before'] !== (string) $c['after'] || $c['before'] === null)));
     if ($changes) {
-        $labels = ['title' => 'title', 'slug' => 'slug', 'status' => 'status', 'publish_date' => 'publish date', 'meta_title' => 'meta title', 'meta_description' => 'meta description'];
+        $labels = ['title' => 'title', 'slug' => 'slug', 'status' => 'status', 'publish_date' => 'publish date', 'meta_title' => 'meta title', 'meta_description' => 'meta description',
+            'robots_index' => 'show in search results', 'robots_follow' => 'follow links'];
         $title  = $beforeRow ? md_activity_short($beforeRow['post_title'], 50) : '';
+        $fromText = md_activity_short($changes[0]['before'] ?? '', 40) ?: '(empty)';
+        $toText   = md_activity_short($changes[0]['after'], 40) ?: '(empty)';
+        if (isset(DW_ROBOTS_META[$field])) { // in Yoast's words, not the raw '1' / '2'
+            $robotsLabel = fn($v) => ['' => 'Default', 'index' => 'Yes', 'noindex' => 'No', 'follow' => 'Yes', 'nofollow' => 'No'][dw_robots_field_value($field, $v)];
+            $fromText = $robotsLabel($changes[0]['before']);
+            $toText   = $robotsLabel($changes[0]['after']);
+        }
         $activityId = md_activity_log($ACTIVE_DB, [
             'source'  => 'content',
             'action'  => $field,
             'summary' => "Post #{$id}" . ($title !== '' ? " \"{$title}\"" : '') . ": {$labels[$field]} "
-                . (md_activity_short($changes[0]['before'] ?? '', 40) ?: '(empty)') . ' → ' . (md_activity_short($changes[0]['after'], 40) ?: '(empty)'),
+                . "{$fromText} → {$toText}",
             'changes' => $changes,
         ]);
     }

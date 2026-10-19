@@ -119,7 +119,7 @@ function dw_parse_input(array $input, array $knownPostTypes)
         'mod_to'     => dw_valid_date($input['mod_to'] ?? null) ? $input['mod_to'] : null,
         'search'     => trim((string) ($input['search'] ?? '')),
         // SEO gap filter (Content tab + Overview deep links) - same definitions as api/lib/overview.php
-        'seo'        => in_array($input['seo'] ?? '', ['missing_title', 'missing_desc', 'missing_kw', 'dup_title'], true) ? $input['seo'] : '',
+        'seo'        => in_array($input['seo'] ?? '', ['missing_title', 'missing_desc', 'missing_kw', 'dup_title', 'noindex', 'nofollow'], true) ? $input['seo'] : '',
         'sort'       => $sortKey,
         'dir'        => $sortDir,
     ];
@@ -195,6 +195,10 @@ function dw_build_where(array $f)
     if (isset($seoMeta[$f['seo'] ?? ''])) {
         $conditions[] = "NOT EXISTS (SELECT 1 FROM wp_postmeta sm WHERE sm.post_id = p.ID AND sm.meta_key = ? AND TRIM(sm.meta_value) <> '')";
         $params[]     = ['type' => 's', 'value' => $seoMeta[$f['seo']]];
+    } elseif (in_array($f['seo'] ?? '', ['noindex', 'nofollow'], true)) {
+        // Set to noindex / nofollow on the post itself (Yoast "Advanced"), not via the post type's default.
+        $conditions[] = "EXISTS (SELECT 1 FROM wp_postmeta rm WHERE rm.post_id = p.ID AND rm.meta_key = ? AND TRIM(rm.meta_value) = '1')";
+        $params[]     = ['type' => 's', 'value' => DW_ROBOTS_META[$f['seo'] === 'noindex' ? 'robots_index' : 'robots_follow']];
     } elseif (($f['seo'] ?? '') === 'dup_title') {
         $excluded = dw_excluded_post_types();
         $ph = implode(',', array_fill(0, count($excluded), '?'));
@@ -352,6 +356,79 @@ function dw_gmt_offset_hours(mysqli $conn)
     $row = $res ? $res->fetch_assoc() : null;
     $offset = $row ? (float) $row['option_value'] : 0.0;
     return $offset;
+}
+
+/*
+ * Yoast "Advanced" robots settings, stored the way Yoast's own editor stores them:
+ *   _yoast_wpseo_meta-robots-noindex  '1' = noindex ("No"), '2' = index ("Yes"), no row = the post type's default
+ *   _yoast_wpseo_meta-robots-nofollow '1' = nofollow ("No"), no row = follow ("Yes")
+ * The tool's field values: robots_index '' | 'index' | 'noindex', robots_follow 'follow' | 'nofollow'.
+ */
+const DW_ROBOTS_META = ['robots_index' => '_yoast_wpseo_meta-robots-noindex', 'robots_follow' => '_yoast_wpseo_meta-robots-nofollow'];
+
+/** Meta value to store for a robots field value ('' / null = delete the row); false = invalid value. */
+function dw_robots_meta_value($field, $value)
+{
+    $map = $field === 'robots_index'
+        ? ['' => null, 'index' => '2', 'noindex' => '1']
+        : ['follow' => null, 'nofollow' => '1'];
+    return array_key_exists($value, $map) ? $map[$value] : false;
+}
+
+/** Robots field value for a stored meta value (null = no row). */
+function dw_robots_field_value($field, $metaValue)
+{
+    $v = trim((string) $metaValue);
+    if ($field === 'robots_index') {
+        return $v === '1' ? 'noindex' : ($v === '2' ? 'index' : '');
+    }
+    return $v === '1' ? 'nofollow' : 'follow';
+}
+
+/**
+ * Yoast's per-type "Show <type> in search results" setting (wpseo_titles, noindex-<type>):
+ * [post_type => true when that type is noindex by default]. Cached per connection (robots_summary.php reads every site).
+ */
+function dw_yoast_noindex_defaults(mysqli $conn)
+{
+    static $cache = [];
+    $defaults = &$cache[spl_object_id($conn)];
+    if ($defaults !== null) {
+        return $defaults;
+    }
+    $defaults = [];
+    $res = $conn->query("SELECT option_value FROM wp_options WHERE option_name = 'wpseo_titles' LIMIT 1");
+    $row = $res ? $res->fetch_assoc() : null;
+    $opts = $row ? @unserialize($row['option_value'], ['allowed_classes' => false]) : null;
+    if (is_array($opts)) {
+        foreach ($opts as $k => $v) {
+            if (strpos($k, 'noindex-') === 0 && strpos($k, 'noindex-tax-') !== 0 && strpos($k, 'noindex-ptarchive-') !== 0) {
+                $defaults[substr($k, 8)] = (bool) $v;
+            }
+        }
+    }
+    return $defaults;
+}
+
+/** Keep wp_yoast_indexable's robots columns in step with a robots meta write (Yoast's front end reads the indexable). */
+function dw_robots_sync_indexable(mysqli $conn, $postId, $metaKey, $metaValue)
+{
+    static $hasCols = null;
+    $hasCols ??= (int) ($conn->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'wp_yoast_indexable' AND COLUMN_NAME IN ('is_robots_noindex', 'is_robots_nofollow')")->fetch_row()[0] ?? 0) === 2;
+    if (!$hasCols) {
+        return;
+    }
+    $v = $metaValue === null ? '' : trim((string) $metaValue);
+    if ($metaKey === DW_ROBOTS_META['robots_index']) {
+        $idx = $v === '1' ? 1 : ($v === '2' ? 0 : null);
+        $stmt = $conn->prepare("UPDATE wp_yoast_indexable SET is_robots_noindex = ? WHERE object_id = ? AND object_type = 'post'");
+    } else {
+        $idx = $v === '1' ? 1 : 0;
+        $stmt = $conn->prepare("UPDATE wp_yoast_indexable SET is_robots_nofollow = ? WHERE object_id = ? AND object_type = 'post'");
+    }
+    $stmt->bind_param('ii', $idx, $postId);
+    $stmt->execute();
 }
 
 /** Insert or update a single-value postmeta row for one post. */
@@ -677,6 +754,7 @@ function dw_hydrate_batch(mysqli $conn, array $rows)
 
     $home = dw_home_url($conn);
     $postPermalinkStructure = dw_permalink_structure($conn);
+    $noindexDefaults = dw_yoast_noindex_defaults($conn);
 
     $out = [];
     foreach ($rows as $row) {
@@ -717,6 +795,10 @@ function dw_hydrate_batch(mysqli $conn, array $rows)
             'meta_title'        => $metaTitle,
             'meta_description'  => $metaDescription,
             'publish_date'      => $row['post_date'],
+            // Yoast "Advanced": show in search results / follow links (see DW_ROBOTS_META).
+            'robots_index'      => dw_robots_field_value('robots_index', $metaByPost[$id][DW_ROBOTS_META['robots_index']] ?? null),
+            'robots_index_default' => empty($noindexDefaults[$row['post_type']]), // true = the type shows in search by default
+            'robots_follow'     => dw_robots_field_value('robots_follow', $metaByPost[$id][DW_ROBOTS_META['robots_follow']] ?? null),
         ];
     }
     return $out;

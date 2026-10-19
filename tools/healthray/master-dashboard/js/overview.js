@@ -10,6 +10,8 @@
  *   Focus Keywords  drives #kw-post-type / #kw-status / #kw-only-dup and the "Missing keyword" stat card
  *   Redirects       drives #rClearFiltersBtn, #rMatch (origin_live | dest_missing), .redirect-type-cb[value=410]
  *   Canonicals      drives #cn-kind / #cn-scope (counts from canonical_report.php?summary=1)
+ *   Search visibility  every site at once (robots_summary.php); the open site's numbers drive Content's #fSeo
+ *                   (noindex | nofollow), another site's switch site first and then open (PENDING_GO_KEY)
  *   Revisions       ../version/?db=<site>&only_old=1 (new browser tab; landing | botphonic only)
  *
  * Broken-link status is not known server-side: "Check links" collects the
@@ -33,10 +35,13 @@
     const nextActivitySignal = latestOnly();
     const nextLinksSignal = latestOnly();
     const nextCanonSignal = latestOnly();
+    const nextRobotsSignal = latestOnly();
+    // A click on another site's number: remembered across the site-switch reload, then opened.
+    const PENDING_GO_KEY = 'md.ov.pendingGo';
 
     const st = {
-        core: null, redirects: null, activity: null, canon: null, // last good payloads
-        coreErr: '', redirErr: '', canonErr: '',
+        core: null, redirects: null, activity: null, canon: null, robots: null, // last good payloads
+        coreErr: '', redirErr: '', canonErr: '', robotsErr: '',
         loading: { core: false, redirects: false },
         loadedAt: 0,
         timing: {},
@@ -86,9 +91,11 @@
         });
         loadActivity();
         loadCanonicals();
+        loadRobots();
 
         return Promise.all([core, redirects]).then(() => {
             if (gen !== generation) return;
+            runPendingGo();
             st.loadedAt = Date.now();
             st.timing.total = Math.round(performance.now() - t0);
             renderHead();
@@ -123,6 +130,22 @@
                 st.canonErr = errText(err);
             })
             .finally(renderCanonicals);
+    }
+
+    /** Yoast robots (noindex / nofollow) counts for every configured site - own request, like the canonicals. */
+    function loadRobots() {
+        st.robotsErr = '';
+        api('robots_summary.php', { signal: nextRobotsSignal() })
+            .then(json => {
+                if (!json.success) throw new Error(json.msg || 'Server error');
+                st.robots = json.sites || [];
+            })
+            .catch(err => {
+                if (isAbort(err)) return;
+                console.error(err);
+                st.robotsErr = errText(err);
+            })
+            .finally(renderVisibility);
     }
 
     const errText = err => (err && err.message && !/JSON|Unexpected token/i.test(err.message)) ? err.message : 'Could not load';
@@ -173,6 +196,7 @@
         content: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/><path d="M8 13h8M8 17h5"/>',
         revisions: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/>',
         activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+        visibility: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
         canonical: '<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/>',
     };
     const icon = name => `<svg class="ov-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -235,6 +259,55 @@
         renderContent();
         renderRevisions();
         renderCanonicals();
+        renderVisibility();
+    }
+
+    /** "page 15 · events 2" for one site's by_type counts. */
+    function typeBreakdown(site, key) {
+        return Object.entries(site.by_type || {}).filter(([, v]) => v[key] > 0).map(([t, v]) => `${t} ${fmtNum(v[key])}`).join(' · ');
+    }
+
+    /** Search visibility (Yoast "Advanced" noindex / nofollow), one column per site. */
+    function renderVisibility() {
+        const sites = st.robots;
+        if (!sites) { setCard('ov-card-visibility', st.robotsErr ? errorCard('visibility', 'Search visibility', st.robotsErr) : skeletonCard('visibility', 'Search visibility', 5)); return; }
+        const metrics = [
+            { key: 'published', label: 'Published', sub: 'Every content type', sev: () => 'info',
+                go: () => ({ tab: 'content', type: 'any', status: 'publish' }) },
+            { key: 'indexed', label: 'Shown in search results', sub: 'index · "Yes", or the type default is Yes', sev: () => 'ok',
+                go: () => ({ tab: 'content', type: 'any', status: 'publish' }) },
+            { key: 'noindex_post', label: 'Hidden from search · set on the post', sub: 'noindex · "Allow search engines…" = No', sev: n => (n ? 'warn' : 'ok'),
+                go: () => ({ tab: 'content', type: 'any', status: 'publish', seo: 'noindex' }) },
+            { key: 'noindex_default', label: 'Hidden from search · type default', sub: 'Yoast › Content types › Show in search = Off', sev: () => 'info',
+                go: s => {
+                    const top = Object.entries(s.by_type || {}).filter(([, v]) => v.noindex_default > 0).sort((a, b) => b[1].noindex_default - a[1].noindex_default);
+                    return { tab: 'content', type: top.length ? top[0][0] : 'any', status: 'publish', others: top.slice(1).map(([t, v]) => `${t} ${fmtNum(v.noindex_default)}`).join(', ') };
+                } },
+            { key: 'nofollow', label: 'Links not followed', sub: 'nofollow · "Follow links" = No', sev: n => (n ? 'warn' : 'ok'),
+                go: () => ({ tab: 'content', type: 'any', status: 'publish', seo: 'nofollow' }) },
+        ];
+        const head = '<tr><th scope="col"></th>' + sites.map(s =>
+            `<th scope="col"><span class="ov-vis-site">${escapeHtml(s.label)}</span>` +
+            (s.current ? '<span class="ov-chip sev-info">open</span>' : `<button type="button" class="btn small"${goAttr({ tab: 'site', site: s.key })} title="Switch the dashboard to ${escapeHtml(s.label)}">Switch</button>`) +
+            '</th>').join('') + '</tr>';
+        const body = metrics.map(m => `<tr><th scope="row"><span class="ov-row-label">${escapeHtml(m.label)}</span><span class="ov-row-sub">${escapeHtml(m.sub)}</span></th>` +
+            sites.map(s => {
+                if (s.error) return `<td><span class="ov-row-sub">${escapeHtml(s.error)}</span></td>`;
+                const n = s[m.key] || 0;
+                const spec = m.go(s);
+                const target = s.current ? spec : { tab: 'site', site: s.key, then: spec };
+                const breakdown = m.key === 'published' || m.key === 'indexed' ? '' : typeBreakdown(s, m.key);
+                const pct = m.key !== 'published' && s.published ? `${Math.round(n / s.published * 100)}%` : '';
+                const title = `${s.label}: ${fmtNum(n)}${pct ? ` (${pct})` : ''}${breakdown ? ' — ' + breakdown : ''}${s.current ? '' : ' · switches site'}`;
+                return `<td><button type="button" class="ov-vis-cell"${goAttr(target)} title="${escapeHtml(title)}">` +
+                    `<span class="ov-num sev-${m.sev(n)}">${fmtNum(n)}</span>` +
+                    `<span class="ov-row-sub">${escapeHtml(breakdown || pct)}</span></button></td>`;
+            }).join('') + '</tr>').join('');
+        const hidden = sites.reduce((n, s) => n + (s.noindex_post || 0), 0);
+        setCard('ov-card-visibility', card('visibility', 'Search visibility', `<div class="ov-vis-wrap"><table class="ov-vis"><thead>${head}</thead><tbody>${body}</tbody></table></div>`, {
+            note: `Published posts on ${pluralize(sites.length, 'site')}, by Yoast's "Advanced" settings · ${fmtNum(hidden)} set to noindex on the post itself. ` +
+                'Change them in Content › Posts &amp; Pages (Show in Search / Follow Links).',
+        }));
     }
 
     function renderCanonicals() {
@@ -743,8 +816,29 @@
         setSelect('cn-scope', spec.scope || '');
     }
 
+    /** Another site's number: remember where to go, then switch site (the switcher handles unsaved edits + reload). */
+    function goSite(spec) {
+        if (spec.site === SITE) { if (spec.then) go(spec.then); return; }
+        try { sessionStorage.setItem(PENDING_GO_KEY, JSON.stringify({ site: spec.site, spec: spec.then || null })); } catch (e) { /* storage blocked: just switch */ }
+        const sel = $('dbSelector');
+        if (!sel) return;
+        sel.value = spec.site;
+        fire(sel, 'change');
+    }
+
+    /** After the reload a site switch caused: open what was clicked in that site's column. */
+    function runPendingGo() {
+        let pending = null;
+        try {
+            pending = JSON.parse(sessionStorage.getItem(PENDING_GO_KEY) || 'null');
+            sessionStorage.removeItem(PENDING_GO_KEY);
+        } catch (e) { pending = null; }
+        if (pending && pending.site === SITE && pending.spec) go(pending.spec);
+    }
+
     function go(spec) {
         switch (spec.tab) {
+            case 'site': goSite(spec); break;
             case 'canonical': goCanonical(spec); break;
             case 'content': goContent(spec); break;
             case 'redirects': goRedirects(spec); break;

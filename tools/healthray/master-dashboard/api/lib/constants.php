@@ -78,7 +78,8 @@ function dw_writable_statuses()
  */
 function dw_needed_meta_keys()
 {
-    return ['_yoast_wpseo_title', '_yoast_wpseo_metadesc', '_yoast_wpseo_primary_category'];
+    return ['_yoast_wpseo_title', '_yoast_wpseo_metadesc', '_yoast_wpseo_primary_category',
+        '_yoast_wpseo_meta-robots-noindex', '_yoast_wpseo_meta-robots-nofollow'];
 }
 
 /** sort key (as sent by the client) => safe SQL order-by expression. */

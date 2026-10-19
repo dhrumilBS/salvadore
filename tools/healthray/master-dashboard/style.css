@@ -1873,6 +1873,10 @@ body.drawer-open #drawerScrim { opacity: 1; pointer-events: auto; }
 #dataTable .col-meta_description { width: 340px; min-width: 340px; }
 #dataTable .col-publish_date { width: 200px; min-width: 200px; }
 #dataTable .col-link_status { width: 120px; min-width: 120px; }
+#dataTable .col-robots_index { width: 140px; min-width: 140px; }
+#dataTable .col-robots_follow { width: 110px; min-width: 110px; }
+/* noindex / nofollow (or a type default of noindex) stands out */
+.cell-input.robots-no { color: var(--danger); font-weight: 600; }
 #dataTable .col-actions { width: 84px; min-width: 84px; }
 
 /* pinned columns */

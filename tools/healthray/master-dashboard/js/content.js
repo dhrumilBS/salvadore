@@ -17,6 +17,9 @@ const ALL_COLUMNS = [
     { key: 'meta_title', label: 'Meta Title' },
     { key: 'meta_description', label: 'Meta Description' },
     { key: 'publish_date', label: 'Publish Date' },
+    // Yoast "Advanced" (sidebar of the WP editor): noindex / nofollow for this post.
+    { key: 'robots_index', label: 'Show in Search' },
+    { key: 'robots_follow', label: 'Follow Links' },
     // Live HTTP check (301/404/410/...) - hidden by default and never exported:
     // a bulk export can match thousands of rows, and checking every URL live
     // during export would make that impractically slow.
@@ -46,7 +49,35 @@ const FIELD_LABELS = {
     publish_date: 'Publish Date',
     meta_title: 'Meta Title',
     meta_description: 'Meta Description',
+    robots_index: 'Show in search results',
+    robots_follow: 'Follow links',
 };
+
+/** Yoast's wording for the two robots fields; '' = the post type's default (Yoast "Settings > Content types"). */
+function robotsOptions(r, field) {
+    return field === 'robots_index'
+        ? [['', `Default (${r.robots_index_default ? 'Yes' : 'No'})`], ['index', 'Yes'], ['noindex', 'No']]
+        : [['follow', 'Yes'], ['nofollow', 'No']];
+}
+
+function robotsLabel(r, field, value) {
+    const opt = robotsOptions(r, field).find(([v]) => v === value);
+    return opt ? opt[1] : String(value);
+}
+
+/** True when this value keeps the post out of search / stops links being followed - shown in red. */
+function robotsIsNo(r, field, value) {
+    return field === 'robots_index' ? value === 'noindex' || (value === '' && !r.robots_index_default) : value === 'nofollow';
+}
+
+function robotsSelect(r, field) {
+    const title = field === 'robots_index'
+        ? 'Allow search engines to show this content in search results? (Yoast > Advanced, noindex)'
+        : 'Should search engines follow links on this content? (Yoast > Advanced, nofollow)';
+    return `<select class="cell-input robots-select${robotsIsNo(r, field, r[field]) ? ' robots-no' : ''}" data-id="${r.id}" data-field="${field}" title="${title}">` +
+        robotsOptions(r, field).map(([v, label]) => `<option value="${v}"${v === r[field] ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('') +
+        '</select>';
+}
 
 const STATUS_OPTIONS = ['publish', 'draft', 'pending', 'private', 'future', 'trash'];
 const WIDE_URL_COLUMNS = ['permalink'];
@@ -73,6 +104,13 @@ function hasUnsavedContentEdits() {
 function loadVisibleColumns() {
     const stored = mdStore.get('content.columns', null, { legacy: 'md_columns' });
     const valid = Array.isArray(stored) ? stored.filter(k => ALL_COLUMNS.some(c => c.key === k)) : [];
+    // A column added after the list was saved starts visible (once) instead of hiding behind Columns.
+    const seen = mdStore.get('content.columnsSeen', null);
+    const known = Array.isArray(seen) ? seen : (valid.length ? ALL_COLUMNS.filter(c => !c.key.startsWith('robots_')).map(c => c.key) : []);
+    ALL_COLUMNS.forEach(c => {
+        if (valid.length && !known.includes(c.key) && c.defaultVisible !== false && !valid.includes(c.key)) valid.push(c.key);
+    });
+    mdStore.set('content.columnsSeen', ALL_COLUMNS.map(c => c.key));
     if (valid.length) return valid;
     return ALL_COLUMNS.filter(c => c.defaultVisible !== false).map(c => c.key);
 }
@@ -181,6 +219,9 @@ function renderCell(r, key) {
             return `<td class="col-meta_description">${editableText(r, 'meta_description')}</td>`;
         case 'publish_date':
             return `<td class="col-publish_date"><input type="datetime-local" class="cell-input mono" data-id="${r.id}" data-field="publish_date" value="${toDatetimeLocal(r.publish_date)}"></td>`;
+        case 'robots_index':
+        case 'robots_follow':
+            return `<td class="col-${key}">${robotsSelect(r, key)}</td>`;
         case 'link_status':
             return `<td class="col-link_status">${LinkStatus.cell(r.permalink)}</td>`;
         default:
@@ -301,12 +342,18 @@ function updateSaveBar() {
 /** Confirm-dialog rows for one post's staged edits: field, current value -> new value. */
 function describeChanges(id, fields) {
     const row = contentRows.find(r => String(r.id) === String(id));
-    return Object.entries(fields).map(([field, value]) => ({
-        post: `#${id} · ${FIELD_LABELS[field] || field}`,
-        from: row ? String(row[field] ?? '') : undefined,
-        to: String(value),
-        toLabel: '(empty)',
-    }));
+    return Object.entries(fields).map(([field, value]) => {
+        if (field.startsWith('robots_')) {
+            const r = row || { robots_index_default: true };
+            return { post: `#${id} · ${FIELD_LABELS[field]}`, from: row ? robotsLabel(r, field, row[field]) : undefined, to: robotsLabel(r, field, value) };
+        }
+        return {
+            post: `#${id} · ${FIELD_LABELS[field] || field}`,
+            from: row ? String(row[field] ?? '') : undefined,
+            to: String(value),
+            toLabel: '(empty)',
+        };
+    });
 }
 
 async function saveRow(id) {
@@ -503,6 +550,10 @@ function bindContentTab() {
         if (!input) return;
         // titles / meta fields are single-line in WordPress - a pasted line break becomes a space
         if (input.tagName === 'TEXTAREA') input.value = input.value.replace(/\s*[\r\n]+\s*/g, ' ');
+        if (input.classList.contains('robots-select')) {
+            const row = contentRows.find(r => String(r.id) === input.dataset.id);
+            if (row) input.classList.toggle('robots-no', robotsIsNo(row, input.dataset.field, input.value));
+        }
         markDirty(input);
     });
     tbody.addEventListener('keydown', e => {

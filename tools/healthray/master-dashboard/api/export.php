@@ -18,6 +18,8 @@ $allColumns = [
     ['meta_title', 'Meta Title'],
     ['meta_description', 'Meta Description'],
     ['publish_date', 'Publish Date'],
+    ['robots_index', 'Show in Search Results'],
+    ['robots_follow', 'Follow Links'],
 ];
 
 /* Narrow to whichever columns the UI's column picker (or caller) selected. */
@@ -34,7 +36,13 @@ function dw_flatten_row(array $row, array $columns)
 {
     $cells = [];
     foreach ($columns as [$key]) {
-        $cells[] = $row[$key] ?? '';
+        if ($key === 'robots_index') { // Yoast's own Yes / No wording
+            $cells[] = ['index' => 'Yes', 'noindex' => 'No'][$row[$key]] ?? 'Default (' . ($row['robots_index_default'] ? 'Yes' : 'No') . ')';
+        } elseif ($key === 'robots_follow') {
+            $cells[] = $row[$key] === 'nofollow' ? 'No' : 'Yes';
+        } else {
+            $cells[] = $row[$key] ?? '';
+        }
     }
     return $cells;
 }

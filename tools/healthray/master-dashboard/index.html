@@ -130,6 +130,7 @@
 
             <!-- Section cards -->
             <div class="ov-grid" id="ov-grid">
+                <section class="ov-card ov-card-wide" id="ov-card-visibility" aria-labelledby="ov-t-visibility"></section>
                 <section class="ov-card" id="ov-card-seo" aria-labelledby="ov-t-seo"></section>
                 <section class="ov-card" id="ov-card-redirects" aria-labelledby="ov-t-redirects"></section>
                 <section class="ov-card" id="ov-card-links" aria-labelledby="ov-t-links"></section>
@@ -248,6 +249,8 @@
                         <option value="missing_desc">Missing meta description</option>
                         <option value="missing_kw">Missing focus keyword</option>
                         <option value="dup_title">Duplicate meta title</option>
+                        <option value="noindex">Hidden from search (noindex)</option>
+                        <option value="nofollow">Links not followed (nofollow)</option>
                     </select>
                     <select id="fSort" title="Sort by">
                         <option value="post_date">Publish Date</option>
