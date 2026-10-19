@@ -196,6 +196,10 @@
         content: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/><path d="M8 13h8M8 17h5"/>',
         revisions: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/>',
         activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+        health: '<path d="M12 21s-7-4.4-9.3-9A5.4 5.4 0 0 1 12 6.3 5.4 5.4 0 0 1 21.3 12C19 16.6 12 21 12 21z"/><polyline points="7 12 10 12 11.5 9.5 13 14 14.5 12 17 12"/>',
+        published: '<path d="M20 6 9 17l-5-5"/>',
+        keywords: '<path d="M4 7h16M4 12h10M4 17h7"/>',
+        broken: '<path d="M10 13a5 5 0 0 0 7.5.5l1.2-1.2"/><path d="M14 11a5 5 0 0 0-7.5-.5l-1.2 1.2"/><line x1="4" y1="4" x2="20" y2="20"/>',
         visibility: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
         canonical: '<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/>',
     };
@@ -219,12 +223,31 @@
         return `<div class="ov-row is-static"${t}>${inner}<span class="ov-chev-space"></span></div>`;
     }
 
+    /** One line under each card title: what the card counts. */
+    const CARD_SUBS = {
+        health: 'Every check on this page, worst first',
+        visibility: 'Yoast noindex / nofollow on published posts · every site',
+        seo: 'Yoast meta on published posts',
+        redirects: 'Yoast redirect rules',
+        canonical: 'Canonicals pointing at retired URLs',
+        content: 'Posts and pages by status',
+        links: 'Links inside published content',
+        revisions: 'Stored post revisions',
+        activity: 'Changes made through this dashboard',
+    };
+
+    function cardHead(key, title, chip = '') {
+        const sub = CARD_SUBS[key] ? `<span class="ov-card-sub">${escapeHtml(CARD_SUBS[key])}</span>` : '';
+        return `<header class="ov-card-head"><div class="ov-card-id"><span class="ov-ico-tile">${icon(key)}</span>` +
+            `<div class="ov-card-titles"><h3 class="ov-card-title" id="ov-t-${key}">${escapeHtml(title)}</h3>${sub}</div></div>${chip}</header>`;
+    }
+
     /** Card frame. `issues` (number|null) drives the header chip: 0 = "All good". */
     function card(key, title, body, { issues = null, level = 'warn', foot = '', note = '' } = {}) {
         let chip = '';
-        if (issues === 0) chip = '<span class="ov-chip sev-ok">All good</span>';
-        else if (issues > 0) chip = `<span class="ov-chip sev-${level}">${pluralize(issues, 'issue')}</span>`;
-        return `<header class="ov-card-head"><h3 class="ov-card-title" id="ov-t-${key}">${icon(key)}<span>${escapeHtml(title)}</span></h3>${chip}</header>` +
+        if (issues === 0) chip = '<span class="ov-chip sev-ok"><i class="ov-dot" aria-hidden="true"></i>All good</span>';
+        else if (issues > 0) chip = `<span class="ov-chip sev-${level}"><i class="ov-dot" aria-hidden="true"></i>${pluralize(issues, 'issue')}</span>`;
+        return cardHead(key, title, chip) +
             `<div class="ov-rows">${body}</div>` +
             (note ? `<p class="ov-note">${note}</p>` : '') +
             (foot ? `<footer class="ov-card-foot">${foot}</footer>` : '');
@@ -232,12 +255,11 @@
 
     function skeletonCard(key, title, rows = 3) {
         const r = '<div class="ov-row is-skel"><span class="ov-sk ov-sk-line"></span><span class="ov-sk ov-sk-val"></span></div>';
-        return `<header class="ov-card-head"><h3 class="ov-card-title" id="ov-t-${key}">${icon(key)}<span>${escapeHtml(title)}</span></h3></header>` +
-            `<div class="ov-rows" aria-busy="true">${r.repeat(rows)}</div>`;
+        return cardHead(key, title) + `<div class="ov-rows" aria-busy="true">${r.repeat(rows)}</div>`;
     }
 
     function errorCard(key, title, msg) {
-        return `<header class="ov-card-head"><h3 class="ov-card-title" id="ov-t-${key}">${icon(key)}<span>${escapeHtml(title)}</span></h3></header>` +
+        return cardHead(key, title) +
             `<div class="ov-error"><span>${escapeHtml(msg)}</span><button type="button" class="btn small" data-ov-act="retry">Retry</button></div>`;
     }
 
@@ -252,6 +274,7 @@
 
     function render() {
         renderHead();
+        renderHealth();
         renderKpis();
         renderSeo();
         renderRedirects();
@@ -267,47 +290,120 @@
         return Object.entries(site.by_type || {}).filter(([, v]) => v[key] > 0).map(([t, v]) => `${t} ${fmtNum(v[key])}`).join(' · ');
     }
 
-    /** Search visibility (Yoast "Advanced" noindex / nofollow), one column per site. */
+    /* Indexed / hidden-on-post / hidden-by-type-default: categorical, validated (dataviz validator) in both themes. */
+    const VIS_SEGMENTS = [
+        { key: 'indexed', label: 'Shown in search', cls: 'is-indexed' },
+        { key: 'noindex_post', label: 'Hidden · set on post', cls: 'is-noindex' },
+        { key: 'noindex_default', label: 'Hidden · type default', cls: 'is-default' },
+    ];
+
+    /** Search visibility (Yoast "Advanced" noindex / nofollow), one panel per site. */
     function renderVisibility() {
         const sites = st.robots;
-        if (!sites) { setCard('ov-card-visibility', st.robotsErr ? errorCard('visibility', 'Search visibility', st.robotsErr) : skeletonCard('visibility', 'Search visibility', 5)); return; }
-        const metrics = [
-            { key: 'published', label: 'Published', sub: 'Every content type', sev: () => 'info',
-                go: () => ({ tab: 'content', type: 'any', status: 'publish' }) },
-            { key: 'indexed', label: 'Shown in search results', sub: 'index · "Yes", or the type default is Yes', sev: () => 'ok',
-                go: () => ({ tab: 'content', type: 'any', status: 'publish' }) },
-            { key: 'noindex_post', label: 'Hidden from search · set on the post', sub: 'noindex · "Allow search engines…" = No', sev: n => (n ? 'warn' : 'ok'),
-                go: () => ({ tab: 'content', type: 'any', status: 'publish', seo: 'noindex' }) },
-            { key: 'noindex_default', label: 'Hidden from search · type default', sub: 'Yoast › Content types › Show in search = Off', sev: () => 'info',
-                go: s => {
-                    const top = Object.entries(s.by_type || {}).filter(([, v]) => v.noindex_default > 0).sort((a, b) => b[1].noindex_default - a[1].noindex_default);
-                    return { tab: 'content', type: top.length ? top[0][0] : 'any', status: 'publish', others: top.slice(1).map(([t, v]) => `${t} ${fmtNum(v.noindex_default)}`).join(', ') };
-                } },
-            { key: 'nofollow', label: 'Links not followed', sub: 'nofollow · "Follow links" = No', sev: n => (n ? 'warn' : 'ok'),
-                go: () => ({ tab: 'content', type: 'any', status: 'publish', seo: 'nofollow' }) },
-        ];
-        const head = '<tr><th scope="col"></th>' + sites.map(s =>
-            `<th scope="col"><span class="ov-vis-site">${escapeHtml(s.label)}</span>` +
-            (s.current ? '<span class="ov-chip sev-info">open</span>' : `<button type="button" class="btn small"${goAttr({ tab: 'site', site: s.key })} title="Switch the dashboard to ${escapeHtml(s.label)}">Switch</button>`) +
-            '</th>').join('') + '</tr>';
-        const body = metrics.map(m => `<tr><th scope="row"><span class="ov-row-label">${escapeHtml(m.label)}</span><span class="ov-row-sub">${escapeHtml(m.sub)}</span></th>` +
-            sites.map(s => {
-                if (s.error) return `<td><span class="ov-row-sub">${escapeHtml(s.error)}</span></td>`;
-                const n = s[m.key] || 0;
-                const spec = m.go(s);
-                const target = s.current ? spec : { tab: 'site', site: s.key, then: spec };
-                const breakdown = m.key === 'published' || m.key === 'indexed' ? '' : typeBreakdown(s, m.key);
-                const pct = m.key !== 'published' && s.published ? `${Math.round(n / s.published * 100)}%` : '';
-                const title = `${s.label}: ${fmtNum(n)}${pct ? ` (${pct})` : ''}${breakdown ? ' — ' + breakdown : ''}${s.current ? '' : ' · switches site'}`;
-                return `<td><button type="button" class="ov-vis-cell"${goAttr(target)} title="${escapeHtml(title)}">` +
-                    `<span class="ov-num sev-${m.sev(n)}">${fmtNum(n)}</span>` +
-                    `<span class="ov-row-sub">${escapeHtml(breakdown || pct)}</span></button></td>`;
-            }).join('') + '</tr>').join('');
-        const hidden = sites.reduce((n, s) => n + (s.noindex_post || 0), 0);
-        setCard('ov-card-visibility', card('visibility', 'Search visibility', `<div class="ov-vis-wrap"><table class="ov-vis"><thead>${head}</thead><tbody>${body}</tbody></table></div>`, {
-            note: `Published posts on ${pluralize(sites.length, 'site')}, by Yoast's "Advanced" settings · ${fmtNum(hidden)} set to noindex on the post itself. ` +
-                'Change them in Content › Posts &amp; Pages (Show in Search / Follow Links).',
-        }));
+        if (!sites) { setCard('ov-card-visibility', st.robotsErr ? errorCard('visibility', 'Search visibility', st.robotsErr) : skeletonCard('visibility', 'Search visibility', 3)); renderHealth(); return; }
+        const pct = (n, of) => (of ? Math.round(n / of * 100) : 0);
+        const legend = '<ul class="ov-legend" aria-label="Legend">' + VIS_SEGMENTS.map(g =>
+            `<li><i class="ov-swatch ${g.cls}" aria-hidden="true"></i>${escapeHtml(g.label)}</li>`).join('') + '</ul>';
+
+        const panels = sites.map(s => {
+            const head = `<div class="ov-vis-head"><span class="ov-vis-site">${escapeHtml(s.label)}</span>` +
+                (s.current ? '<span class="ov-chip sev-info">Viewing</span>'
+                    : `<button type="button" class="btn small"${goAttr({ tab: 'site', site: s.key })} title="Switch the dashboard to ${escapeHtml(s.label)}">Switch site</button>`) + '</div>';
+            if (s.error) return `<div class="ov-vis-panel">${head}<div class="ov-error"><span>${escapeHtml(s.error)}</span></div></div>`;
+            const wrap = spec => (s.current ? spec : { tab: 'site', site: s.key, then: spec });
+            const bar = '<div class="ov-stack" role="img" aria-label="' + escapeHtml(VIS_SEGMENTS.map(g => `${g.label} ${s[g.key] || 0}`).join(', ')) + '">' +
+                VIS_SEGMENTS.filter(g => s[g.key] > 0).map(g =>
+                    `<span class="ov-seg ${g.cls}" style="flex-grow:${s[g.key]}" title="${escapeHtml(`${g.label}: ${fmtNum(s[g.key])} (${pct(s[g.key], s.published)}%)`)}"></span>`).join('') + '</div>';
+            const defaultTop = Object.entries(s.by_type || {}).filter(([, v]) => v.noindex_default > 0).sort((a, b) => b[1].noindex_default - a[1].noindex_default);
+            const rows = [
+                row({ label: 'Hidden · set on the post', value: s.noindex_post, sev: s.noindex_post ? 'warn' : 'ok',
+                    sub: s.noindex_post ? typeBreakdown(s, 'noindex_post') : 'No post opts out', title: '"Allow search engines to show this content" = No',
+                    go: wrap({ tab: 'content', type: 'any', status: 'publish', seo: 'noindex' }) }),
+                row({ label: 'Hidden · type default', value: s.noindex_default, sev: 'info',
+                    sub: s.noindex_default ? typeBreakdown(s, 'noindex_default') : 'Every type is indexable', title: 'Yoast › Settings › Content types › Show in search results = Off',
+                    go: wrap({ tab: 'content', type: defaultTop.length ? defaultTop[0][0] : 'any', status: 'publish', others: defaultTop.slice(1).map(([t, v]) => `${t} ${fmtNum(v.noindex_default)}`).join(', ') }) }),
+                row({ label: 'Links not followed', value: s.nofollow, sev: s.nofollow ? 'warn' : 'ok',
+                    sub: s.nofollow ? typeBreakdown(s, 'nofollow') : 'Every post is followed', title: '"Should search engines follow links on this content" = No',
+                    go: wrap({ tab: 'content', type: 'any', status: 'publish', seo: 'nofollow' }) }),
+            ];
+            return `<div class="ov-vis-panel">${head}` +
+                `<div class="ov-vis-fig"><span class="ov-vis-num">${pct(s.indexed, s.published)}%</span>` +
+                `<span class="ov-vis-cap">indexable · ${fmtNum(s.indexed)} of ${fmtNum(s.published)} published</span></div>` +
+                bar + `<div class="ov-rows">${rows.join('')}</div></div>`;
+        }).join('');
+
+        setCard('ov-card-visibility', cardHead('visibility', 'Search visibility', legend) +
+            `<div class="ov-vis-grid">${panels}</div>` +
+            '<p class="ov-note">Change these per post in Content › Posts &amp; Pages (Show in Search / Follow Links). Another site\'s numbers switch site first.</p>');
+        renderHealth();
+    }
+
+    /* ══════════════════════════ Site health ══════════════════════════
+     * The hero panel: how many of the checks below pass, and the failing ones
+     * ranked (danger first, then by size). Every check reuses a number another
+     * card already shows, so the two can never disagree. */
+
+    function healthChecks() {
+        const c = st.core, r = st.redirects, k = st.canon, out = [];
+        if (c) {
+            const s = c.seo;
+            const dk = topType('dup_kw_posts'), mk = topType('missing_kw');
+            out.push(
+                { label: 'Missing meta titles', n: s.missing_title, sev: 'warn', go: { tab: 'content', type: 'any', status: 'publish', seo: 'missing_title' } },
+                { label: 'Missing meta descriptions', n: s.missing_desc, sev: 'warn', go: { tab: 'content', type: 'any', status: 'publish', seo: 'missing_desc' } },
+                { label: 'Missing focus keywords', n: s.missing_kw, sev: 'warn', go: { tab: 'keywords', type: mk.type || topStatusType('publish').type, mode: 'without', others: mk.others } },
+                { label: 'Duplicate focus keywords', n: s.dup_kw_posts, sev: 'warn', go: { tab: 'keywords', type: dk.type || topStatusType('publish').type, mode: 'dup', others: dk.others } },
+                { label: 'Duplicate meta titles', n: s.dup_title_posts, sev: 'warn', go: { tab: 'content', type: 'any', status: 'publish', seo: 'dup_title' } },
+                { label: 'Posts over the revision limit', n: c.revisions.posts_over, sev: 'warn', go: { tab: 'scroll', card: 'ov-card-revisions' } },
+            );
+        }
+        if (r) {
+            out.push(
+                { label: 'Redirects hiding a live post', n: r.conflicts, sev: 'danger', go: { tab: 'redirects', match: 'origin_live' } },
+                { label: 'Redirects with no destination', n: r.dest_missing, sev: 'warn', go: { tab: 'redirects', match: 'dest_missing' } },
+            );
+        }
+        if (k) {
+            const L = k.live_counts || {};
+            out.push({ label: 'Live canonicals on dead URLs', n: (L.gone || 0) + (L.redirect || 0) + (L.not_live || 0), sev: 'danger', go: { tab: 'canonical', scope: 'live' } });
+        }
+        if (st.links.urls && !st.links.running) {
+            out.push({ label: 'Broken links', n: linkSummary().broken, sev: 'danger', go: { tab: 'fixer', status: 'error' } });
+        }
+        return out;
+    }
+
+    function renderHealth() {
+        const el = $('ov-card-health');
+        if (!el) return;
+        const checks = healthChecks();
+        if (!checks.length) {
+            el.innerHTML = cardHead('health', 'Site health') + (st.coreErr
+                ? `<div class="ov-error"><span>${escapeHtml(st.coreErr)}</span><button type="button" class="btn small" data-ov-act="retry">Retry</button></div>`
+                : '<div class="ov-health-body" aria-busy="true"><span class="ov-sk ov-sk-hero"></span><span class="ov-sk ov-sk-meter"></span><span class="ov-sk ov-sk-line"></span><span class="ov-sk ov-sk-line"></span></div>');
+            return;
+        }
+        const failing = checks.filter(x => x.n > 0).sort((a, b) => (a.sev === b.sev ? b.n - a.n : a.sev === 'danger' ? -1 : 1));
+        const passing = checks.length - failing.length;
+        const ratio = passing / checks.length;
+        const level = failing.some(x => x.sev === 'danger') ? 'danger' : failing.length ? 'warn' : 'ok';
+        const word = { ok: 'Healthy', warn: 'Needs attention', danger: 'Action required' }[level];
+        const busy = st.loading.core || st.loading.redirects;
+        const pending = !st.links.urls ? '<button type="button" class="ov-health-pending" data-ov-act="check-links">Broken links not checked yet · Check now</button>' : '';
+
+        const list = failing.slice(0, 6).map(x =>
+            `<li><button type="button" class="ov-issue"${goAttr(x.go)}>` +
+            `<span class="ov-issue-mark sev-${x.sev}" aria-label="${x.sev === 'danger' ? 'Critical' : 'Warning'}">${x.sev === 'danger' ? '!' : '•'}</span>` +
+            `<span class="ov-issue-label">${escapeHtml(x.label)}</span><span class="ov-issue-n">${fmtNum(x.n)}</span>${chevron}</button></li>`).join('');
+        const more = failing.length > 6 ? `<p class="ov-note">+ ${pluralize(failing.length - 6, 'more check')} below.</p>` : '';
+
+        el.classList.toggle('is-refreshing', busy);
+        el.innerHTML = cardHead('health', 'Site health', `<span class="ov-chip sev-${level}"><i class="ov-dot" aria-hidden="true"></i>${word}</span>`) +
+            '<div class="ov-health-body">' +
+            `<div class="ov-health-fig"><span class="ov-health-num">${passing}<small>/${checks.length}</small></span><span class="ov-health-cap">checks passing</span></div>` +
+            `<div class="ov-meter sev-${level}" role="meter" aria-valuemin="0" aria-valuemax="${checks.length}" aria-valuenow="${passing}" aria-label="Checks passing"><i style="width:${Math.round(ratio * 100)}%"></i></div>` +
+            (failing.length ? `<ul class="ov-issues" aria-label="Needs attention">${list}</ul>${more}` : '<p class="ov-calm">Nothing needs fixing right now.</p>') +
+            pending + '</div>';
     }
 
     function renderCanonicals() {
@@ -322,6 +418,7 @@
             row({ label: '→ Redirect', value: A.redirect || 0, sev: L.redirect ? 'warn' : 'info', sub: `${fmtNum(L.redirect || 0)} live`, go: { tab: 'canonical', kind: 'redirect' } }),
             row({ label: '→ Trashed / unpublished post', value: A.not_live || 0, sev: L.not_live ? 'warn' : 'info', sub: `${fmtNum(L.not_live || 0)} live`, go: { tab: 'canonical', kind: 'not_live' } }),
         ];
+        renderHealth();
         setCard('ov-card-canonical', card('canonical', 'Canonical URLs', rows.join(''), {
             issues: live, level: 'danger',
             note: all > live ? `${fmtNum(all - live)} more on drafts / pending posts (not public yet). ${fmtNum(c.scanned)} posts set a canonical.` : `${fmtNum(c.scanned)} posts set a canonical.`,
@@ -359,11 +456,13 @@
         } else upd.textContent = '';
     }
 
+    const KPI_ICONS = { 'Published': 'published', 'SEO gaps': 'seo', 'Duplicate keywords': 'keywords', 'Redirect issues': 'redirects', 'Redirects': 'redirects', 'Links': 'links', 'Broken links': 'broken' };
+
     function kpi({ label, value, sub = '', sev = 'info', go = null, act = '', title = '' }) {
         const num = typeof value === 'number' ? fmtNum(value) : escapeHtml(value);
         const attrs = go ? goAttr(go) : (act ? ` data-ov-act="${act}"` : '');
         return `<button type="button" class="ov-kpi sev-${sev}"${attrs}${title ? ` title="${escapeHtml(title)}"` : ''}>` +
-            `<span class="ov-kpi-label"><i class="ov-dot" aria-hidden="true"></i>${escapeHtml(label)}</span>` +
+            `<span class="ov-kpi-top"><span class="ov-kpi-label">${escapeHtml(label)}</span><span class="ov-kpi-ico">${icon(KPI_ICONS[label] || 'activity')}</span></span>` +
             `<span class="ov-kpi-num">${num}</span>` +
             `<span class="ov-kpi-sub">${escapeHtml(sub)}</span></button>`;
     }
@@ -580,6 +679,7 @@
                 `<button type="button" class="btn small" data-ov-act="check-links" title="Collect links again and check any URL without a fresh result">Check again</button></div>`;
         }
         setCard('ov-card-links', card('links', 'Links', rows.join('') + check, { issues, level: 'danger' }), { busy: st.loading.core });
+        renderHealth();
     }
 
     function renderContent() {
@@ -648,8 +748,7 @@
         }).join('');
         const viewAll = typeof openHistory === 'function' ? '<button type="button" class="btn small" data-ov-act="history">View all</button>' : '';
         const recent = typeof a.recent_24h === 'number' ? `${pluralize(a.recent_24h, 'change')} in the last 24 h` : '';
-        el.innerHTML = `<header class="ov-card-head"><h3 class="ov-card-title" id="ov-t-activity">${icon('activity')}<span>Recent activity</span></h3>` +
-            (recent ? `<span class="ov-chip sev-info">${escapeHtml(recent)}</span>` : '') + '</header>' +
+        el.innerHTML = cardHead('activity', 'Recent activity', recent ? `<span class="ov-chip sev-info">${escapeHtml(recent)}</span>` : '') +
             (items ? `<ul class="ov-acts">${items}</ul>` : '<p class="ov-calm">No changes made through the dashboard yet.</p>') +
             (viewAll ? `<footer class="ov-card-foot">${viewAll}</footer>` : '');
     }

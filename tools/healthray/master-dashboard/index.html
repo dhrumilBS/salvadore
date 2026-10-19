@@ -100,9 +100,10 @@
              Cards are rendered by js/overview.js; the markup below is only the frame + loading skeleton. -->
         <div id="overviewView" style="display:none">
 
-            <!-- Header: site, home link, freshness, refresh -->
-            <div class="ov-head">
+            <!-- Header: page title, site, home link, freshness, refresh -->
+            <header class="ov-head">
                 <div class="ov-site">
+                    <span class="ov-eyebrow">Site overview</span>
                     <div class="ov-site-line">
                         <h2 class="ov-site-name" id="ov-site-name">Overview</h2>
                         <span class="ov-live" id="ov-live" hidden title="This is the production site">LIVE</span>
@@ -116,28 +117,40 @@
                         Refresh
                     </button>
                 </div>
+            </header>
+
+            <!-- Hero: site health (checks passing + what needs attention) beside the KPI tiles -->
+            <div class="ov-hero">
+                <section class="ov-card ov-health" id="ov-card-health" aria-labelledby="ov-t-health"></section>
+                <div class="ov-kpis" id="ov-kpis" aria-label="Key numbers">
+                    <div class="ov-kpi ov-skel"><span class="ov-sk ov-sk-label"></span><span class="ov-sk ov-sk-num"></span><span class="ov-sk ov-sk-sub"></span></div>
+                    <div class="ov-kpi ov-skel"><span class="ov-sk ov-sk-label"></span><span class="ov-sk ov-sk-num"></span><span class="ov-sk ov-sk-sub"></span></div>
+                    <div class="ov-kpi ov-skel"><span class="ov-sk ov-sk-label"></span><span class="ov-sk ov-sk-num"></span><span class="ov-sk ov-sk-sub"></span></div>
+                    <div class="ov-kpi ov-skel"><span class="ov-sk ov-sk-label"></span><span class="ov-sk ov-sk-num"></span><span class="ov-sk ov-sk-sub"></span></div>
+                    <div class="ov-kpi ov-skel"><span class="ov-sk ov-sk-label"></span><span class="ov-sk ov-sk-num"></span><span class="ov-sk ov-sk-sub"></span></div>
+                    <div class="ov-kpi ov-skel"><span class="ov-sk ov-sk-label"></span><span class="ov-sk ov-sk-num"></span><span class="ov-sk ov-sk-sub"></span></div>
+                </div>
             </div>
 
-            <!-- KPI strip -->
-            <div class="ov-kpis" id="ov-kpis" aria-label="Key numbers">
-                <div class="ov-kpi ov-skel"><span class="ov-sk ov-sk-label"></span><span class="ov-sk ov-sk-num"></span><span class="ov-sk ov-sk-sub"></span></div>
-                <div class="ov-kpi ov-skel"><span class="ov-sk ov-sk-label"></span><span class="ov-sk ov-sk-num"></span><span class="ov-sk ov-sk-sub"></span></div>
-                <div class="ov-kpi ov-skel"><span class="ov-sk ov-sk-label"></span><span class="ov-sk ov-sk-num"></span><span class="ov-sk ov-sk-sub"></span></div>
-                <div class="ov-kpi ov-skel"><span class="ov-sk ov-sk-label"></span><span class="ov-sk ov-sk-num"></span><span class="ov-sk ov-sk-sub"></span></div>
-                <div class="ov-kpi ov-skel"><span class="ov-sk ov-sk-label"></span><span class="ov-sk ov-sk-num"></span><span class="ov-sk ov-sk-sub"></span></div>
-                <div class="ov-kpi ov-skel"><span class="ov-sk ov-sk-label"></span><span class="ov-sk ov-sk-num"></span><span class="ov-sk ov-sk-sub"></span></div>
+            <!-- Sections: 12-column grid, every card has a fixed span so each row lines up -->
+            <h3 class="ov-section">Search &amp; SEO</h3>
+            <div class="ov-grid">
+                <section class="ov-card ov-span-12" id="ov-card-visibility" aria-labelledby="ov-t-visibility"></section>
+                <section class="ov-card ov-span-4" id="ov-card-seo" aria-labelledby="ov-t-seo"></section>
+                <section class="ov-card ov-span-4" id="ov-card-redirects" aria-labelledby="ov-t-redirects"></section>
+                <section class="ov-card ov-span-4" id="ov-card-canonical" aria-labelledby="ov-t-canonical"></section>
             </div>
 
-            <!-- Section cards -->
-            <div class="ov-grid" id="ov-grid">
-                <section class="ov-card ov-card-wide" id="ov-card-visibility" aria-labelledby="ov-t-visibility"></section>
-                <section class="ov-card" id="ov-card-seo" aria-labelledby="ov-t-seo"></section>
-                <section class="ov-card" id="ov-card-redirects" aria-labelledby="ov-t-redirects"></section>
-                <section class="ov-card" id="ov-card-links" aria-labelledby="ov-t-links"></section>
-                <section class="ov-card" id="ov-card-content" aria-labelledby="ov-t-content"></section>
-                <section class="ov-card" id="ov-card-revisions" aria-labelledby="ov-t-revisions"></section>
-                <section class="ov-card" id="ov-card-canonical" aria-labelledby="ov-t-canonical"></section>
-                <section class="ov-card ov-card-activity" id="ov-card-activity" aria-labelledby="ov-t-activity" hidden></section>
+            <h3 class="ov-section">Content &amp; links</h3>
+            <div class="ov-grid">
+                <section class="ov-card ov-span-6" id="ov-card-content" aria-labelledby="ov-t-content"></section>
+                <section class="ov-card ov-span-6" id="ov-card-links" aria-labelledby="ov-t-links"></section>
+            </div>
+
+            <h3 class="ov-section">Maintenance &amp; activity</h3>
+            <div class="ov-grid">
+                <section class="ov-card ov-span-4" id="ov-card-revisions" aria-labelledby="ov-t-revisions"></section>
+                <section class="ov-card ov-span-8 ov-card-activity" id="ov-card-activity" aria-labelledby="ov-t-activity" hidden></section>
             </div>
         </div>
 

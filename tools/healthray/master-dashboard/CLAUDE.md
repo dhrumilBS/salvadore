@@ -87,7 +87,12 @@ css/*.css           one stylesheet per tab, scoped to its view (css/links.css = 
                     right after style.css; its fx-modal-* pieces are reused by the Redirects editor)
 js/finder.js        Ctrl/Cmd+K palette + post drawer (read-only; finder_search.php / finder_post.php): search
                     posts by title/slug/ID/URL, jump to tabs, run actions. Gets every key first (onGlobalKey)
-js/overview.js      Overview cards; each number deep-links into its tab pre-filtered (incl. Canonical URLs,
+js/overview.js      Overview: header -> hero (Site health = checks passing + failing checks worst-first, built only from
+                    numbers the cards below already show - healthChecks(); KPI tiles) -> titled sections on a 12-col grid
+                    (.ov-span-4/6/8/12 in index.html, rows stretch to one height). Cards share cardHead() (icon tile, title,
+                    CARD_SUBS subtitle). Search visibility bar colours (--vis-*, css/overview.css) passed the dataviz
+                    palette validator for both themes - re-run it if you change them.
+                    Each number deep-links into its tab pre-filtered (incl. Canonical URLs,
                     from canonical_report.php?summary=1). Search visibility card = every site side by side
                     (robots_summary.php); another site's number switches site, then opens (sessionStorage md.ov.pendingGo)
 js/app.js           view switching, lazy loading, cross-tab staleness, global keyboard shortcuts, init
