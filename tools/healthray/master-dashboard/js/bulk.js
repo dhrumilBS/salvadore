@@ -6,7 +6,7 @@ function setBulkStep(n) {
     });
 }
 
-/* ══════════════════════════ Bulk URL Update tab ══════════════════════════
+/* ══════════════════════════ Bulk by URLs (Content tab panel) ══════════════════════════
  * Paste any mix of slugs / site-relative paths / full permalinks (5, 10,
  * 100+, comma- and/or newline-separated), resolve each to a real post via
  * api/bulk_find_posts.php, then apply one status to whichever of the
@@ -124,6 +124,7 @@ async function applyBulkStatusUpdate() {
             renderBulkTable();
             toast(`Updated ${json.updated} post${json.updated === 1 ? '' : 's'} to "${status}"`, 'ok');
             onPostsChanged();
+            if (activeView === 'content') loadContent(); // the list under this panel shows these posts too
 
             // The server reports which posts really moved *into* trash just now -
             // not this table's copy of their status, which a Content-tab save may
@@ -144,7 +145,26 @@ async function applyBulkStatusUpdate() {
         });
 }
 
+/** Show the panel at the top of the Content tab (button, #bulk, g b) and focus the textarea. */
+function openBulkSection() {
+    if (activeView !== 'content') showView('content');
+    document.getElementById('bulkSection').hidden = false;
+    document.getElementById('bulkOpenBtn').classList.add('is-open');
+    const input = document.getElementById('bulkUrlsInput');
+    input.scrollIntoView({ block: 'center' });
+    input.focus();
+}
+
+function closeBulkSection() {
+    document.getElementById('bulkSection').hidden = true;
+    document.getElementById('bulkOpenBtn').classList.remove('is-open');
+}
+
 function bindBulkTab() {
+    document.getElementById('bulkOpenBtn').addEventListener('click', () =>
+        (document.getElementById('bulkSection').hidden ? openBulkSection() : closeBulkSection()));
+    document.getElementById('bulkCloseBtn').addEventListener('click', closeBulkSection);
+
     document.getElementById('bulkSearchBtn').addEventListener('click', runBulkSearch);
 
     document.getElementById('bulkClearBtn').addEventListener('click', () => {

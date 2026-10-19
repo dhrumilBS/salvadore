@@ -252,8 +252,8 @@ function rerenderHistoryEntry(id) {
 
 /* ── undo ── */
 const HISTORY_AFFECTS = {
-    posts: ['content', 'links', 'redirects', 'fixer', 'menu', 'keywords', 'canonical'],
-    links: ['links', 'content', 'fixer', 'menu', 'keywords', 'canonical'],
+    posts: ['content', 'redirects', 'fixer', 'menu', 'keywords', 'canonical'],
+    links: ['content', 'fixer', 'menu', 'keywords', 'canonical'],
     redirects: ['redirects'],
 };
 

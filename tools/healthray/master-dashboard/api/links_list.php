@@ -1,6 +1,6 @@
 <?php
 /**
- * GET api/links_list.php - Links & UTM tab: filtered post list, each row
+ * GET api/links_list.php - filtered post list (used by the Overview link check), each row
  * hydrated exactly like a Content-tab row (real permalink, not guid) plus its
  * fully-extracted link list (lib/link_extractor.php). Filters that exist as
  * real DB columns (post_type, status, search, publish/modified date range)

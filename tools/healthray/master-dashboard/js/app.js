@@ -4,17 +4,15 @@
  * another tab displays (a post's status/slug, a link inside post content, a
  * new 410 redirect), that other tab is marked stale and reloads the next time
  * it's shown - or right away if it's the one on screen. The active tab lives
- * in the URL hash (#content, #links, #fixer, #redirects, #bulk, #menu, #replace,
+ * in the URL hash (#content, #fixer, #redirects, #menu, #replace,
  * #keywords, #canonical) so each one is bookmarkable; Link Fixer adds its own filters after a
  * "?" (#fixer?page=2) and Find & Replace accepts #replace?find=...&replace=... */
 
 const VIEWS = {
     overview:  { el: 'overviewView',  load: loadOverview, search: null,         key: e => ovHandleKey(e) },
     content:   { el: 'contentView',   load: loadContent,  search: 'fSearch' },
-    links:     { el: 'linksView',     load: loadLinks,    search: 'lSearch' },
     fixer:     { el: 'fixerView',     load: loadFixer,    search: 'fx-search' },
     redirects: { el: 'redirectsView', load: loadRedirects, search: 'rSearch',    key: e => rHandleKey(e) },
-    bulk:      { el: 'bulkView',      load: null,         search: 'bulkUrlsInput' }, // only searches on demand
     menu:      { el: 'menuView',      load: loadMenu,     search: 'mo-search',  key: e => moHandleKey(e) },
     replace:   { el: 'replaceView',   load: loadReplace,  search: 'fr-find',    key: e => frHandleKey(e) },
     keywords:  { el: 'keywordsView',  load: loadKeywords, search: 'kw-search',  key: e => kwHandleKey(e) },
@@ -22,12 +20,16 @@ const VIEWS = {
 };
 
 let activeView = 'overview';
-const viewNeedsLoad = { overview: true, content: true, links: true, fixer: true, redirects: true, bulk: false, menu: true, replace: true, keywords: true, canonical: true };
+const viewNeedsLoad = { overview: true, content: true, fixer: true, redirects: true, menu: true, replace: true, keywords: true, canonical: true };
 
-/** "#fixer?page=2" -> ['fixer', 'page=2'] */
+/* Retired tabs whose old bookmarks still work: Links & UTM was merged into Links (Link Fixer),
+ * Bulk URL Update into Content (#bulk also opens its panel). */
+const VIEW_ALIASES = { links: 'fixer', bulk: 'content' };
+
+/** "#fixer?page=2" -> ['fixer', 'page=2'] (old names mapped through VIEW_ALIASES) */
 function parseHash() {
     const [view, query = ''] = location.hash.slice(1).split('?');
-    return [view, query];
+    return [VIEW_ALIASES[view] || view, query];
 }
 
 /* Two-level nav: each view tab carries data-group; the group row shows the
@@ -63,6 +65,7 @@ function showGroup(group) {
 }
 
 function showView(view, { skipLoad = false } = {}) {
+    view = VIEW_ALIASES[view] || view;
     if (!VIEWS[view]) view = 'overview';
     activeView = view;
     syncNav(view);
@@ -89,12 +92,12 @@ function markStale(views) {
 /** A post's status/slug/title/order changed (Content save, Bulk status apply, Menu Order save).
  * The tab that made the change keeps its own rows in sync, so it is never reloaded here. */
 function onPostsChanged() {
-    markStale(['overview', 'content', 'links', 'redirects', 'fixer', 'menu', 'keywords', 'canonical'].filter(v => v !== activeView));
+    markStale(['overview', 'content', 'redirects', 'fixer', 'menu', 'keywords', 'canonical'].filter(v => v !== activeView));
 }
 
 /** Post content / meta changed (Link Fixer write or undo, Find & Replace apply or undo). */
 function onLinksChanged() {
-    markStale(['overview', 'links', 'content', 'fixer', 'menu', 'keywords', 'canonical'].filter(v => v !== activeView));
+    markStale(['overview', 'content', 'fixer', 'menu', 'keywords', 'canonical'].filter(v => v !== activeView));
 }
 
 /** A Yoast redirect rule was added/edited/deleted (Redirects tab, trash -> 410 prompts, History undo). */
@@ -155,7 +158,8 @@ function onGlobalKey(e) {
     const k = e.key.toLowerCase();
     if (Date.now() - gPending < 1200) {
         gPending = 0;
-        const target = { o: 'overview', c: 'content', l: 'links', f: 'fixer', r: 'redirects', b: 'bulk', m: 'menu', s: 'replace', k: 'keywords', n: 'canonical' }[k];
+        if (k === 'b') { e.preventDefault(); openBulkSection(); return; }
+        const target = { o: 'overview', c: 'content', l: 'fixer', f: 'fixer', r: 'redirects', m: 'menu', s: 'replace', k: 'keywords', n: 'canonical' }[k];
         if (target) { e.preventDefault(); showView(target); }
         return;
     }
@@ -174,7 +178,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindHistory();
 
     bindContentTab();
-    bindLinksTab();
     bindFixerTab();
     bindRedirectsTab();
     bindBulkTab();
@@ -202,6 +205,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const [view, query] = parseHash();
         if (view === 'fixer' && query) fxReadHash(query);
         if (view === 'replace' && query) frReadHash(query);
+        if (location.hash.startsWith('#bulk')) { openBulkSection(); return; }
         showView(view);
     });
     document.addEventListener('keydown', onGlobalKey);
@@ -215,7 +219,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const opts = await loadFilterOptions();
     populateContentPostTypes(opts.post_types);
     populateContentStatuses(opts.statuses);
-    populateLinksFilters(opts.post_types, opts.statuses);
     populateFixerPostTypes(opts.post_types);
     populateFixerStatuses(opts.statuses);
 
@@ -223,4 +226,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (view === 'fixer') fxReadHash(query);
     if (view === 'replace' && query) frReadHash(query);
     showView(view || 'overview');
+    if (location.hash.startsWith('#bulk')) openBulkSection();
 });

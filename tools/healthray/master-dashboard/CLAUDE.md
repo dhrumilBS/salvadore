@@ -1,4 +1,4 @@
-# Master Dashboard — Content, Links & UTM, Link Fixer, Redirects, Bulk URL Update, Menu Order, Find & Replace, Focus Keywords
+# Master Dashboard — Overview, Content (+ Bulk by URLs), Menu Order, Links, Focus Keywords, Canonicals, Redirects, Find & Replace
 
 One standalone PHP + vanilla-JS tool (no WordPress hooks, no build step) that
 talks to one or more WordPress databases directly over `mysqli`. It replaces
@@ -6,9 +6,9 @@ three former sibling tools that duplicated most of their plumbing:
 
 | Former tool | Became |
 |---|---|
-| `../datewise/` (Content, Redirects, Bulk URL Update tabs) | same three tabs here |
-| `../link-checker/` (Link & UTM Checker) | the **Links & UTM** tab |
-| `../post-content/` (Link Checker / fixer) | the **Link Fixer** tab |
+| `../datewise/` (Content, Redirects, Bulk URL Update tabs) | Content (Bulk is its **Bulk by URLs** panel) + Redirects |
+| `../link-checker/` (Link & UTM Checker) | the **Links** tab (its Dates filter + site-wide Export) |
+| `../post-content/` (Link Checker / fixer) | the **Links** tab (code still `fixer`, `#fixer`) |
 | `../menu-order/` | the **Menu Order** tab |
 | `../replace/` (Find & Replace) | the **Find & Replace** tab |
 | `../focus-keyword/` (duplicate focus keywords; its login was not ported) | the **Focus Keywords** tab |
@@ -61,7 +61,8 @@ index.html          one page, views toggled by a two-level nav: #navGroups (Over
                     Tools) above #viewTabs (each .view-tab has data-group; only the active group's tabs show,
                     the row hides for one-tab groups; a group click reopens its last tab, md.nav.last).
                     A new tab = a .view-tab with data-group + a VIEWS entry (hash: #overview #content #links #fixer
-                    #redirects #bulk #menu #replace #keywords #canonical; Link Fixer keeps its filters after a "?": #fixer?page=2&status=error&find=...,
+                    #redirects #menu #replace #keywords #canonical; retired #links / #bulk still work via
+                    VIEW_ALIASES in app.js; Link Fixer keeps its filters after a "?": #fixer?page=2&status=error&find=...,
                     Find & Replace accepts #replace?find=...&replace=... and searches straight away)
 style.css           datewise base, Links-tab components, then shared dialogs/drawer + fx- Link Fixer styles
 js/common.js        shared helpers, confirmDialog()/alertDialog(), toast(), LinkStatus
@@ -69,11 +70,11 @@ js/ui.js            shared list building blocks every tab uses: mdPager (paginat
                     numbered pages, rows/page saved per tab), mdSelection (row selection + select-all state),
                     tableStateRow (loading/empty/error row), mdStore (all prefs: md.<key>, never throws)
 js/content.js       Content tab (staged edits, confirmed saves)
-js/links.js         Links & UTM tab (client-side utm/domain/status filters, detail modal -> "Fix in Link Fixer")
-js/fixer.js         Link Fixer tab: edit / fix-redirect / unlink / find-replace links in post_content + FAQ fields
+js/fixer.js         Links tab (was Link Fixer + Links & UTM): check / edit / fix-redirect / unlink / find-replace links in
+                    post_content + FAQ fields; Dates filter; site-wide CSV export (links_export.php)
 js/history.js       unified History drawer (every write on this site, filters, diff, Undo, CSV) - see "Activity history"
 js/redirects.js     Redirects tab (list + add/edit/duplicate/delete, selection bulk bar, import)
-js/bulk.js          Bulk URL Update tab
+js/bulk.js          Bulk by URLs panel at the top of the Content tab (button, #bulk, g b): paste slugs/URLs -> status
 js/menu-order.js    Menu Order tab (IIFE; mo- ids): inline edit order/title/slug/date, drag reorder, renumber, review & save
 js/replace.js       Find & Replace tab (IIFE; fr- ids): literal text search over title/content/excerpt/Elementor/Yoast/meta,
                     JSON + serialized aware, backups + undo, own history drawer (#fr-drawer)
@@ -233,8 +234,8 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 | `list_posts.php` | GET | Content list (paged server-side) |
 | `update_post.php` | POST | save one field on one post |
 | `export.php` | GET | Content CSV (batched, optional live-check filter) |
-| `links_list.php` | GET | Links tab: posts + extracted links |
-| `links_export.php` | GET | Links CSV (`mode=posts|links|utm`, `check=1`) |
+| `links_list.php` | GET | posts + extracted links (Overview link check) |
+| `links_export.php` | GET | Links tab site-wide CSV (`mode=posts|links|utm`, `check=1`) |
 | `check_url_status.php` | GET | live-check one URL |
 | `check_links_bulk.php` | POST | live-check up to 300 URLs |
 | `redirects.php` / `redirects_export.php` | GET | Yoast redirects list / CSV |

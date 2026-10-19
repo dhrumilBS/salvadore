@@ -51,9 +51,7 @@
             <button type="button" class="tab view-tab active" data-view="overview" data-group="dashboard" role="tab" title="Overview — what needs fixing on this site (g o)">Overview</button>
             <button type="button" class="tab view-tab" data-view="content" data-group="content" role="tab" title="Posts &amp; pages — inline edit, status, export (g c)">Posts &amp; Pages</button>
             <button type="button" class="tab view-tab" data-view="menu" data-group="content" role="tab" title="Menu Order — reorder and edit title, slug, date (g m)">Menu Order</button>
-            <button type="button" class="tab view-tab" data-view="bulk" data-group="content" role="tab" title="Bulk URL Update — change the status of pasted URLs (g b)">Bulk URL Update</button>
-            <button type="button" class="tab view-tab" data-view="links" data-group="links" role="tab" title="Links &amp; UTM — every link, UTM and domain audit (g l)">Links &amp; UTM</button>
-            <button type="button" class="tab view-tab" data-view="fixer" data-group="links" role="tab" title="Link Fixer — edit, fix and unlink links in post content (g f)">Link Fixer</button>
+            <button type="button" class="tab view-tab" data-view="fixer" data-group="links" role="tab" title="Links — check, edit, fix, unlink and export every link in post content (g l)">Links</button>
             <button type="button" class="tab view-tab" data-view="keywords" data-group="seo" role="tab" title="Focus Keywords — Yoast keyword duplicates (g k)">Focus Keywords</button>
             <button type="button" class="tab view-tab" data-view="canonical" data-group="seo" role="tab" title="Canonicals — canonical URLs that redirect or are gone (g n)">Canonicals</button>
             <button type="button" class="tab view-tab" data-view="redirects" data-group="seo" role="tab" title="Redirects — Yoast 301/410 rules (g r)">Redirects</button>
@@ -136,6 +134,81 @@
 
         <div id="contentView" style="display:none">
 
+            <!-- Bulk by URLs (js/bulk.js; was the Bulk URL Update tab): opened by the toolbar's
+                 "Bulk by URLs" button, #bulk or g b. -->
+            <div id="bulkSection" hidden>
+            <div class="card-panel">
+                <div class="panel-label">
+                    <span>Bulk by URLs — change the status of many posts at once</span>
+                    <button type="button" class="btn small" id="bulkCloseBtn" title="Hide this panel">✕ Close</button>
+                </div>
+
+                <ol class="bulk-steps" id="bulkSteps">
+                    <li class="is-current"><b>Paste URLs</b><span>Slugs, paths or full permalinks — one per line or comma-separated</span></li>
+                    <li><b>Check matches</b><span>See which posts were found and which weren't</span></li>
+                    <li><b>Set status &amp; apply</b><span>Pick posts and a status (e.g. Draft or Trash) — you confirm before anything is saved</span></li>
+                </ol>
+
+                <textarea id="bulkUrlsInput" class="bulk-textarea" rows="6"
+                    placeholder="my-post-slug&#10;https://example.com/another-post/&#10;/a-third-post/"></textarea>
+
+                <div class="toolbar">
+                    <button type="button" class="btn primary" id="bulkSearchBtn">Find posts</button>
+                    <button type="button" class="btn" id="bulkClearBtn">Clear</button>
+                    <span class="col-note" id="bulkInputCount"></span>
+                </div>
+            </div>
+
+            <div class="card-panel" id="bulkResultsPanel" style="display:none">
+                <div class="panel-label">
+                    <span>Matched posts</span>
+                    <div class="stats-row">
+                        <span>Matched <b id="bulkMatchedCount">0</b></span>
+                        <span>Not found <b id="bulkUnmatchedCount">0</b></span>
+                    </div>
+                </div>
+
+                <div class="toolbar">
+                    <label class="col-check"><input type="checkbox" id="bulkSelectAll"> Select all matched</label>
+                    <div class="toolbar-sep" aria-hidden="true"></div>
+                    <span class="col-note">Set status to</span>
+                    <select id="bulkStatusSelect">
+                        <option value="publish">publish</option>
+                        <option value="draft">draft</option>
+                        <option value="pending">pending</option>
+                        <option value="private">private</option>
+                        <option value="future">future</option>
+                        <option value="trash">trash</option>
+                    </select>
+                    <button type="button" class="btn primary" id="bulkApplyBtn" disabled>Update status for selected</button>
+                </div>
+
+                <div class="table-wrap">
+                    <table id="bulkTable">
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th>ID</th>
+                                <th>Post Type</th>
+                                <th>Title</th>
+                                <th>Slug</th>
+                                <th class="url-col">Permalink</th>
+                                <th>Status</th>
+                                <th>Matched from</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bulkTableBody"></tbody>
+                    </table>
+                </div>
+
+                <div id="bulkUnmatchedWrap" style="display:none">
+                    <div class="panel-label"><span>Not found</span></div>
+                    <p class="col-note">No post matches these — check the slug/URL, or it may belong to an excluded post type.</p>
+                    <div id="bulkUnmatchedList" class="mono" style="white-space:pre-wrap"></div>
+                </div>
+            </div>
+            </div>
+
             <div class="card-panel">
                 <div class="panel-label">
                     <span>Filters &amp; search</span>
@@ -185,6 +258,7 @@
                     <button type="button" class="btn" id="checkAllLinksBtn" style="display:none">Check all links (page)</button>
 
                     <div class="toolbar-end">
+                        <button type="button" class="btn" id="bulkOpenBtn" title="Paste slugs / URLs and change their status in one go (g b)">⇪ Bulk by URLs</button>
                         <a class="btn primary" id="exportCsv" href="#" title="Export CSV - respects current filters, sort &amp; search">⬇ Export CSV</a>
                     </div>
                 </div>
@@ -250,148 +324,7 @@
             </div>
         </div>
 
-        <!-- ══════════════════ LINKS & UTM VIEW ══════════════════ -->
-        <div id="linksView" style="display:none">
-
-            <!-- ══ Stats ══ -->
-            <div class="stats-grid kpi-row" id="lStatsGrid">
-                <div class="stat-card k-accent">
-                    <div class="stat-label"><i class="dot"></i>Posts</div>
-                    <div class="stat-val" id="lStatPosts">—</div>
-                    <div class="stat-hint">matching the filters</div>
-                </div>
-                <div class="stat-card k-neutral">
-                    <div class="stat-label"><i class="dot"></i>Total links</div>
-                    <div class="stat-val" id="lStatLinks">—</div>
-                    <div class="stat-hint">in those posts</div>
-                </div>
-                <button type="button" class="stat-card k-warn" data-lstat="utm" title="Show only posts with UTM links">
-                    <div class="stat-label"><i class="dot"></i>UTM links</div>
-                    <div class="stat-val" id="lStatUtm">—</div>
-                    <div class="stat-hint" id="lStatUtmHint">links carrying utm_ tags</div>
-                </button>
-                <button type="button" class="stat-card k-warn" data-lstat="utm" title="Show only posts with UTM links">
-                    <div class="stat-label"><i class="dot"></i>Posts with UTM</div>
-                    <div class="stat-val" id="lStatPostsUtm">—</div>
-                    <div class="stat-hint">click to show them</div>
-                </button>
-                <button type="button" class="stat-card k-ok" data-lstat="check" title="Live-check every link currently shown">
-                    <div class="stat-label"><i class="dot"></i>Checked</div>
-                    <div class="stat-val" id="lStatChecked">–</div>
-                    <div class="stat-hint" id="lStatCheckedHint">Not checked yet — click to check</div>
-                </button>
-                <button type="button" class="stat-card k-danger" data-lstat="broken" title="Show only posts with broken links">
-                    <div class="stat-label"><i class="dot"></i>Broken / error</div>
-                    <div class="stat-val" id="lStatBroken">–</div>
-                    <div class="stat-hint" id="lStatBrokenHint">known after checking</div>
-                </button>
-            </div>
-
-            <!-- ══ Filters & search ══ -->
-            <div class="card-panel">
-                <div class="panel-label">
-                    <span>Filters &amp; search</span>
-                    <div class="stats-row" style="margin-left:auto;display:flex;gap:8px;font-size:11.5px;color:var(--text3)">
-                        <span>Matching <b id="lStTotal" style="color:var(--text)">0</b></span>
-                        <span>Showing <b id="lStShown" style="color:var(--text)">0</b></span>
-                    </div>
-                </div>
-
-                <!-- Row 1: what to look at -->
-                <div class="toolbar">
-                    <select id="lPostType" title="Post type"><option value="">All Types</option></select>
-                    <select id="lStatus" title="Status"></select>
-                    <div class="toolbar-sep" aria-hidden="true"></div>
-                    <div class="search-wrap">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="11" cy="11" r="8" />
-                            <path d="m21 21-4.35-4.35" />
-                        </svg>
-                        <input type="search" id="lSearch" placeholder="Search title, slug, content, meta title/description…" autocomplete="off">
-                    </div>
-                </div>
-
-                <!-- Row 2: link-derived filters -->
-                <div class="toolbar">
-                    <div class="tab-group" id="lUtmTabs">
-                        <button type="button" class="tab active" data-utm="all">All Posts</button>
-                        <button type="button" class="tab" data-utm="utm">Has UTM</button>
-                        <button type="button" class="tab" data-utm="clean">Clean Links</button>
-                        <button type="button" class="tab" data-utm="nolinks">No Links</button>
-                    </div>
-                    <select id="lDomain" title="Filter by link domain"><option value="">All Domains</option></select>
-                    <select id="lLinkStatus" title="Filter by live check result (after checking)">
-                        <option value="">Any Status</option>
-                        <option value="unchecked">Unchecked</option>
-                        <option value="ok">OK (2xx)</option>
-                        <option value="redirect">Redirect (3xx)</option>
-                        <option value="broken">Broken (4xx/5xx)</option>
-                        <option value="error">Error / Timeout</option>
-                    </select>
-
-                    <div class="toolbar-sep" aria-hidden="true"></div>
-
-                    <button type="button" class="btn" id="lDatesBtn" title="Publish / modified date ranges">Dates ▾</button>
-                    <button type="button" class="btn" id="lCheckAllBtn" title="Live-check every link currently shown">Check all links</button>
-
-                    <div class="toolbar-end">
-                        <div class="export-wrap">
-                            <button type="button" class="btn primary" id="lExportBtn">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                Export
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
-                            </button>
-                            <div class="export-menu" id="lExportMenu">
-                                <div class="export-menu-header">Export CSV (current filters)</div>
-                                <div class="export-item" data-mode="posts">One row per post <span class="ei-badge">posts</span></div>
-                                <div class="export-item" data-mode="links">One row per link <span class="ei-badge">links</span></div>
-                                <div class="export-item" data-mode="utm">UTM links only <span class="ei-badge warn">utm</span></div>
-                                <div class="export-menu-footer">
-                                    <label class="col-check"><input type="checkbox" id="lExportCheckLive"> Include live HTTP status <span class="col-note">(slow)</span></label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="toolbar secondary" id="lDatesPanel">
-                    <div class="frow">
-                        <label class="flabel">Published From</label>
-                        <input type="date" id="lDateFrom">
-                    </div>
-                    <div class="frow">
-                        <label class="flabel">Published To</label>
-                        <input type="date" id="lDateTo">
-                    </div>
-                    <div class="frow">
-                        <label class="flabel">Modified From</label>
-                        <input type="date" id="lModFrom">
-                    </div>
-                    <div class="frow">
-                        <label class="flabel">Modified To</label>
-                        <input type="date" id="lModTo">
-                    </div>
-                    <button type="button" class="btn small" id="lClearDatesBtn">Clear</button>
-                </div>
-            </div>
-
-            <div class="cap-banner" id="lCapBanner" style="display:none"></div>
-
-            <!-- ══ Table ══ -->
-            <div class="table-shell">
-                <div class="loading-overlay" id="lLoadingOverlay"><span class="spinner"></span><span>Loading posts…</span></div>
-                <div class="table-wrap">
-                    <table>
-                        <thead id="lTableHead"></thead>
-                        <tbody id="lTableBody"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div id="lPager"></div>
-        </div>
-
-        <!-- ══════════════════ LINK FIXER VIEW (js/fixer.js) ══════════════════ -->
+        <!-- ══════════════════ LINKS VIEW (js/fixer.js; was Link Fixer + Links & UTM) ══════════════════ -->
         <div id="fixerView" style="display:none">
 
             <!-- Scan bar: what to scan + run the check -->
@@ -446,6 +379,22 @@
                         <span class="fx-switch-track"></span>
                         <span class="fx-switch-label">Auto-check</span>
                     </label>
+                    <button type="button" class="btn" id="fx-dates-btn" title="Only posts published / modified in a date range">Dates ▾</button>
+                    <div class="export-wrap">
+                        <button type="button" class="btn" id="fx-export-btn" title="Site-wide CSV of every post's links (current content types, status and dates - not just this page)">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export ▾
+                        </button>
+                        <div class="export-menu" id="fx-export-menu">
+                            <div class="export-menu-header">Site-wide CSV (types, status, dates)</div>
+                            <div class="export-item" data-mode="posts">One row per post <span class="ei-badge">posts</span></div>
+                            <div class="export-item" data-mode="links">One row per link <span class="ei-badge">links</span></div>
+                            <div class="export-item" data-mode="utm">UTM links only <span class="ei-badge warn">utm</span></div>
+                            <div class="export-menu-footer">
+                                <label class="col-check"><input type="checkbox" id="fx-export-live"> Include live HTTP status <span class="col-note">(slow)</span></label>
+                            </div>
+                        </div>
+                    </div>
                     <a class="fx-site-url" id="fx-site-url" target="_blank" rel="noopener" title="Open the site"></a>
 
                     <div class="fx-scan-end">
@@ -459,6 +408,13 @@
                             <div class="fx-progress-bg"><div class="fx-progress-fill" id="fx-progress-fill"></div></div>
                         </div>
                     </div>
+                </div>
+                <div class="toolbar secondary" id="fx-dates-panel">
+                    <div class="frow"><label class="flabel" for="fx-date-from">Published from</label><input type="date" id="fx-date-from" data-fx-date="date_from"></div>
+                    <div class="frow"><label class="flabel" for="fx-date-to">Published to</label><input type="date" id="fx-date-to" data-fx-date="date_to"></div>
+                    <div class="frow"><label class="flabel" for="fx-mod-from">Modified from</label><input type="date" id="fx-mod-from" data-fx-date="mod_from"></div>
+                    <div class="frow"><label class="flabel" for="fx-mod-to">Modified to</label><input type="date" id="fx-mod-to" data-fx-date="mod_to"></div>
+                    <button type="button" class="btn small" id="fx-dates-clear">Clear</button>
                 </div>
             </section>
 
@@ -668,80 +624,6 @@
                 </div>
 
                 <div id="rPager"></div>
-            </div>
-        </div>
-
-        <!-- ══════════════════ BULK URL UPDATE VIEW ══════════════════ -->
-        <div id="bulkView" style="display:none">
-
-            <div class="card-panel">
-                <div class="panel-label">
-                    <span>Bulk URL update — change the status of many posts at once</span>
-                </div>
-
-                <ol class="bulk-steps" id="bulkSteps">
-                    <li class="is-current"><b>Paste URLs</b><span>Slugs, paths or full permalinks — one per line or comma-separated</span></li>
-                    <li><b>Check matches</b><span>See which posts were found and which weren't</span></li>
-                    <li><b>Set status &amp; apply</b><span>Pick posts and a status (e.g. Draft or Trash) — you confirm before anything is saved</span></li>
-                </ol>
-
-                <textarea id="bulkUrlsInput" class="bulk-textarea" rows="6"
-                    placeholder="my-post-slug&#10;https://example.com/another-post/&#10;/a-third-post/"></textarea>
-
-                <div class="toolbar">
-                    <button type="button" class="btn primary" id="bulkSearchBtn">Find posts</button>
-                    <button type="button" class="btn" id="bulkClearBtn">Clear</button>
-                    <span class="col-note" id="bulkInputCount"></span>
-                </div>
-            </div>
-
-            <div class="card-panel" id="bulkResultsPanel" style="display:none">
-                <div class="panel-label">
-                    <span>Matched posts</span>
-                    <div class="stats-row">
-                        <span>Matched <b id="bulkMatchedCount">0</b></span>
-                        <span>Not found <b id="bulkUnmatchedCount">0</b></span>
-                    </div>
-                </div>
-
-                <div class="toolbar">
-                    <label class="col-check"><input type="checkbox" id="bulkSelectAll"> Select all matched</label>
-                    <div class="toolbar-sep" aria-hidden="true"></div>
-                    <span class="col-note">Set status to</span>
-                    <select id="bulkStatusSelect">
-                        <option value="publish">publish</option>
-                        <option value="draft">draft</option>
-                        <option value="pending">pending</option>
-                        <option value="private">private</option>
-                        <option value="future">future</option>
-                        <option value="trash">trash</option>
-                    </select>
-                    <button type="button" class="btn primary" id="bulkApplyBtn" disabled>Update status for selected</button>
-                </div>
-
-                <div class="table-wrap">
-                    <table id="bulkTable">
-                        <thead>
-                            <tr>
-                                <th></th>
-                                <th>ID</th>
-                                <th>Post Type</th>
-                                <th>Title</th>
-                                <th>Slug</th>
-                                <th class="url-col">Permalink</th>
-                                <th>Status</th>
-                                <th>Matched from</th>
-                            </tr>
-                        </thead>
-                        <tbody id="bulkTableBody"></tbody>
-                    </table>
-                </div>
-
-                <div id="bulkUnmatchedWrap" style="display:none">
-                    <div class="panel-label"><span>Not found</span></div>
-                    <p class="col-note">No post matches these — check the slug/URL, or it may belong to an excluded post type.</p>
-                    <div id="bulkUnmatchedList" class="mono" style="white-space:pre-wrap"></div>
-                </div>
             </div>
         </div>
 
@@ -1177,28 +1059,6 @@
     
     </div>
 
-    <!-- ══ Post link-detail modal ══ -->
-    <div id="detailModal" class="modal-backdrop">
-        <div class="modal">
-            <div class="modal-header">
-                <div>
-                    <div class="modal-title" id="detailTitle">Post</div>
-                    <div class="modal-meta" id="detailMeta"></div>
-                </div>
-                <button class="modal-close" id="detailClose" aria-label="Close">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-                </button>
-            </div>
-            <div class="modal-body">
-                <div class="modal-actions">
-                    <span class="col-note" id="detailLinkCount">0 links</span>
-                    <button type="button" class="btn small" id="detailCheckAllBtn">Check all links in this post</button>
-                </div>
-                <div class="link-cards" id="detailLinkCards"></div>
-            </div>
-        </div>
-    </div>
-
     <!-- ══ Link Fixer: floating bulk action bar ══ -->
     <div class="fx-bulk-bar" id="fx-bulk-bar" role="region" aria-label="Bulk actions">
         <span class="fx-bulk-info" id="fx-bulk-count"><span class="fx-bulk-pill">0</span> selected</span>
@@ -1407,7 +1267,7 @@
                     <div class="help-section-title">Everywhere</div>
                     <div class="keys"><span class="fx-kbd">?</span></div><div>This list</div>
                     <div class="keys"><span class="fx-kbd">/</span></div><div>Focus the current tab's search</div>
-                    <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">c</span> <span class="fx-kbd">l</span> <span class="fx-kbd">f</span> <span class="fx-kbd">r</span> <span class="fx-kbd">b</span></div><div>Go to Content / Links / Fixer / Redirects / Bulk</div>
+                    <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">c</span> <span class="fx-kbd">l</span> <span class="fx-kbd">r</span> <span class="fx-kbd">b</span></div><div>Go to Content / Links / Redirects / Bulk by URLs</div>
                     <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">o</span></div><div>Go to Overview</div>
                     <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">n</span></div><div>Go to Canonicals</div>
                     <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">m</span> <span class="fx-kbd">s</span> <span class="fx-kbd">k</span></div><div>Go to Menu Order / Find &amp; Replace / Focus Keywords</div>
@@ -1415,7 +1275,7 @@
                     <div class="keys"><span class="fx-kbd">n</span></div><div>Redirects: add a redirect (<span class="fx-kbd">Esc</span> clears the selection)</div>
                     <div class="keys"><span class="fx-kbd">Esc</span></div><div>Close dialogs, clear search or selection</div>
 
-                    <div class="help-section-title">Link Fixer</div>
+                    <div class="help-section-title">Links</div>
                     <div class="keys"><span class="fx-kbd">f</span></div><div>Find links site-wide</div>
                     <div class="keys"><span class="fx-kbd">c</span></div><div>Check links in the current view</div>
                     <div class="keys"><span class="fx-kbd">r</span></div><div>Reload posts</div>
@@ -1532,7 +1392,6 @@
     <script src="js/common.js"></script>
     <script src="js/ui.js"></script>
     <script src="js/content.js"></script>
-    <script src="js/links.js"></script>
     <script src="js/fixer.js"></script>
     <script src="js/history.js"></script>
     <script src="js/redirects.js"></script>

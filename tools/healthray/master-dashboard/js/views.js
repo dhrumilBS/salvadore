@@ -10,7 +10,6 @@
 
 const SAVED_VIEW_TABS = {
     content:   { root: '#contentView',   label: 'Content' },
-    links:     { root: '#linksView',     label: 'Links & UTM' },
     redirects: { root: '#redirectsView', label: 'Redirects' },
 };
 

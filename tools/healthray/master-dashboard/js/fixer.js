@@ -50,6 +50,7 @@ const fx = {
     status: 'publish',
     order: 'id_asc',
     find: '',
+    dates: { date_from: '', date_to: '', mod_from: '', mod_to: '' }, // dw_parse_input() date filters
     loaded: false,
 };
 
@@ -202,6 +203,7 @@ function fixerParams() {
         status: fx.status,
         order: fx.order,
         link: fx.find,
+        ...fx.dates,
         page: fx.page,
         per_page: fx.perPage,
     };
@@ -1377,6 +1379,39 @@ function bindFixerTab() {
     });
 
     // Pagination: fxPager (mdPager), created with the preferences above
+
+    // Date range (server-side, same dw_parse_input() keys as the Content tab)
+    bindPanelToggle('fx-dates-btn', 'fx-dates-panel');
+    document.querySelectorAll('[data-fx-date]').forEach(input => input.addEventListener('change', () => {
+        fx.dates[input.dataset.fxDate] = input.value;
+        fx$('fx-dates-btn').textContent = Object.values(fx.dates).some(Boolean) ? 'Dates ● ▾' : 'Dates ▾';
+        fx.page = 1;
+        loadFixer();
+    }));
+    fx$('fx-dates-clear').addEventListener('click', () => {
+        document.querySelectorAll('[data-fx-date]').forEach(i => { i.value = ''; fx.dates[i.dataset.fxDate] = ''; });
+        fx$('fx-dates-btn').textContent = 'Dates ▾';
+        fx.page = 1;
+        loadFixer();
+    });
+
+    // Site-wide CSV export (links_export.php - every matching post, not just this page)
+    const exportMenu = fx$('fx-export-menu');
+    fx$('fx-export-btn').addEventListener('click', e => { e.stopPropagation(); exportMenu.classList.toggle('open'); });
+    document.addEventListener('click', () => exportMenu.classList.remove('open'));
+    exportMenu.addEventListener('click', e => e.stopPropagation());
+    exportMenu.querySelectorAll('.export-item').forEach(item => item.addEventListener('click', () => {
+        const live = fx$('fx-export-live').checked;
+        window.location.href = apiUrl('links_export.php', {
+            mode: item.dataset.mode,
+            post_type: fx.postTypes.join(','),
+            status: fx.status,
+            ...fx.dates,
+            check: live ? 1 : '',
+        });
+        exportMenu.classList.remove('open');
+        toast(live ? 'Live-checked export started — this can take a while for large sites' : 'Export started', live ? 'warn' : 'ok');
+    }));
 
     // Edit modal
     fx$('fx-modal-close').addEventListener('click', fxCloseEdit);
