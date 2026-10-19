@@ -72,6 +72,8 @@ js/menu-order.js    Menu Order tab (IIFE; mo- ids): inline edit order/title/slug
 js/replace.js       Find & Replace tab (IIFE; fr- ids): literal text search over title/content/excerpt/Elementor/Yoast/meta,
                     JSON + serialized aware, backups + undo, own history drawer (#fr-drawer)
 js/keywords.js      Focus Keywords tab (IIFE; kw- ids, read-only): duplicate Yoast focus keywords, client-side table/CSV
+js/canonical.js     Canonicals tab (IIFE; cn- ids, #canonical, g n): canonical URLs that redirect / are gone / name a
+                    retired post; remove or "use redirect target", client-side filters + CSV
 css/*.css           one stylesheet per ported tab, scoped to its view
 js/app.js           view switching, lazy loading, cross-tab staleness, global keyboard shortcuts, init
 api/                endpoints (below); api/lib/ shared PHP (lib/link_editor.php = Link Fixer)
@@ -137,7 +139,8 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
   `link`/`text` kinds are display-only (Link Fixer / Find & Replace, whose own journals do the undo -
   `ref: {journal:'fixer'|'replace', id, ids?}`). "Before" values are read under the same row lock as the write.
 - Who logs: `update_post` (content), `bulk_update_status` (bulk, one entry), `add_redirect` / `redirect_save` (redirects, one entry per save),
-  `menu_save` (menu, one entry per save), `replace_apply`/`replace_undo`, `fixer_write`/`fixer_undo`, `kw_save` (keywords).
+  `menu_save` (menu, one entry per save), `replace_apply`/`replace_undo`, `fixer_write`/`fixer_undo`, `kw_save` (keywords),
+  `canonical_fix` (canonical).
   A new write endpoint must log too.
 - `activity_list.php` merges the older journals at read time (`fx-<id>` / `fr-<op>` entries) unless an activity
   entry already points at that journal line; undo state of journal-backed entries comes from the journal.
@@ -190,6 +193,15 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
   renaming an origin logs two History changes (old removed, new added). Regex rules are
   editable too (pattern must compile); they are matched by exact pattern, plain rules by
   `dw_redirect_key()`.
+- **Canonical check after retiring a URL**: `offerCanonicalCleanup(paths)` (common.js) runs after the
+  trash -> 410 prompts (whatever the answer - a trashed canonical target 404s anyway) and after a Redirects-tab
+  save that adds/edits a plain 301/302/307/410/451 rule. It asks `canonical_report.php?paths=` which posts use
+  those URLs as `_yoast_wpseo_canonical` and offers (confirmDialog) to remove them. Matching lives in
+  `lib/canonical.php` (`dw_canonical_audit()`): plain rules by `dw_redirect_key()`, regex rules too, 3xx chains
+  followed (max 5 hops) for the suggested target; trashed posts' own canonicals are ignored, external
+  (cross-domain) canonicals are out of scope. `canonical_fix.php` is all-or-nothing with an `expected` check,
+  syncs `wp_yoast_indexable.canonical`, does not bump `post_modified`, logs source `canonical`
+  (undo = the generic meta undo + indexable sync in `activity_undo.php`).
 - **Yoast meta keys** use the `_yoast_wpseo_*` prefix on these installs.
 - **Permalinks** come from each site's real `permalink_structure` option
   (Healthray `/%category%/%postname%/`, Botphonic flat). Pages/CPTs use the
@@ -234,6 +246,8 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 | `replace_history.php` | GET | Find & Replace journal, newest first |
 | `kw_options.php` / `kw_list.php` | GET | Focus Keywords: types + categories / rows with duplicate flags |
 | `kw_save.php` | POST | Focus Keywords: save staged keyword edits (JSON `changes:[{post_id, focus_keyword, expected}]`, max 500). All-or-nothing; each row's stored `_yoast_wpseo_focuskw` must still equal `expected` (else 409 + per-row `conflict` errors). Empty = meta deleted; syncs `wp_yoast_indexable.primary_focus_keyword`, bumps `post_modified`. Edits in the tab stage inline and save only via the save bar's Review & save (`confirmDialog`) |
+| `canonical_report.php` | GET/POST | Canonicals: posts whose canonical hits a 410 / 3xx rule / retired post (`paths=` restricts to those URLs, `unmatched=0`, `format=csv`) |
+| `canonical_fix.php` | POST | `items` JSON `[{post_id, expected, canonical}]` (max 1000, `''` = remove). All-or-nothing, 409 on conflict |
 | `_test_store.php` | CLI | redirect-store self test |
 
 ## Extension pointers

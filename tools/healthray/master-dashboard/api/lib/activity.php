@@ -25,7 +25,7 @@
  * Tests can point the log elsewhere with the MD_ACTIVITY_DIR constant or env var.
  */
 
-const MD_ACTIVITY_SOURCES  = ['content', 'bulk', 'redirects', 'menu', 'replace', 'fixer', 'keywords'];
+const MD_ACTIVITY_SOURCES  = ['content', 'bulk', 'redirects', 'menu', 'replace', 'fixer', 'keywords', 'canonical'];
 const MD_ACTIVITY_MAX_SIZE = 20 * 1024 * 1024;
 
 function md_activity_dir(): string

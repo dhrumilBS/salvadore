@@ -295,6 +295,12 @@ async function runRedirectOps(ops, { title, okLabel, tone = 'primary', replace =
     redirectSelection.clear();
     loadRedirects();
     onRedirectsChanged();
+    // A URL that now redirects or is gone must not stay any post's canonical. Not awaited:
+    // the caller closes its modal first, the prompt follows once the check answers.
+    const retired = (json.results || [])
+        .filter(r => r.format === 'plain' && !r.unchanged && r.after && REDIRECT_TYPES.includes(Number(r.after.type)))
+        .map(r => r.origin);
+    offerCanonicalCleanup(retired, { reason: `${pluralize(retired.length, 'URL')} now ${retired.length === 1 ? 'redirects or is' : 'redirect or are'} gone` });
     return { saved: true };
 }
 

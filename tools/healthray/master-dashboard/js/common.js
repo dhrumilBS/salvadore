@@ -703,8 +703,14 @@ async function submitRedirectRaw(origin, type, target, replace = false) {
     }
 }
 
-/** Single-post prompt (Content tab): confirm, add a 410, offer to replace an existing conflicting rule. */
+/** Single-post prompt (Content tab): 410 prompt, then the canonical check for that URL. */
 async function offerTrashRedirect(id, path) {
+    await offerTrashRedirect410(id, path);
+    await offerCanonicalCleanup([path], { reason: `post #${id} was trashed` });
+}
+
+/** Confirm, add a 410, offer to replace an existing conflicting rule. */
+async function offerTrashRedirect410(id, path) {
     const ok = await confirmDialog({
         title: 'Add a 410 redirect?',
         message: `Post #${id} was just trashed. Add a 410 (Gone) redirect for its old URL?`,
@@ -741,10 +747,16 @@ async function offerTrashRedirect(id, path) {
     if (json.success) onRedirectsChanged();
 }
 
-/** Batch prompt (Bulk URL Update tab): one confirm for the whole set, then one follow-up for any conflicts found along the way. */
+/** Batch prompt (Bulk URL Update tab, Content "Save all"): 410 prompts, then the canonical check for those URLs. */
 async function offerBulkTrashRedirects(rows) {
     rows = rows.filter(r => r.path);
     if (!rows.length) return;
+    await offerBulkTrashRedirects410(rows);
+    await offerCanonicalCleanup(rows.map(r => r.path), { reason: `${pluralize(rows.length, 'post')} were trashed` });
+}
+
+/** One confirm for the whole set, then one follow-up for any conflicts found along the way. */
+async function offerBulkTrashRedirects410(rows) {
 
     const ok = await confirmDialog({
         title: `Add ${pluralize(rows.length, '410 redirect')}?`,
@@ -781,4 +793,72 @@ async function offerBulkTrashRedirects(rows) {
         }
     }
     onRedirectsChanged();
+}
+
+/* ══════════════════ "Retired a URL -> fix canonicals pointing at it?" ══════════════════
+ * Runs after a post is trashed (Content / Bulk) and after a Redirects-tab save
+ * adds or edits a 301/302/307/410/451 rule. Any post whose Yoast canonical
+ * names one of those URLs now tells Google "index a URL that redirects / is
+ * gone" - list them and offer to remove the canonical (the post then falls
+ * back to its own URL). Nothing is written without the confirmDialog(); the
+ * full site-wide report lives on the Canonicals tab. */
+
+/** POST canonical_fix.php. items: [{post_id, expected, canonical}] ('' = remove). Returns parsed JSON or null. */
+async function submitCanonicalFix(items) {
+    try {
+        return await api('canonical_fix.php', { method: 'POST', body: new URLSearchParams({ items: JSON.stringify(items) }) });
+    } catch (err) {
+        console.error(err);
+        return null;
+    }
+}
+
+/** "https://site/a/b/" -> "/a/b/" for compact dialog lines. */
+const canonicalShort = url => String(url || '').replace(/^https?:\/\/[^/]+/i, '') || '/';
+
+/**
+ * Check which posts use any of `paths` (site-relative or absolute) as canonical and
+ * offer to remove those canonicals. Silent when none do. Never throws.
+ */
+async function offerCanonicalCleanup(paths, { reason = 'these URLs were retired' } = {}) {
+    paths = [...new Set((paths || []).map(p => String(p || '').trim()).filter(Boolean))];
+    if (!paths.length) return;
+    let json;
+    try {
+        json = await api('canonical_report.php', { method: 'POST', body: new URLSearchParams({ paths: paths.join('\n'), unmatched: '0' }) });
+    } catch (err) {
+        console.error(err);
+        return;
+    }
+    const rows = (json && json.success && json.rows) || [];
+    if (!rows.length) return;
+
+    const live = rows.filter(r => r.live).length;
+    const ok = await confirmDialog({
+        title: `Remove ${pluralize(rows.length, 'canonical URL')}?`,
+        message: `${rows.length === 1 ? 'A post uses' : `${fmtNum(rows.length)} posts use`} a retired URL as canonical (${reason}). `
+            + `${live ? `${fmtNum(live)} of them ${live === 1 ? 'is' : 'are'} live. ` : 'None of them are live (drafts/pending). '}`
+            + 'Remove the canonical so each post points at its own URL again? '
+            + 'The Canonicals tab can point them at the redirect target instead.',
+        changes: rows.map(r => ({
+            post: `#${r.id} ${decodeEntities(r.title)} (${r.status})`,
+            from: `${canonicalShort(r.canonical)} — ${r.reason}`,
+            to: '',
+            toLabel: "canonical removed (falls back to the post's own URL)",
+        })),
+        okLabel: `Remove ${pluralize(rows.length, 'canonical')}`, tone: 'danger', cancelLabel: 'Keep them',
+    });
+    if (!ok) {
+        toast('Canonicals left unchanged — see the Canonicals tab', '');
+        if (typeof onCanonicalsChanged === 'function') onCanonicalsChanged();
+        return;
+    }
+    const res = await submitCanonicalFix(rows.map(r => ({ post_id: r.id, expected: r.canonical, canonical: '' })));
+    if (!res) { toast('Canonical request failed — check the console/network tab', 'err'); return; }
+    if (!res.success) {
+        alertDialog('Canonicals not changed', res.msg || 'Nothing was written.', (res.errors || []).map(e => e.message));
+        return;
+    }
+    toast(res.msg || 'Canonicals removed', 'ok');
+    if (typeof onCanonicalsChanged === 'function') onCanonicalsChanged();
 }

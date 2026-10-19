@@ -5,7 +5,7 @@
  * new 410 redirect), that other tab is marked stale and reloads the next time
  * it's shown - or right away if it's the one on screen. The active tab lives
  * in the URL hash (#content, #links, #fixer, #redirects, #bulk, #menu, #replace,
- * #keywords) so each one is bookmarkable; Link Fixer adds its own filters after a
+ * #keywords, #canonical) so each one is bookmarkable; Link Fixer adds its own filters after a
  * "?" (#fixer?page=2) and Find & Replace accepts #replace?find=...&replace=... */
 
 const VIEWS = {
@@ -18,10 +18,11 @@ const VIEWS = {
     menu:      { el: 'menuView',      load: loadMenu,     search: 'mo-search',  key: e => moHandleKey(e) },
     replace:   { el: 'replaceView',   load: loadReplace,  search: 'fr-find',    key: e => frHandleKey(e) },
     keywords:  { el: 'keywordsView',  load: loadKeywords, search: 'kw-search',  key: e => kwHandleKey(e) },
+    canonical: { el: 'canonicalView', load: loadCanonicals, search: 'cn-search', key: e => cnHandleKey(e) },
 };
 
 let activeView = 'overview';
-const viewNeedsLoad = { overview: true, content: true, links: true, fixer: true, redirects: true, bulk: false, menu: true, replace: true, keywords: true };
+const viewNeedsLoad = { overview: true, content: true, links: true, fixer: true, redirects: true, bulk: false, menu: true, replace: true, keywords: true, canonical: true };
 
 /** "#fixer?page=2" -> ['fixer', 'page=2'] */
 function parseHash() {
@@ -60,17 +61,22 @@ function markStale(views) {
 /** A post's status/slug/title/order changed (Content save, Bulk status apply, Menu Order save).
  * The tab that made the change keeps its own rows in sync, so it is never reloaded here. */
 function onPostsChanged() {
-    markStale(['overview', 'content', 'links', 'redirects', 'fixer', 'menu', 'keywords'].filter(v => v !== activeView));
+    markStale(['overview', 'content', 'links', 'redirects', 'fixer', 'menu', 'keywords', 'canonical'].filter(v => v !== activeView));
 }
 
 /** Post content / meta changed (Link Fixer write or undo, Find & Replace apply or undo). */
 function onLinksChanged() {
-    markStale(['overview', 'links', 'content', 'fixer', 'menu', 'keywords'].filter(v => v !== activeView));
+    markStale(['overview', 'links', 'content', 'fixer', 'menu', 'keywords', 'canonical'].filter(v => v !== activeView));
 }
 
 /** A Yoast redirect rule was added/edited/deleted (Redirects tab, trash -> 410 prompts, History undo). */
 function onRedirectsChanged() {
-    markStale(['redirects', 'overview'].filter(v => v !== activeView));
+    markStale(['redirects', 'overview', 'canonical'].filter(v => v !== activeView));
+}
+
+/** A canonical was removed/replaced (Canonicals tab, the "retired URL" prompt). The visible tab reloads too. */
+function onCanonicalsChanged() {
+    markStale(['canonical']);
 }
 
 /* ══════════════════════════ Keyboard ══════════════════════════
@@ -121,7 +127,7 @@ function onGlobalKey(e) {
     const k = e.key.toLowerCase();
     if (Date.now() - gPending < 1200) {
         gPending = 0;
-        const target = { o: 'overview', c: 'content', l: 'links', f: 'fixer', r: 'redirects', b: 'bulk', m: 'menu', s: 'replace', k: 'keywords' }[k];
+        const target = { o: 'overview', c: 'content', l: 'links', f: 'fixer', r: 'redirects', b: 'bulk', m: 'menu', s: 'replace', k: 'keywords', n: 'canonical' }[k];
         if (target) { e.preventDefault(); showView(target); }
         return;
     }
@@ -147,6 +153,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindMenuTab();
     bindReplaceTab();
     bindKeywordsTab();
+    bindCanonicalTab();
     bindOverviewTab();
     bindSavedViews();
 

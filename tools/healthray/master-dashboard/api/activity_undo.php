@@ -235,6 +235,14 @@ if ($dbChanges) {
                     $stmt->bind_param('iss', $pid, $key, $before);
                     $stmt->execute();
                 }
+                // Canonicals (canonical_fix.php): keep Yoast's indexable in step, as the fix did.
+                if ($key === '_yoast_wpseo_canonical' && ($hasIndexableCanonical ??= (bool) $conn->query("SELECT 1 FROM information_schema.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wp_yoast_indexable' AND COLUMN_NAME = 'canonical' LIMIT 1")->fetch_row())) {
+                    $idxVal = ($c['before'] ?? null) === null || trim((string) $c['before']) === '' ? null : (string) $c['before'];
+                    $stmt = $conn->prepare("UPDATE wp_yoast_indexable SET canonical = ? WHERE object_id = ? AND object_type = 'post'");
+                    $stmt->bind_param('si', $idxVal, $pid);
+                    $stmt->execute();
+                }
                 $restoredChanges[] = $c;
             }
         }

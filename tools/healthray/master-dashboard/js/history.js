@@ -18,13 +18,13 @@
 const HISTORY_PAGE = 200;
 const HISTORY_SOURCES = [
     ['', 'All'], ['content', 'Content'], ['bulk', 'Bulk'], ['redirects', 'Redirects'], ['menu', 'Menu Order'],
-    ['replace', 'Find & Replace'], ['fixer', 'Link Fixer'], ['keywords', 'Keywords'],
+    ['replace', 'Find & Replace'], ['fixer', 'Link Fixer'], ['keywords', 'Keywords'], ['canonical', 'Canonicals'],
 ];
 const HISTORY_SOURCE_LABEL = Object.fromEntries(HISTORY_SOURCES.filter(([k]) => k));
 const HISTORY_FIELD_LABEL = {
     post_title: 'Title', post_name: 'Slug', post_status: 'Status', post_date: 'Publish date', post_date_gmt: 'Publish date (GMT)',
     menu_order: 'Menu order', post_content: 'Post content', _yoast_wpseo_title: 'Meta title', _yoast_wpseo_metadesc: 'Meta description',
-    _yoast_wpseo_focuskw: 'Focus keyword',
+    _yoast_wpseo_focuskw: 'Focus keyword', _yoast_wpseo_canonical: 'Canonical URL',
 };
 const HISTORY_CLIP = 220; // chars shown before "show more"
 
@@ -252,8 +252,8 @@ function rerenderHistoryEntry(id) {
 
 /* ── undo ── */
 const HISTORY_AFFECTS = {
-    posts: ['content', 'links', 'redirects', 'fixer', 'menu', 'keywords'],
-    links: ['links', 'content', 'fixer', 'menu', 'keywords'],
+    posts: ['content', 'links', 'redirects', 'fixer', 'menu', 'keywords', 'canonical'],
+    links: ['links', 'content', 'fixer', 'menu', 'keywords', 'canonical'],
     redirects: ['redirects'],
 };
 
