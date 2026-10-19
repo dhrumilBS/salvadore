@@ -62,6 +62,7 @@ let contentDirty = {};
 // prompt for a post whose row has since been paged off screen.
 let contentDirtyMeta = {};
 const nextContentSignal = latestOnly();
+let contentPager = null; // mdPager, created in bindContentTab()
 let contentPostTypes = []; // [{type, count}] for the current site
 
 function hasUnsavedContentEdits() {
@@ -70,16 +71,14 @@ function hasUnsavedContentEdits() {
 
 /* ---------- column picker ---------- */
 function loadVisibleColumns() {
-    try {
-        const stored = JSON.parse(localStorage.getItem('md_columns') || 'null');
-        const valid = Array.isArray(stored) ? stored.filter(k => ALL_COLUMNS.some(c => c.key === k)) : [];
-        if (valid.length) return valid;
-    } catch (e) { /* ignore malformed/blocked storage */ }
+    const stored = mdStore.get('content.columns', null, { legacy: 'md_columns' });
+    const valid = Array.isArray(stored) ? stored.filter(k => ALL_COLUMNS.some(c => c.key === k)) : [];
+    if (valid.length) return valid;
     return ALL_COLUMNS.filter(c => c.defaultVisible !== false).map(c => c.key);
 }
 
 function saveVisibleColumns() {
-    try { localStorage.setItem('md_columns', JSON.stringify(visibleColumns)); } catch (e) { /* storage blocked */ }
+    mdStore.set('content.columns', visibleColumns);
 }
 
 function activeColumns() {
@@ -193,7 +192,7 @@ function renderContentTable() {
     const cols = activeColumns();
     const tbody = document.getElementById('tableBody');
     if (!contentRows.length) {
-        tbody.innerHTML = `<tr><td colspan="${cols.length + 1}" class="state-msg">No posts match the current filters/search.</td></tr>`;
+        tbody.innerHTML = tableStateRow(cols.length + 1, 'No posts match the current filters/search.');
         applyDirtyOverlay();
         return;
     }
@@ -205,8 +204,7 @@ function renderContentTable() {
 }
 
 function showContentState(msg, isError) {
-    document.getElementById('tableBody').innerHTML =
-        `<tr><td colspan="${activeColumns().length + 1}" class="state-msg${isError ? ' error' : ''}">${msg}</td></tr>`;
+    document.getElementById('tableBody').innerHTML = tableStateRow(activeColumns().length + 1, msg, isError ? 'error' : '', { html: true });
 }
 
 function loadContent() {
@@ -226,16 +224,8 @@ function loadContent() {
             contentRows = json.data;
             contentState.page = json.page;
             renderContentTable();
-            document.getElementById('stTotal').textContent = json.total;
-            document.getElementById('stTotal2').textContent = json.total;
-            document.getElementById('stPage').textContent = json.page;
-            document.getElementById('stPage2').textContent = `${json.page} of ${json.total_pages}`;
-            document.getElementById('stPages').textContent = json.total_pages;
-            document.getElementById('stShowing').textContent = contentRows.length;
-            document.getElementById('pgFirst').disabled = json.page <= 1;
-            document.getElementById('pgPrev').disabled = json.page <= 1;
-            document.getElementById('pgNext').disabled = json.page >= json.total_pages;
-            document.getElementById('pgLast').disabled = json.page >= json.total_pages;
+            document.getElementById('stTotal').textContent = fmtNum(json.total);
+            contentPager.render({ page: json.page, total: json.total });
         })
         .catch(err => {
             if (isAbort(err)) return;
@@ -563,11 +553,12 @@ function bindContentTab() {
             });
         });
 
-    document.getElementById('fPerPage').addEventListener('change', e => {
-        contentState.per_page = parseInt(e.target.value, 10);
-        contentState.page = 1;
-        loadContent();
+    contentPager = mdPager('contentPager', {
+        sizes: [20, 50, 100, 200, 500, 1000], perPage: contentState.per_page, noun: 'post', storeKey: 'content.perPage',
+        onPage: goToContentPage,
+        onPerPage: n => { contentState.per_page = n; goToContentPage(1); },
     });
+    contentState.per_page = contentPager.perPage;
 
     document.getElementById('fDir').addEventListener('click', () => {
         contentState.dir = contentState.dir === 'DESC' ? 'ASC' : 'DESC';
@@ -602,10 +593,6 @@ function bindContentTab() {
         loadContent();
     });
 
-    document.getElementById('pgFirst').addEventListener('click', () => goToContentPage(1));
-    document.getElementById('pgPrev').addEventListener('click', () => goToContentPage(Math.max(1, contentState.page - 1)));
-    document.getElementById('pgNext').addEventListener('click', () => goToContentPage(contentState.page + 1));
-    document.getElementById('pgLast').addEventListener('click', () => goToContentPage(parseInt(document.getElementById('stPages').textContent, 10)));
 
     // Unsaved-edit prompt on leaving the page: common.js (unsavedTabs) covers every tab.
 

@@ -141,7 +141,6 @@
                     <span>Filters &amp; search</span>
                     <div class="stats-row">
                         <span>Total matching <b id="stTotal">0</b></span>
-                        <span>Page <b id="stPage">1</b> of <b id="stPages">1</b></span>
                     </div>
                 </div>
 
@@ -177,15 +176,6 @@
                         <option value="author">Author</option>
                     </select>
                     <button type="button" class="btn" id="fDir" title="Toggle sort direction">↓ DESC</button>
-                    <select id="fPerPage" title="Rows per page">
-                        <option value="10">10 / page</option>
-                        <option value="20">20 / page</option>
-                        <option value="50" selected>50 / page</option>
-                        <option value="100">100 / page</option>
-                        <option value="200">200 / page</option>
-                        <option value="500">500 / page</option>
-                        <option value="1000">1000 / page</option>
-                    </select>
 
                     <div class="toolbar-sep" aria-hidden="true"></div>
 
@@ -238,9 +228,6 @@
             <div class="card-panel">
                 <div class="panel-label">
                     <span>Results</span>
-                    <div class="stats-row">
-                        <span>Showing <b id="stShowing">0</b> of <b id="stTotal2">0</b></span>
-                    </div>
                 </div>
 
                 <div class="toolbar" id="saveBar" style="display:none">
@@ -259,15 +246,7 @@
                     </table>
                 </div>
 
-                <div class="pagination">
-                    <div>Page <b id="stPage2">1</b></div>
-                    <div class="pager-btns">
-                        <button type="button" class="btn" id="pgFirst">« First</button>
-                        <button type="button" class="btn" id="pgPrev">‹ Prev</button>
-                        <button type="button" class="btn" id="pgNext">Next ›</button>
-                        <button type="button" class="btn" id="pgLast">Last »</button>
-                    </div>
-                </div>
+                <div id="contentPager"></div>
             </div>
         </div>
 
@@ -409,19 +388,7 @@
                 </div>
             </div>
 
-            <div class="pagination">
-                <span>Page <b id="lPgCur">1</b> of <b id="lPgTotal">1</b> · <b id="lPgRows">0</b> row(s)</span>
-                <div class="pager-btns">
-                    <select id="lPerPage" class="btn small" style="height:31px">
-                        <option value="20">20 / page</option>
-                        <option value="50" selected>50 / page</option>
-                        <option value="100">100 / page</option>
-                        <option value="200">200 / page</option>
-                    </select>
-                    <button type="button" class="btn small" id="lPgPrev">‹ Prev</button>
-                    <button type="button" class="btn small" id="lPgNext">Next ›</button>
-                </div>
-            </div>
+            <div id="lPager"></div>
         </div>
 
         <!-- ══════════════════ LINK FIXER VIEW (js/fixer.js) ══════════════════ -->
@@ -605,26 +572,8 @@
                 </table>
             </div>
 
-            <!-- Footer / pagination -->
-            <footer class="pagination fx-footer">
-                <span id="fx-footer-info">—</span>
-                <div class="pager-btns">
-                    <label class="fx-field">Posts / page
-                        <select id="fx-perpage">
-                            <option value="25">25</option>
-                            <option value="50" selected>50</option>
-                            <option value="100">100</option>
-                            <option value="200">200</option>
-                            <option value="500">500</option>
-                        </select>
-                    </label>
-                    <label class="fx-field">Page
-                        <input type="number" class="fx-page-input" id="fx-page" value="1" min="1" title="Type a page number and press Enter">
-                        <span id="fx-page-total">/ 1</span>
-                    </label>
-                </div>
-                <nav class="fx-pagination" id="fx-pagination" aria-label="Pages"></nav>
-            </footer>
+            <!-- Footer / pagination (mdPager) -->
+            <footer class="fx-footer" id="fx-pager"></footer>
         </div>
 
         <!-- ══════════════════ REDIRECTS VIEW ══════════════════ -->
@@ -635,7 +584,6 @@
                     <span>Redirects — Yoast SEO Premium</span>
                     <div class="stats-row">
                         <span>Total matching <b id="rStTotal">0</b></span>
-                        <span>Page <b id="rStPage">1</b> of <b id="rStPages">1</b></span>
                     </div>
                 </div>
 
@@ -667,13 +615,6 @@
                         <option value="type">Type</option>
                     </select>
                     <button type="button" class="btn" id="rDir" title="Toggle sort direction">↑ ASC</button>
-                    <select id="rPerPage" title="Rows per page">
-                        <option value="10">10 / page</option>
-                        <option value="20">20 / page</option>
-                        <option value="50" selected>50 / page</option>
-                        <option value="100">100 / page</option>
-                        <option value="200">200 / page</option>
-                    </select>
 
                     <div class="toolbar-sep" aria-hidden="true"></div>
 
@@ -712,9 +653,7 @@
             <div class="card-panel">
                 <div class="panel-label">
                     <span>Results</span>
-                    <div class="stats-row">
-                        <span>Showing <b id="rStShowing">0</b> of <b id="rStTotal2">0</b></span>
-                    </div>
+
                 </div>
 
                 <div class="table-wrap">
@@ -728,15 +667,7 @@
                     </table>
                 </div>
 
-                <div class="pagination">
-                    <div>Page <b id="rStPage2">1</b></div>
-                    <div class="pager-btns">
-                        <button type="button" class="btn" id="rPgFirst">« First</button>
-                        <button type="button" class="btn" id="rPgPrev">‹ Prev</button>
-                        <button type="button" class="btn" id="rPgNext">Next ›</button>
-                        <button type="button" class="btn" id="rPgLast">Last »</button>
-                    </div>
-                </div>
+                <div id="rPager"></div>
             </div>
         </div>
 
@@ -1140,24 +1071,7 @@
                     </div>
                 </div>
 
-                <div class="pagination">
-                    <span id="kw-pg-info">—</span>
-                    <div class="pager-btns">
-                        <select id="kw-page-len" class="btn small" title="Rows per page" aria-label="Rows per page">
-                            <option value="10">10 / page</option>
-                            <option value="25">25 / page</option>
-                            <option value="50">50 / page</option>
-                            <option value="100" selected>100 / page</option>
-                            <option value="250">250 / page</option>
-                            <option value="500">500 / page</option>
-                        </select>
-                        <button type="button" class="btn" data-kw-page="first" title="First page">«</button>
-                        <button type="button" class="btn" data-kw-page="prev" title="Previous page (←)">‹ Prev</button>
-                        <span class="kw-pg-cur">Page <b id="kw-pg-cur">1</b> of <b id="kw-pg-total">1</b></span>
-                        <button type="button" class="btn" data-kw-page="next" title="Next page (→)">Next ›</button>
-                        <button type="button" class="btn" data-kw-page="last" title="Last page">»</button>
-                    </div>
-                </div>
+                <div id="kw-pager"></div>
             </div>
         </div>
 
@@ -1198,7 +1112,6 @@
                     <span>Canonical URLs that redirect, are gone, or point at a retired post</span>
                     <div class="stats-row">
                         <span>Matching <b id="cn-st-total">0</b></span>
-                        <span>Page <b id="cn-st-page">1</b> of <b id="cn-st-pages">1</b></span>
                     </div>
                 </div>
 
@@ -1221,11 +1134,6 @@
                         <option value="">All statuses</option>
                         <option value="live">Live posts only</option>
                         <option value="other">Drafts / pending only</option>
-                    </select>
-                    <select id="cn-per-page" title="Rows per page" aria-label="Rows per page">
-                        <option value="50">50 / page</option>
-                        <option value="100" selected>100 / page</option>
-                        <option value="250">250 / page</option>
                     </select>
 
                     <div class="toolbar-end">
@@ -1262,13 +1170,7 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="pagination">
-                    <div>Showing <b id="cn-st-showing">0</b> of <b id="cn-st-total2">0</b></div>
-                    <div class="pager-btns">
-                        <button type="button" class="btn" id="cn-pg-prev">‹ Prev</button>
-                        <button type="button" class="btn" id="cn-pg-next">Next ›</button>
-                    </div>
-                </div>
+                <div id="cn-pager"></div>
             </div>
         </div>
 
@@ -1628,6 +1530,7 @@
     <div id="toast" aria-live="polite"></div>
 
     <script src="js/common.js"></script>
+    <script src="js/ui.js"></script>
     <script src="js/content.js"></script>
     <script src="js/links.js"></script>
     <script src="js/fixer.js"></script>

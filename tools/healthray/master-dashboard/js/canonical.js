@@ -26,22 +26,22 @@
         scope: '',
         search: '',
         page: 1,
-        perPage: 100,
-        selected: new Set(), // post ids
         busy: false,
     };
     const $ = id => document.getElementById(id);
     const nextSignal = latestOnly();
+    const selected = mdSelection({ onChange: () => syncSelection() }); // post ids
+    let pager = null;
 
     const KIND_BADGE = { gone: 'ls-gone', redirect: 'ls-redirect', not_live: 'badge-trash', unmatched: 'badge-neutral' };
     const KIND_SHORT = { gone: '410 Gone', redirect: 'Redirect', not_live: 'Retired post', unmatched: 'Unmatched' };
 
     function showState(msg, isError = false) {
-        $('cn-body').innerHTML = `<tr><td colspan="7" class="state-msg${isError ? ' error' : ''}">${msg}</td></tr>`;
+        $('cn-body').innerHTML = tableStateRow(7, msg, isError ? 'error' : '', { html: true });
     }
 
     function loadCanonicals() {
-        showState('<span class="spinner"></span> Auditing canonical URLs…');
+        $('cn-body').innerHTML = tableStateRow(7, 'Auditing canonical URLs…', 'loading');
         $('cn-export').href = apiUrl('canonical_report.php', { format: 'csv' });
         api('canonical_report.php', { signal: nextSignal() })
             .then(json => {
@@ -49,8 +49,7 @@
                 st.rows = json.rows || [];
                 st.counts = json.counts || {};
                 st.scanned = json.scanned || 0;
-                const ids = new Set(st.rows.map(r => r.id));
-                [...st.selected].forEach(id => { if (!ids.has(id)) st.selected.delete(id); });
+                selected.prune(st.rows.map(r => r.id));
                 renderKpis();
                 applyFilters();
             })
@@ -74,15 +73,13 @@
             (!st.kind || r.kind === st.kind)
             && (!st.scope || (st.scope === 'live') === r.live)
             && (!q || [r.title, r.permalink, r.canonical, r.reason, r.suggested, String(r.id)].some(v => String(v || '').toLowerCase().includes(q))));
-        const pages = Math.max(1, Math.ceil(st.view.length / st.perPage));
-        st.page = Math.min(Math.max(1, st.page), pages);
         render();
     }
 
-    const pageRows = () => st.view.slice((st.page - 1) * st.perPage, st.page * st.perPage);
+    const pageRows = () => st.view.slice((st.page - 1) * pager.perPage, st.page * pager.perPage);
 
     function rowHtml(r) {
-        const sel = st.selected.has(r.id);
+        const sel = selected.has(r.id);
         const statusCls = r.live ? 'badge-publish' : 'badge-draft';
         return `<tr data-cn-id="${r.id}"${sel ? ' class="r-selected"' : ''}>
             <td class="r-sel-col"><input type="checkbox" class="cn-row-cb" ${sel ? 'checked' : ''} aria-label="Select post #${r.id}"></td>
@@ -104,8 +101,8 @@
     }
 
     function render() {
+        st.page = pager.render({ page: st.page, total: st.view.length });
         const rows = pageRows();
-        const pages = Math.max(1, Math.ceil(st.view.length / st.perPage));
         if (!st.rows.length) {
             showState(st.scanned
                 ? `✓ None of the ${fmtNum(st.scanned)} canonical URLs on this site redirect, are gone, or point at a retired post.`
@@ -116,12 +113,6 @@
             $('cn-body').innerHTML = rows.map(rowHtml).join('');
         }
         $('cn-st-total').textContent = fmtNum(st.view.length);
-        $('cn-st-total2').textContent = fmtNum(st.view.length);
-        $('cn-st-showing').textContent = fmtNum(rows.length);
-        $('cn-st-page').textContent = st.page;
-        $('cn-st-pages').textContent = pages;
-        $('cn-pg-prev').disabled = st.page <= 1;
-        $('cn-pg-next').disabled = st.page >= pages;
         document.querySelectorAll('#cn-stats .stat-card').forEach(c => {
             const on = c.dataset.cnScope === 'live' ? (st.scope === 'live' && !st.kind) : (c.dataset.cnKind === st.kind && !!st.kind);
             c.classList.toggle('active', on);
@@ -130,16 +121,13 @@
     }
 
     function syncSelection() {
-        const n = st.selected.size;
+        const n = selected.size;
         $('cn-bulk').hidden = n === 0;
         $('cn-sel-count').textContent = fmtNum(n);
-        const withTarget = st.rows.filter(r => st.selected.has(r.id) && r.suggested).length;
+        const withTarget = st.rows.filter(r => selected.has(r.id) && r.suggested).length;
         $('cn-bulk-target').disabled = !withTarget;
         $('cn-bulk-target').textContent = withTarget && withTarget < n ? `Use redirect target (${fmtNum(withTarget)})` : 'Use redirect target';
-        const onPage = pageRows();
-        const all = $('cn-select-all');
-        all.checked = onPage.length > 0 && onPage.every(r => st.selected.has(r.id));
-        all.indeterminate = !all.checked && onPage.some(r => st.selected.has(r.id));
+        selected.syncHeader($('cn-select-all'), pageRows().map(r => r.id));
     }
 
     /* ---------- writes ---------- */
@@ -178,22 +166,23 @@
             return;
         }
         toast(res.msg, 'ok');
-        rows.forEach(r => st.selected.delete(r.id));
+        selected.setMany(rows.map(r => r.id), false);
         loadCanonicals();
     }
 
-    const selectedRows = () => st.rows.filter(r => st.selected.has(r.id));
+    const selectedRows = () => st.rows.filter(r => selected.has(r.id));
 
     /* ---------- wiring ---------- */
 
     function bindCanonicalTab() {
+        pager = mdPager('cn-pager', {
+            sizes: [50, 100, 250], perPage: 100, noun: 'issue', storeKey: 'cn.perPage',
+            onPage: p => { st.page = p; render(); },
+        });
         $('cn-search').addEventListener('input', debounce(e => { st.search = e.target.value.trim(); st.page = 1; applyFilters(); }, 200));
         $('cn-kind').addEventListener('change', e => { st.kind = e.target.value; st.page = 1; applyFilters(); });
         $('cn-scope').addEventListener('change', e => { st.scope = e.target.value; st.page = 1; applyFilters(); });
-        $('cn-per-page').addEventListener('change', e => { st.perPage = Number(e.target.value) || 100; st.page = 1; applyFilters(); });
         $('cn-refresh').addEventListener('click', loadCanonicals);
-        $('cn-pg-prev').addEventListener('click', () => { st.page--; render(); });
-        $('cn-pg-next').addEventListener('click', () => { st.page++; render(); });
         $('cn-check-page').addEventListener('click', e => {
             LinkStatus.checkManyWithButton(pageRows().map(r => r.canonical), e.currentTarget, { skipChecked: true });
         });
@@ -215,10 +204,8 @@
             const cb = e.target.closest('.cn-row-cb');
             if (!cb) return;
             const tr = cb.closest('tr');
-            const id = Number(tr.dataset.cnId);
-            if (cb.checked) st.selected.add(id); else st.selected.delete(id);
+            selected.toggle(Number(tr.dataset.cnId), cb.checked);
             tr.classList.toggle('r-selected', cb.checked);
-            syncSelection();
         });
         $('cn-body').addEventListener('click', e => {
             const btn = e.target.closest('[data-cn-act]');
@@ -227,20 +214,20 @@
             if (row) fixRows([row], btn.dataset.cnAct);
         });
         $('cn-select-all').addEventListener('change', e => {
-            pageRows().forEach(r => { if (e.target.checked) st.selected.add(r.id); else st.selected.delete(r.id); });
+            selected.setMany(pageRows().map(r => r.id), e.target.checked);
             render();
         });
         $('cn-bulk-remove').addEventListener('click', () => fixRows(selectedRows(), 'remove'));
         $('cn-bulk-target').addEventListener('click', () => fixRows(selectedRows(), 'target'));
-        $('cn-bulk-clear').addEventListener('click', () => { st.selected.clear(); render(); });
+        $('cn-bulk-clear').addEventListener('click', () => { selected.clear(); render(); });
     }
 
     /** r = refresh, ←/→ = page. Nothing while typing. */
     function cnHandleKey(e) {
         if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return false;
         if (e.key === 'r') { loadCanonicals(); return true; }
-        if (e.key === 'ArrowRight' && !$('cn-pg-next').disabled) { st.page++; render(); return true; }
-        if (e.key === 'ArrowLeft' && !$('cn-pg-prev').disabled) { st.page--; render(); return true; }
+        if (e.key === 'ArrowRight' && st.page < pager.pages) { st.page++; render(); return true; }
+        if (e.key === 'ArrowLeft' && st.page > 1) { st.page--; render(); return true; }
         return false;
     }
 

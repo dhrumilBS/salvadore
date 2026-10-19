@@ -65,6 +65,9 @@ index.html          one page, views toggled by a two-level nav: #navGroups (Over
                     Find & Replace accepts #replace?find=...&replace=... and searches straight away)
 style.css           datewise base, Links-tab components, then shared dialogs/drawer + fx- Link Fixer styles
 js/common.js        shared helpers, confirmDialog()/alertDialog(), toast(), LinkStatus
+js/ui.js            shared list building blocks every tab uses: mdPager (pagination footer: "Showing a–b of N",
+                    numbered pages, rows/page saved per tab), mdSelection (row selection + select-all state),
+                    tableStateRow (loading/empty/error row), mdStore (all prefs: md.<key>, never throws)
 js/content.js       Content tab (staged edits, confirmed saves)
 js/links.js         Links & UTM tab (client-side utm/domain/status filters, detail modal -> "Fix in Link Fixer")
 js/fixer.js         Link Fixer tab: edit / fix-redirect / unlink / find-replace links in post_content + FAQ fields
@@ -156,6 +159,10 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 - Tests: define `MD_ACTIVITY_DIR` (or env var, CLI only) to point the log at a temp dir.
 
 ## Rules that must survive changes
+
+- **List tabs use js/ui.js**: a paged table gets `mdPager` (no hand-built Prev/Next), state rows come
+  from `tableStateRow()`, and prefs go through `mdStore` - never raw `localStorage` (only `theme`, which
+  the inline `<head>` script reads before paint). Rows/page lives in the pager, not the filter panel.
 
 - **Writes and outbound checks need `require_same_origin()`** (`bootstrap.php`;
   `require_post_method()` calls it). This tool has no login, so it's the only

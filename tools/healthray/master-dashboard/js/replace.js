@@ -16,10 +16,7 @@
     const $ = id => document.getElementById(id);
     const esc = escapeHtml;
     const plural = (n, one, many = one + 's') => `${fmtNum(n)} ${n === 1 ? one : many}`;
-    const store = {
-        get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } },
-        set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } },
-    };
+    const store = { get: (k, d) => mdStore.get(k, d) ?? d, set: (k, v) => mdStore.set(k, v) };
 
     const PAGE = 60;                                  // posts rendered per "Show more"
     const ALL_STATUSES = ['publish', 'draft', 'pending', 'private', 'future'];
@@ -51,7 +48,7 @@
 
     const key = f => `${f.kind}:${f.id}`;
     const siteLabel = () => info?.label || siteList.find(d => d.key === SITE)?.label || SITE;
-    const prefsKey = () => `md.fr.prefs.${SITE}`;
+    const prefsKey = () => `fr.prefs.${SITE}`;
 
     /* ───── API ───── */
     async function call(path, opts = {}) {

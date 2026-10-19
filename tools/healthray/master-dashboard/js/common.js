@@ -533,12 +533,12 @@ function applyDensity(compact) {
 
 function initDensity() {
     let compact = false;
-    try { compact = localStorage.getItem('md.density') === 'compact'; } catch (e) { }
+    compact = mdStore.get('density') === 'compact';
     applyDensity(compact);
     document.getElementById('densityToggle')?.addEventListener('click', () => {
         const next = !document.body.classList.contains('density-compact');
         applyDensity(next);
-        try { localStorage.setItem('md.density', next ? 'compact' : 'comfortable'); } catch (e) { }
+        mdStore.set('density', next ? 'compact' : 'comfortable');
     });
 }
 

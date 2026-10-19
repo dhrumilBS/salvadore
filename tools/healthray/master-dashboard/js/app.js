@@ -35,7 +35,7 @@ function parseHash() {
  * tab last used in it (per browser, md.nav.last). */
 const groupOfView = view => document.querySelector(`#viewTabs .view-tab[data-view="${view}"]`)?.dataset.group || 'dashboard';
 let lastViewByGroup = {};
-try { lastViewByGroup = JSON.parse(localStorage.getItem('md.nav.last') || '{}') || {}; } catch (e) { /* blocked */ }
+lastViewByGroup = mdStore.get('nav.last', {}) || {};
 
 function syncNav(view) {
     const group = groupOfView(view);
@@ -54,7 +54,7 @@ function syncNav(view) {
     });
     document.getElementById('viewTabs').classList.toggle('is-single', shown < 2);
     lastViewByGroup[group] = view;
-    try { localStorage.setItem('md.nav.last', JSON.stringify(lastViewByGroup)); } catch (e) { /* blocked */ }
+    mdStore.set('nav.last', lastViewByGroup);
 }
 
 function showGroup(group) {

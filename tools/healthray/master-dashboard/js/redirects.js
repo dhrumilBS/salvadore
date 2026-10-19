@@ -17,6 +17,7 @@ const redirectsState = {
 
 let currentRedirects = [];
 const nextRedirectsSignal = latestOnly();
+let redirectsPager = null; // mdPager, created in bindRedirectsTab()
 
 function redirectTypeBadgeClass(type) {
     if (type === 301 || type === 302) return 'ls-redirect';
@@ -93,8 +94,7 @@ function renderRedirectRow(r) {
 }
 
 function showRedirectsState(msg, isError) {
-    document.getElementById('redirectsBody').innerHTML =
-        `<tr><td colspan="9" class="state-msg${isError ? ' error' : ''}">${msg}</td></tr>`;
+    document.getElementById('redirectsBody').innerHTML = tableStateRow(9, msg, isError ? 'error' : '', { html: true });
 }
 
 function loadRedirects() {
@@ -114,16 +114,8 @@ function loadRedirects() {
             document.getElementById('redirectsBody').innerHTML = currentRedirects.length
                 ? currentRedirects.map(renderRedirectRow).join('')
                 : '<tr><td colspan="9" class="state-msg">No redirects match the current filters/search.</td></tr>';
-            document.getElementById('rStTotal').textContent = json.total;
-            document.getElementById('rStTotal2').textContent = json.total;
-            document.getElementById('rStPage').textContent = json.page;
-            document.getElementById('rStPage2').textContent = `${json.page} of ${json.total_pages}`;
-            document.getElementById('rStPages').textContent = json.total_pages;
-            document.getElementById('rStShowing').textContent = currentRedirects.length;
-            document.getElementById('rPgFirst').disabled = json.page <= 1;
-            document.getElementById('rPgPrev').disabled = json.page <= 1;
-            document.getElementById('rPgNext').disabled = json.page >= json.total_pages;
-            document.getElementById('rPgLast').disabled = json.page >= json.total_pages;
+            document.getElementById('rStTotal').textContent = fmtNum(json.total);
+            redirectsPager.render({ page: json.page, total: json.total });
             syncRedirectSelection();
         })
         .catch(err => {
@@ -157,7 +149,6 @@ function bindRedirectsTab() {
     document.getElementById('rFormat').addEventListener('change', e => { redirectsState.format = e.target.value; reload(); });
     document.getElementById('rMatch').addEventListener('change', e => { redirectsState.match = e.target.value; reload(); });
     document.getElementById('rSort').addEventListener('change', e => { redirectsState.sort = e.target.value; loadRedirects(); });
-    document.getElementById('rPerPage').addEventListener('change', e => { redirectsState.per_page = parseInt(e.target.value, 10); reload(); });
 
     document.getElementById('rDir').addEventListener('click', () => {
         redirectsState.dir = redirectsState.dir === 'DESC' ? 'ASC' : 'DESC';
@@ -187,10 +178,12 @@ function bindRedirectsTab() {
         loadRedirects();
     });
 
-    document.getElementById('rPgFirst').addEventListener('click', () => goToRedirectsPage(1));
-    document.getElementById('rPgPrev').addEventListener('click', () => goToRedirectsPage(Math.max(1, redirectsState.page - 1)));
-    document.getElementById('rPgNext').addEventListener('click', () => goToRedirectsPage(redirectsState.page + 1));
-    document.getElementById('rPgLast').addEventListener('click', () => goToRedirectsPage(parseInt(document.getElementById('rStPages').textContent, 10)));
+    redirectsPager = mdPager('rPager', {
+        sizes: [20, 50, 100, 200], perPage: redirectsState.per_page, noun: 'redirect', storeKey: 'redirects.perPage',
+        onPage: goToRedirectsPage,
+        onPerPage: n => { redirectsState.per_page = n; goToRedirectsPage(1); },
+    });
+    redirectsState.per_page = redirectsPager.perPage;
 
     document.getElementById('rCheckAllLinksBtn').addEventListener('click', e => {
         LinkStatus.checkManyWithButton(currentRedirects.map(r => r.origin_url), e.currentTarget, { skipChecked: true });

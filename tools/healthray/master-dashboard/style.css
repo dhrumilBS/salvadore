@@ -963,6 +963,29 @@ tbody tr:hover .btn-icon,
     padding: 0 11px;
 }
 
+/* Shared pager (js/ui.js mdPager): info left; rows/page + numbered pages right. */
+.md-pager-end { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.md-pager-size { height: 30px; font-size: 12px; }
+.md-pager-nav { display: flex; gap: 3px; flex-wrap: wrap; }
+.md-page-btn {
+    min-width: 30px;
+    height: 30px;
+    padding: 0 8px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text2);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+}
+.md-page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.md-page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.md-page-btn:disabled { opacity: .4; cursor: not-allowed; }
+.md-page-gap { padding: 0 4px; color: var(--text3); align-self: center; }
+
 /* ── Spinner ────────────────────────────────────────────── */
 .spinner {
     display: inline-block;
@@ -2731,28 +2754,6 @@ body.fx-has-bulk .fx-footer { padding-bottom: 76px; } /* keep the pager clear of
 
 .fx-field select, .fx-page-input { height: 30px; }
 .fx-page-input { width: 64px; }
-
-.fx-pagination { display: flex; gap: 3px; flex-wrap: wrap; }
-
-.fx-page-btn {
-    min-width: 30px;
-    height: 30px;
-    padding: 0 8px;
-    border-radius: var(--r-sm);
-    border: 1px solid var(--border);
-    background: var(--surface2);
-    color: var(--text2);
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    font-variant-numeric: tabular-nums;
-}
-
-.fx-page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.fx-page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.fx-page-btn:disabled { opacity: .4; cursor: not-allowed; }
-.fx-page-gap { padding: 0 4px; color: var(--text3); align-self: center; }
 
 /* ── Floating bulk bar ── */
 .fx-bulk-bar {

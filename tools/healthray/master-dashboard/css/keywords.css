@@ -419,21 +419,6 @@
     font-weight: 600;
 }
 
-/* ── Pagination ─────────────────────────────────────────── */
-#keywordsView .pager-btns {
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-#keywordsView #kw-page-len {
-    height: 31px;
-}
-
-#keywordsView .kw-pg-cur {
-    padding: 0 4px;
-    white-space: nowrap;
-}
-
 /* ── Narrow screens ─────────────────────────────────────── */
 @media (max-width: 640px) {
     #keywordsView .kw-frow {

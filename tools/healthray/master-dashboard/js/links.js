@@ -20,7 +20,6 @@ const linksState = {
     sort: 'post_date', // post_date | title | link_count | id
     dir: 'DESC',
     page: 1,
-    per_page: 50,
 };
 
 let linksAllRows = [];      // every post returned by links_list.php for the current server-side filters
@@ -200,15 +199,16 @@ function linkSummaryHtml(row) {
     return `<div class="links-summary">${badge}<button type="button" class="btn small btn-view-post" data-id="${row.id}">View ↗</button></div>`;
 }
 
+let linksPager = null; // mdPager, created in bindLinksTab()
+
 function renderLinksPage() {
-    const totalPages = Math.max(1, Math.ceil(linksFilteredRows.length / linksState.per_page));
-    if (linksState.page > totalPages) linksState.page = totalPages;
-    const start = (linksState.page - 1) * linksState.per_page;
-    const pageRows = linksFilteredRows.slice(start, start + linksState.per_page);
+    linksState.page = linksPager.render({ page: linksState.page, total: linksFilteredRows.length });
+    const start = (linksState.page - 1) * linksPager.perPage;
+    const pageRows = linksFilteredRows.slice(start, start + linksPager.perPage);
 
     const tbody = document.getElementById('lTableBody');
     if (!pageRows.length) {
-        tbody.innerHTML = `<tr><td colspan="${LINKS_COLUMNS.length}"><div class="state-msg">No posts match the current filters.</div></td></tr>`;
+        tbody.innerHTML = tableStateRow(LINKS_COLUMNS.length, 'No posts match the current filters.');
     } else {
         tbody.innerHTML = pageRows.map((r, i) => `
             <tr class="${rowLinksScoped(r).some(l => l.is_utm) ? 'has-utm' : ''}">
@@ -223,11 +223,6 @@ function renderLinksPage() {
     }
 
     document.getElementById('lStShown').textContent = linksFilteredRows.length.toLocaleString();
-    document.getElementById('lPgCur').textContent = linksState.page;
-    document.getElementById('lPgTotal').textContent = totalPages;
-    document.getElementById('lPgRows').textContent = linksFilteredRows.length.toLocaleString();
-    document.getElementById('lPgPrev').disabled = linksState.page <= 1;
-    document.getElementById('lPgNext').disabled = linksState.page >= totalPages;
 }
 
 /* ---------- post link-detail modal ---------- */
@@ -310,9 +305,10 @@ function bindLinksTab() {
         loadLinks();
     });
 
-    document.getElementById('lPerPage').addEventListener('change', e => { linksState.per_page = parseInt(e.target.value, 10); linksState.page = 1; renderLinksPage(); });
-    document.getElementById('lPgPrev').addEventListener('click', () => { if (linksState.page > 1) { linksState.page--; renderLinksPage(); } });
-    document.getElementById('lPgNext').addEventListener('click', () => { linksState.page++; renderLinksPage(); });
+    linksPager = mdPager('lPager', {
+        sizes: [20, 50, 100, 200], perPage: 50, noun: 'post', storeKey: 'links.perPage',
+        onPage: p => { linksState.page = p; renderLinksPage(); },
+    });
 
     document.getElementById('lTableHead').addEventListener('click', e => {
         const th = e.target.closest('th[data-sort]');

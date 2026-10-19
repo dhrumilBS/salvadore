@@ -19,14 +19,15 @@ function svPanel(tab) {
     return document.querySelector(`${SAVED_VIEW_TABS[tab].root} > .card-panel`);
 }
 
-function svKey(tab) { return `md.views.${SITE}.${tab}`; }
+function svKey(tab) { return `views.${SITE}.${tab}`; }
 
 function svLoad(tab) {
-    try { return JSON.parse(localStorage.getItem(svKey(tab)) || '[]') || []; } catch (e) { return []; }
+    const v = mdStore.get(svKey(tab), []);
+    return Array.isArray(v) ? v : [];
 }
 
 function svStore(tab, views) {
-    try { localStorage.setItem(svKey(tab), JSON.stringify(views)); } catch (e) { toast('Could not save the view (browser storage is full or blocked)', 'err'); }
+    if (!mdStore.set(svKey(tab), views)) toast('Could not save the view (browser storage is full or blocked)', 'err');
 }
 
 /** Snapshot every filter control in the panel by id, plus the active button of each tab-group. */

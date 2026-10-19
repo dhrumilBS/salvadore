@@ -28,8 +28,8 @@
         alternatives: 'Alternatives',
     };
 
-    const LS_SORT = 'md.mo.sort';
-    const lsTypeKey = () => `md.mo.${SITE || 'default'}.type`;
+    const LS_SORT = 'mo.sort';
+    const lsTypeKey = () => `mo.${SITE || 'default'}.type`;
 
     const state = {
         type: 'page',
@@ -63,8 +63,9 @@
     const el = id => document.getElementById(id);
     const esc = escapeHtml; // escapes quotes too, so it's safe in attributes
     function plural(n, word, many = word + 's') { return `${fmtNum(n)} ${n === 1 ? word : many}`; }
-    function lsGet(k, d) { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } }
-    function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked */ } }
+    // md.<k> via mdStore (same physical keys as before); strings in, strings out.
+    function lsGet(k, d) { const v = mdStore.get(k, null); return v === null ? d : String(v); }
+    function lsSet(k, v) { mdStore.set(k, String(v)); }
     function typeLabel(t) { return POST_TYPE_LABELS[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : ''); }
     function noun(n) {
         const label = typeLabel(state.type).toLowerCase();

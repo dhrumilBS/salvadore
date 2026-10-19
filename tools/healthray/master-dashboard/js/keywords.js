@@ -71,6 +71,7 @@
     const KW_MAX_LEN = 191;
 
     const $ = id => document.getElementById(id);
+    let pager = null; // mdPager, created in bindKeywordsTab()
     const nextRowsSignal = latestOnly();
     const nextOptionsSignal = latestOnly();
     const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -78,14 +79,13 @@
     let gAt = 0;
 
     /* ---------- prefs (localStorage, md.kw.*) ---------- */
+    // md.kw.<key> via mdStore; strings in, strings out (callers compare '1' / JSON.parse).
     function prefGet(key, def) {
-        try {
-            const v = localStorage.getItem('md.kw.' + key);
-            return v === null ? def : v;
-        } catch (e) { return def; }
+        const v = mdStore.get('kw.' + key, null);
+        return v === null ? def : (typeof v === 'string' ? v : JSON.stringify(v));
     }
     function prefSet(key, value) {
-        try { localStorage.setItem('md.kw.' + key, String(value)); } catch (e) { /* storage blocked */ }
+        mdStore.set('kw.' + key, String(value));
     }
     const sitePref = name => (SITE || 'default') + '.' + name;
 
@@ -785,7 +785,7 @@
             const msg = !st.rows.length
                 ? (st.onlyDup ? 'No duplicate focus keywords in this post type / status.' : 'No posts found for this post type / status.')
                 : 'No posts match the current filters.';
-            tbody.innerHTML = `<tr><td colspan="${cols.length}"><div class="state-msg">${msg}</div></td></tr>`;
+            tbody.innerHTML = tableStateRow(cols.length, msg);
         } else {
             tbody.innerHTML = pageRows.map(r => {
                 const cls = ((r.group ? `kw-grp kw-g${r.group}` : '') + (st.edits.has(r.id) ? ' kw-changed' : '') +
@@ -796,21 +796,18 @@
 
         $('kw-st-shown').textContent = fmtNum(total);
         $('kw-st-total').textContent = fmtNum(st.rows.length);
-        $('kw-pg-info').textContent = total
-            ? `${fmtNum(start + 1)}–${fmtNum(start + pageRows.length)} of ${pluralize(total, 'post')}` +
-              (total !== st.rows.length ? ` (filtered from ${fmtNum(st.rows.length)})` : '')
-            : (st.rows.length ? `No matches (filtered from ${fmtNum(st.rows.length)})` : 'No posts');
-        $('kw-pg-cur').textContent = fmtNum(st.page);
-        $('kw-pg-total').textContent = fmtNum(pages);
-        document.querySelectorAll('#keywordsView [data-kw-page]').forEach(b => {
-            const p = b.dataset.kwPage;
-            b.disabled = (p === 'first' || p === 'prev') ? st.page <= 1 : st.page >= pages;
+        pager.render({
+            page: st.page, pages,
+            info: total
+                ? `Showing <b>${fmtNum(start + 1)}–${fmtNum(start + pageRows.length)}</b> of <b>${pluralize(total, 'post')}</b>` +
+                  (total !== st.rows.length ? ` (filtered from ${fmtNum(st.rows.length)})` : '')
+                : (st.rows.length ? `No matches (filtered from ${fmtNum(st.rows.length)})` : 'No posts'),
         });
     }
 
     function goPage(where) {
         const pages = Math.max(1, Math.ceil(st.view.length / st.pageLen));
-        const target = { first: 1, prev: st.page - 1, next: st.page + 1, last: pages }[where];
+        const target = typeof where === 'number' ? where : { first: 1, prev: st.page - 1, next: st.page + 1, last: pages }[where];
         if (target === undefined || target < 1 || target > pages || target === st.page) return false;
         st.page = target;
         renderBody();
@@ -974,9 +971,12 @@
         if (!view) return;
 
         // Per-browser prefs that don't depend on the site.
-        const len = parseInt(prefGet('pageLen', '100'), 10);
-        st.pageLen = PAGE_LENS.includes(len) ? len : 100;
-        $('kw-page-len').value = String(st.pageLen);
+        pager = mdPager('kw-pager', {
+            sizes: PAGE_LENS, perPage: 100, noun: 'post', storeKey: 'kw.pageLen',
+            onPage: p => goPage(p),
+            onPerPage: n => { st.pageLen = n; st.page = 1; renderBody(); renderSaveBar(); },
+        });
+        st.pageLen = pager.perPage;
         try {
             const hidden = JSON.parse(prefGet('hiddenCols', '[]'));
             if (Array.isArray(hidden)) hidden.forEach(k => { if (COLS.some(c => c.key === k && !c.locked)) st.hidden.add(k); });
@@ -991,7 +991,6 @@
             if ((el = t.closest('[data-kw-menu]'))) { e.preventDefault(); toggleMenu(el.dataset.kwMenu, el); return; }
             if ((el = t.closest('[data-kw-export]'))) { runExport(el.dataset.kwExport); return; }
             if ((el = t.closest('.kw-stat'))) { onStatClick(el.dataset.kwStat); return; }
-            if ((el = t.closest('[data-kw-page]'))) { goPage(el.dataset.kwPage); return; }
             if ((el = t.closest('th[data-kw-sort]'))) {
                 const key = el.dataset.kwSort;
                 if (st.sortKey !== key) { st.sortKey = key; st.sortDir = 1; }
@@ -1065,12 +1064,6 @@
                 render();
             } else if (t.id === 'kw-only-dup') {
                 setOnlyDup(t.checked);
-            } else if (t.id === 'kw-page-len') {
-                const n = parseInt(t.value, 10);
-                st.pageLen = PAGE_LENS.includes(n) ? n : 100;
-                prefSet('pageLen', st.pageLen);
-                st.page = 1;
-                renderBody();
             } else if (t.matches('input[data-kw-sel]')) {
                 const id = +t.dataset.kwSel;
                 if (t.checked) st.selected.add(id); else st.selected.delete(id);

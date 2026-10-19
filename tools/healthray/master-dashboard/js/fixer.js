@@ -69,12 +69,15 @@ const FX_ICON = {
 };
 
 /* ── storage (per-viewer preferences only) ── */
+// Strings in, strings out (callers compare '1' / JSON.parse) - stored via mdStore as md.fx.<key>.
 function fxLsGet(key, fallback) {
-    try { const v = localStorage.getItem('md_fx_' + key); return v === null ? fallback : v; } catch (e) { return fallback; }
+    const v = mdStore.get('fx.' + key, null, { legacy: 'md_fx_' + key });
+    return v === null ? fallback : (typeof v === 'string' ? v : JSON.stringify(v));
 }
 function fxLsSet(key, value) {
-    try { localStorage.setItem('md_fx_' + key, value); } catch (e) { /* private mode */ }
+    mdStore.set('fx.' + key, String(value));
 }
+let fxPager = null; // mdPager, created in bindFixerTab()
 
 /* ── small helpers ── */
 function fxTypeLabel(type) {
@@ -561,8 +564,9 @@ function fxUpdateCounters(shownLinks, shownGroups) {
     fx$('fx-filter-note').innerHTML = filtered
         ? `Showing <strong>${fmtNum(shownLinks)}</strong> of <strong>${fmtNum(fx.links.length)}</strong> <button type="button" class="fx-link-btn" data-fx-reset>Reset</button>`
         : '';
-    fx$('fx-footer-info').innerHTML = `<strong>${fmtNum(shownGroups)}</strong> post${shownGroups === 1 ? '' : 's'} ·
-        <strong>${fmtNum(shownLinks)}</strong> link${shownLinks === 1 ? '' : 's'} in view`;
+    fx.footerInfo = `<b>${fmtNum(shownGroups)}</b> post${shownGroups === 1 ? '' : 's'} ·
+        <b>${fmtNum(shownLinks)}</b> link${shownLinks === 1 ? '' : 's'} in view` + (fx.totalPosts ? ` · ${fmtNum(fx.totalPosts)} posts in all` : '');
+    fxRenderPagination();
     fx$('fx-search-count').textContent = fx.terms.length ? `${fmtNum(shownLinks)} match${shownLinks === 1 ? '' : 'es'}` : '';
     fx$('fx-searchbox').classList.toggle('has-value', !!fx.search);
 }
@@ -954,27 +958,12 @@ function fxSyncBulkMode() {
 
 /* ═══════════════════════ Pagination ═══════════════════════ */
 function fxRenderPagination() {
-    const total = fx.totalPages;
-    const cur = Math.min(Math.max(1, fx.page), total);
-    fx$('fx-page').value = cur;
-    fx$('fx-page').max = total;
-    fx$('fx-page-total').textContent = `/ ${fmtNum(total)}`;
-    const nav = fx$('fx-pagination');
-    if (total <= 1) { nav.innerHTML = ''; return; }
-
-    const btn = (label, page, o = {}) => `<button type="button" class="fx-page-btn${o.active ? ' active' : ''}" data-page="${page}" ${o.disabled ? 'disabled' : ''} ${o.active ? 'aria-current="page"' : ''} ${o.title ? `title="${o.title}"` : ''}>${label}</button>`;
-    let html = btn('‹', cur - 1, { disabled: cur === 1, title: 'Previous page (←)' });
-    const s = Math.max(1, cur - 2), e = Math.min(total, cur + 2);
-    if (s > 1) { html += btn('1', 1); if (s > 2) html += '<span class="fx-page-gap">…</span>'; }
-    for (let p = s; p <= e; p++) html += btn(String(p), p, { active: p === cur });
-    if (e < total) { if (e < total - 1) html += '<span class="fx-page-gap">…</span>'; html += btn(String(total), total); }
-    html += btn('›', cur + 1, { disabled: cur === total, title: 'Next page (→)' });
-    nav.innerHTML = html;
+    if (fxPager) fxPager.render({ page: fx.page, pages: fx.totalPages || 1, info: fx.footerInfo || '' });
 }
 
 function fxChangePage(p) {
     p = Math.min(Math.max(1, p), fx.totalPages || p);
-    if (p === fx.page && fx.loaded) { fx$('fx-page').value = p; return; }
+    if (p === fx.page && fx.loaded) return;
     fx.page = p;
     fx$('fx-table-wrap').scrollTop = 0;
     loadFixer();
@@ -1231,9 +1220,13 @@ function fxSetTableEmpty(msg, sub) {
 /* ═══════════════════════ Binding ═══════════════════════ */
 function bindFixerTab() {
     // Preferences
-    const perPage = fxLsGet('perPage', '50');
-    if ([...fx$('fx-perpage').options].some(o => o.value === perPage)) fx$('fx-perpage').value = perPage;
-    fx.perPage = parseInt(fx$('fx-perpage').value, 10);
+    fxLsGet('perPage', null); // moves an old md_fx_perPage to md.fx.perPage before the pager reads it
+    fxPager = mdPager('fx-pager', {
+        sizes: [25, 50, 100, 200, 500], perPage: 50, storeKey: 'fx.perPage',
+        onPage: fxChangePage,
+        onPerPage: n => { fx.perPage = n; fx.page = 1; loadFixer(); },
+    });
+    fx.perPage = fxPager.perPage;
     fx$('fx-autocheck').checked = fxLsGet('autoCheck', '1') === '1';
     fxSetDensity(fxLsGet('density', 'comfortable') === 'compact');
     const sort = fxLsGet('sort', 'id-asc');
@@ -1383,19 +1376,7 @@ function bindFixerTab() {
         fxRenderTable();
     });
 
-    // Pagination
-    fx$('fx-pagination').addEventListener('click', e => {
-        const b = e.target.closest('.fx-page-btn');
-        if (b && !b.disabled) fxChangePage(parseInt(b.dataset.page, 10));
-    });
-    fx$('fx-page').addEventListener('change', () => fxChangePage(parseInt(fx$('fx-page').value, 10) || 1));
-    fx$('fx-page').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); fxChangePage(parseInt(fx$('fx-page').value, 10) || 1); } });
-    fx$('fx-perpage').addEventListener('change', () => {
-        fx.perPage = parseInt(fx$('fx-perpage').value, 10);
-        fxLsSet('perPage', fx$('fx-perpage').value);
-        fx.page = 1;
-        loadFixer();
-    });
+    // Pagination: fxPager (mdPager), created with the preferences above
 
     // Edit modal
     fx$('fx-modal-close').addEventListener('click', fxCloseEdit);
