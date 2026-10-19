@@ -37,17 +37,27 @@
             </div>
         </div>
 
-        <div class="tab-group view-tab-group" id="viewTabs" role="tablist">
-            <button type="button" class="tab view-tab active" data-view="overview" role="tab" title="Overview — what needs fixing on this site (g o)">Overview</button>
-            <button type="button" class="tab view-tab" data-view="content" role="tab" title="Content (g c)">Content</button>
-            <button type="button" class="tab view-tab" data-view="links" role="tab" title="Links &amp; UTM (g l)">Links &amp; UTM</button>
-            <button type="button" class="tab view-tab" data-view="fixer" role="tab" title="Link Fixer — edit, fix and unlink links in post content (g f)">Link Fixer</button>
-            <button type="button" class="tab view-tab" data-view="redirects" role="tab" title="Redirects (g r)">Redirects</button>
-            <button type="button" class="tab view-tab" data-view="bulk" role="tab" title="Bulk URL Update (g b)">Bulk URL Update</button>
-            <button type="button" class="tab view-tab" data-view="menu" role="tab" title="Menu Order — reorder and edit title, slug, date (g m)">Menu Order</button>
-            <button type="button" class="tab view-tab" data-view="replace" role="tab" title="Find &amp; Replace — text in titles, content, Elementor, SEO and meta (g s)">Find &amp; Replace</button>
-            <button type="button" class="tab view-tab" data-view="keywords" role="tab" title="Focus Keywords — Yoast keyword duplicates (g k)">Focus Keywords</button>
-            <button type="button" class="tab view-tab" data-view="canonical" role="tab" title="Canonicals — canonical URLs that redirect or are gone (g n)">Canonicals</button>
+        <!-- Two-level nav: groups (row 2), then the tabs of the active group (row 3, hidden when the
+             group has one tab). Each view keeps its own #hash and g-shortcut (js/app.js NAV_GROUPS). -->
+        <nav class="nav-groups" id="navGroups" role="tablist" aria-label="Sections">
+            <button type="button" class="nav-group" data-group="dashboard" role="tab" title="Overview — what needs fixing on this site (g o)">Overview</button>
+            <button type="button" class="nav-group" data-group="content" role="tab" title="Posts &amp; pages: edit, status, order">Content</button>
+            <button type="button" class="nav-group" data-group="links" role="tab" title="Links inside post content: audit, UTM, fix">Links</button>
+            <button type="button" class="nav-group" data-group="seo" role="tab" title="Focus keywords, canonicals, redirects">SEO</button>
+            <button type="button" class="nav-group" data-group="tools" role="tab" title="Site-wide text tools">Tools</button>
+        </nav>
+
+        <div class="tab-group view-tab-group" id="viewTabs" role="tablist" aria-label="Tabs in this section">
+            <button type="button" class="tab view-tab active" data-view="overview" data-group="dashboard" role="tab" title="Overview — what needs fixing on this site (g o)">Overview</button>
+            <button type="button" class="tab view-tab" data-view="content" data-group="content" role="tab" title="Posts &amp; pages — inline edit, status, export (g c)">Posts &amp; Pages</button>
+            <button type="button" class="tab view-tab" data-view="menu" data-group="content" role="tab" title="Menu Order — reorder and edit title, slug, date (g m)">Menu Order</button>
+            <button type="button" class="tab view-tab" data-view="bulk" data-group="content" role="tab" title="Bulk URL Update — change the status of pasted URLs (g b)">Bulk URL Update</button>
+            <button type="button" class="tab view-tab" data-view="links" data-group="links" role="tab" title="Links &amp; UTM — every link, UTM and domain audit (g l)">Links &amp; UTM</button>
+            <button type="button" class="tab view-tab" data-view="fixer" data-group="links" role="tab" title="Link Fixer — edit, fix and unlink links in post content (g f)">Link Fixer</button>
+            <button type="button" class="tab view-tab" data-view="keywords" data-group="seo" role="tab" title="Focus Keywords — Yoast keyword duplicates (g k)">Focus Keywords</button>
+            <button type="button" class="tab view-tab" data-view="canonical" data-group="seo" role="tab" title="Canonicals — canonical URLs that redirect or are gone (g n)">Canonicals</button>
+            <button type="button" class="tab view-tab" data-view="redirects" data-group="seo" role="tab" title="Redirects — Yoast 301/410 rules (g r)">Redirects</button>
+            <button type="button" class="tab view-tab" data-view="replace" data-group="tools" role="tab" title="Find &amp; Replace — text in titles, content, Elementor, SEO and meta (g s)">Find &amp; Replace</button>
         </div>
 
         <div class="topbar-end">

@@ -57,8 +57,11 @@ Don't fork this per site: a new WordPress site is a new `$DATABASES` entry in
 ## Layout
 
 ```
-index.html          one page, 8 views toggled by #viewTabs (hash: #content #links #fixer #redirects #bulk
-                    #menu #replace #keywords; Link Fixer keeps its filters after a "?": #fixer?page=2&status=error&find=...,
+index.html          one page, views toggled by a two-level nav: #navGroups (Overview / Content / Links / SEO /
+                    Tools) above #viewTabs (each .view-tab has data-group; only the active group's tabs show,
+                    the row hides for one-tab groups; a group click reopens its last tab, md.nav.last).
+                    A new tab = a .view-tab with data-group + a VIEWS entry (hash: #overview #content #links #fixer
+                    #redirects #bulk #menu #replace #keywords #canonical; Link Fixer keeps its filters after a "?": #fixer?page=2&status=error&find=...,
                     Find & Replace accepts #replace?find=...&replace=... and searches straight away)
 style.css           datewise base, Links-tab components, then shared dialogs/drawer + fx- Link Fixer styles
 js/common.js        shared helpers, confirmDialog()/alertDialog(), toast(), LinkStatus

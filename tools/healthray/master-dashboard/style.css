@@ -2925,14 +2925,14 @@ body.fx-has-bulk #toast { bottom: 80px; } /* stack toasts above the floating bul
     .fx-filterbar-end { margin-left: 0; }
 }
 
-/* ── Top bar: two deliberate rows ────────────────────────────
-   Row 1: brand | site, LIVE, history, help, theme. Row 2: every view tab as a
-   full-width underline nav. Eight tabs no longer fit beside the site controls,
+/* ── Top bar: three deliberate rows ──────────────────────────
+   Row 1: brand | site, LIVE, history, help, theme. Row 2: section groups as a
+   full-width underline nav. Row 3: the active group's tabs as pills. Eight tabs no longer fit beside the site controls,
    and letting flex-wrap decide left the site picker stranded on its own row. */
 .topbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "brand end" "tabs tabs";
+    grid-template-areas: "brand end" "groups groups" "tabs tabs";
     column-gap: 18px;
     row-gap: 0;
     padding: 10px 24px 0;
@@ -2941,39 +2941,36 @@ body.fx-has-bulk #toast { bottom: 80px; } /* stack toasts above the floating bul
 .topbar .topbar-end { grid-area: end; margin-left: 0; }
 .page-sub { display: block; }
 
-.topbar .view-tab-group {
-    grid-area: tabs;
+.topbar .nav-groups {
+    grid-area: groups;
     display: flex;
     gap: 4px;
-    width: auto;
     margin: 10px -24px 0;
     padding: 0 18px;
-    background: none;
-    border: 0;
     border-top: 1px solid var(--border-soft);
-    border-radius: 0;
     overflow-x: auto;
     scrollbar-width: none;
 }
-.topbar .view-tab-group::-webkit-scrollbar { display: none; }
-
-.topbar .view-tab {
+.topbar .nav-groups::-webkit-scrollbar { display: none; }
+.topbar .nav-group {
     position: relative;
     flex: none;
-    padding: 11px 12px 12px;
-    border-radius: 0;
+    padding: 11px 14px 12px;
+    border: 0;
     background: none;
-    box-shadow: none;
     color: var(--text2);
-    font-size: 13px;
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
 }
-.topbar .view-tab:hover { color: var(--text); background: none; }
-.topbar .view-tab.active { color: var(--accent); background: none; box-shadow: none; }
-.topbar .view-tab::after {
+.topbar .nav-group:hover { color: var(--text); }
+.topbar .nav-group.active { color: var(--accent); }
+.topbar .nav-group::after {
     content: "";
     position: absolute;
-    left: 8px;
-    right: 8px;
+    left: 10px;
+    right: 10px;
     bottom: 0;
     height: 2px;
     border-radius: 2px 2px 0 0;
@@ -2981,22 +2978,57 @@ body.fx-has-bulk #toast { bottom: 80px; } /* stack toasts above the floating bul
     transform: scaleX(0);
     transition: transform .18s ease;
 }
-.topbar .view-tab.active::after { transform: scaleX(1); }
+.topbar .nav-group.active::after { transform: scaleX(1); }
+.topbar .nav-group:focus-visible { outline: none; box-shadow: inset var(--focus-ring); border-radius: var(--r-sm); }
+
+/* Row 3: the active group's tabs as small pills (hidden for one-tab groups). */
+.topbar .view-tab-group {
+    grid-area: tabs;
+    display: flex;
+    gap: 4px;
+    width: auto;
+    margin: 0 -24px;
+    padding: 7px 24px;
+    background: none;
+    border: 0;
+    border-top: 1px solid var(--border-soft);
+    border-radius: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.topbar .view-tab-group.is-single { display: none; }
+.topbar .view-tab-group::-webkit-scrollbar { display: none; }
+
+.topbar .view-tab {
+    position: relative;
+    flex: none;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: none;
+    box-shadow: none;
+    color: var(--text2);
+    font-size: 12.5px;
+}
+.topbar .view-tab[hidden] { display: none; }
+.topbar .view-tab:hover { color: var(--text); background: var(--surface2, rgba(127,127,127,.08)); }
+.topbar .view-tab.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: none; }
 .topbar .view-tab:focus-visible { outline: none; box-shadow: inset var(--focus-ring); border-radius: var(--r-sm); }
 
 @media (max-width: 980px) {
     .topbar { padding: 10px 14px 0; }
-    .topbar .view-tab-group { margin: 10px -14px 0; padding: 0 8px; }
+    .topbar .nav-groups { margin: 10px -14px 0; padding: 0 8px; }
+    .topbar .view-tab-group { margin: 0 -14px; padding: 7px 14px; }
     .page-sub { display: none; }
 }
 
 @media (max-width: 640px) {
-    .topbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "brand" "end" "tabs"; row-gap: 10px; }
+    .topbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "brand" "end" "groups" "tabs"; row-gap: 10px; }
     .topbar .topbar-end { width: 100%; flex-wrap: wrap; gap: 8px; }
     .topbar .db-switch { flex: 1 1 auto; }
     .topbar .db-switch select { flex: 1; min-width: 0; }
-    .topbar .view-tab-group { margin-top: 0; }
-    .topbar .view-tab { flex: none; padding: 10px 10px 11px; }
+    .topbar .nav-groups { margin-top: 0; }
+    .topbar .nav-group { padding: 10px 10px 11px; }
+    .topbar .view-tab-group { row-gap: 0; }
 }
 
 /* ── Content table: readable columns ─────────────────────────

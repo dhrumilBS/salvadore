@@ -30,14 +30,42 @@ function parseHash() {
     return [view, query];
 }
 
-function showView(view, { skipLoad = false } = {}) {
-    if (!VIEWS[view]) view = 'overview';
-    activeView = view;
-    document.querySelectorAll('#viewTabs .view-tab').forEach(b => {
-        const on = b.dataset.view === view;
+/* Two-level nav: each view tab carries data-group; the group row shows the
+ * section, the tab row only that section's tabs. A group click reopens the
+ * tab last used in it (per browser, md.nav.last). */
+const groupOfView = view => document.querySelector(`#viewTabs .view-tab[data-view="${view}"]`)?.dataset.group || 'dashboard';
+let lastViewByGroup = {};
+try { lastViewByGroup = JSON.parse(localStorage.getItem('md.nav.last') || '{}') || {}; } catch (e) { /* blocked */ }
+
+function syncNav(view) {
+    const group = groupOfView(view);
+    document.querySelectorAll('#navGroups .nav-group').forEach(b => {
+        const on = b.dataset.group === group;
         b.classList.toggle('active', on);
         b.setAttribute('aria-selected', String(on));
     });
+    let shown = 0;
+    document.querySelectorAll('#viewTabs .view-tab').forEach(b => {
+        const on = b.dataset.view === view;
+        b.hidden = b.dataset.group !== group;
+        if (!b.hidden) shown++;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', String(on));
+    });
+    document.getElementById('viewTabs').classList.toggle('is-single', shown < 2);
+    lastViewByGroup[group] = view;
+    try { localStorage.setItem('md.nav.last', JSON.stringify(lastViewByGroup)); } catch (e) { /* blocked */ }
+}
+
+function showGroup(group) {
+    const tabs = [...document.querySelectorAll(`#viewTabs .view-tab[data-group="${group}"]`)].map(b => b.dataset.view);
+    if (tabs.length) showView(tabs.includes(lastViewByGroup[group]) ? lastViewByGroup[group] : tabs[0]);
+}
+
+function showView(view, { skipLoad = false } = {}) {
+    if (!VIEWS[view]) view = 'overview';
+    activeView = view;
+    syncNav(view);
     Object.entries(VIEWS).forEach(([key, v]) => {
         document.getElementById(v.el).style.display = key === view ? '' : 'none';
     });
@@ -165,6 +193,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('viewTabs').addEventListener('click', e => {
         const btn = e.target.closest('.view-tab');
         if (btn) showView(btn.dataset.view);
+    });
+    document.getElementById('navGroups').addEventListener('click', e => {
+        const btn = e.target.closest('.nav-group');
+        if (btn) showGroup(btn.dataset.group);
     });
     window.addEventListener('hashchange', () => {
         const [view, query] = parseHash();
