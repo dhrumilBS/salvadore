@@ -10,12 +10,14 @@
     <!-- Apply the saved theme before first paint, so a light-theme user never sees a dark flash -->
     <script>try { var t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.setAttribute('data-theme', t); } catch (e) { }</script>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="css/links.css">
     <link rel="stylesheet" href="css/menu-order.css">
     <link rel="stylesheet" href="css/replace.css">
     <link rel="stylesheet" href="css/keywords.css">
     <link rel="stylesheet" href="css/history.css">
     <link rel="stylesheet" href="css/overview.css">
     <link rel="stylesheet" href="css/canonical.css">
+    <link rel="stylesheet" href="css/finder.css">
 </head>
 
 <body>
@@ -59,6 +61,11 @@
         </div>
 
         <div class="topbar-end">
+            <button type="button" class="fd-trigger" id="finderBtn" title="Search posts, tabs and actions (Ctrl+K / ⌘K)" aria-label="Search posts" aria-keyshortcuts="Control+K Meta+K">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <span class="fd-trigger-label">Search posts…</span>
+                <kbd class="fd-trigger-kbd">Ctrl K</kbd>
+            </button>
             <div class="db-switch">
                 <label for="dbSelector">Site</label>
                 <select id="dbSelector" title="Switch which site's database this tool reads/writes"></select>
@@ -128,6 +135,7 @@
                 <section class="ov-card" id="ov-card-links" aria-labelledby="ov-t-links"></section>
                 <section class="ov-card" id="ov-card-content" aria-labelledby="ov-t-content"></section>
                 <section class="ov-card" id="ov-card-revisions" aria-labelledby="ov-t-revisions"></section>
+                <section class="ov-card" id="ov-card-canonical" aria-labelledby="ov-t-canonical"></section>
                 <section class="ov-card ov-card-activity" id="ov-card-activity" aria-labelledby="ov-t-activity" hidden></section>
             </div>
         </div>
@@ -255,7 +263,7 @@
                     <button type="button" class="btn" id="moreFiltersBtn" title="Publish / modified date ranges">Dates ▾</button>
                     <button type="button" class="btn" id="columnsBtn" title="Choose which columns to show">Columns ▾</button>
                     <button type="button" class="btn" id="linkFilterBtn" title="Restrict the CSV export by live HTTP status">Link filter ▾</button>
-                    <button type="button" class="btn" id="checkAllLinksBtn" style="display:none">Check all links (page)</button>
+                    <button type="button" class="btn" id="checkAllLinksBtn" style="display:none" title="Live-check the permalink of every post on this page">Check status (page)</button>
 
                     <div class="toolbar-end">
                         <button type="button" class="btn" id="bulkOpenBtn" title="Paste slugs / URLs and change their status in one go (g b)">⇪ Bulk by URLs</button>
@@ -575,7 +583,7 @@
                     <div class="toolbar-sep" aria-hidden="true"></div>
 
                     <button type="button" class="btn" id="rLinkFilterBtn" title="Restrict the CSV export by live HTTP status">Link filter ▾</button>
-                    <button type="button" class="btn" id="rCheckAllLinksBtn">Check all origin links (page)</button>
+                    <button type="button" class="btn" id="rCheckAllLinksBtn" title="Live-check every origin URL on this page (does the rule fire?)">Check status (page)</button>
                     <button type="button" class="btn" id="rClearFiltersBtn">Clear filters</button>
 
                     <div class="toolbar-end">
@@ -751,10 +759,9 @@
                     <div class="stats-row">
                         <span>Site <b id="fr-site-label">…</b></span>
                     </div>
-                    <button type="button" class="hist-btn" id="fr-history-btn" title="Find &amp; Replace history on this site — with undo">
+                    <button type="button" class="hist-btn" id="fr-history-btn" title="Every Find &amp; Replace on this site in History — with undo (u)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg>
                         <span class="hist-btn-label">Replace history</span>
-                        <span class="hist-count" id="fr-history-count">0</span>
                     </button>
                 </div>
 
@@ -1020,7 +1027,7 @@
 
                     <div class="toolbar-end">
                         <button type="button" class="btn" id="cn-refresh" title="Re-run the audit (r)">↻ Refresh</button>
-                        <button type="button" class="btn" id="cn-check-page" title="Live-check every canonical URL on this page">Check canonicals (page)</button>
+                        <button type="button" class="btn" id="cn-check-page" title="Live-check every canonical URL on this page">Check status (page)</button>
                         <a class="btn primary" id="cn-export" href="#" title="Download every issue as CSV">⬇ Export CSV</a>
                     </div>
                 </div>
@@ -1268,6 +1275,7 @@
                     <div class="keys"><span class="fx-kbd">?</span></div><div>This list</div>
                     <div class="keys"><span class="fx-kbd">/</span></div><div>Focus the current tab's search</div>
                     <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">c</span> <span class="fx-kbd">l</span> <span class="fx-kbd">r</span> <span class="fx-kbd">b</span></div><div>Go to Content / Links / Redirects / Bulk by URLs</div>
+                    <div class="keys"><span class="fx-kbd">Ctrl</span>+<span class="fx-kbd">K</span></div><div>Search posts, tabs and actions</div>
                     <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">o</span></div><div>Go to Overview</div>
                     <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">n</span></div><div>Go to Canonicals</div>
                     <div class="keys"><span class="fx-kbd">g</span> then <span class="fx-kbd">m</span> <span class="fx-kbd">s</span> <span class="fx-kbd">k</span></div><div>Go to Menu Order / Find &amp; Replace / Focus Keywords</div>
@@ -1365,26 +1373,6 @@
         </div>
     </div>
 
-    <!-- ══ Find & Replace: history drawer (js/replace.js) ══ -->
-    <div class="drawer-scrim" id="fr-drawer-scrim"></div>
-    <aside class="drawer" id="fr-drawer" aria-label="Find &amp; Replace history" aria-hidden="true">
-        <div class="drawer-head">
-            <div>
-                <h3>Find &amp; Replace history · <span id="fr-drawer-site"></span></h3>
-                <span class="drawer-sub">Every replace on this site — undo any of them (fields edited since are left alone)</span>
-            </div>
-            <button type="button" class="modal-close" id="fr-drawer-close" title="Close (Esc)" aria-label="Close">×</button>
-        </div>
-        <div class="drawer-tools">
-            <input type="search" id="fr-drawer-search" placeholder="Filter by find / replace text…" autocomplete="off">
-            <button type="button" class="btn small" id="fr-drawer-reload" title="Reload">↻</button>
-        </div>
-        <div class="drawer-body" id="fr-drawer-list"></div>
-        <div class="drawer-foot">
-            <span class="col-note">Saved on the server in backups/</span>
-        </div>
-    </aside>
-
     <!-- (none: the Focus Keywords tab needs no extra modal markup) -->
 
     <div id="toast" aria-live="polite"></div>
@@ -1400,6 +1388,7 @@
     <script src="js/replace.js"></script>
     <script src="js/keywords.js"></script>
     <script src="js/canonical.js"></script>
+    <script src="js/finder.js"></script>
     <script src="js/overview.js"></script>
     <script src="js/views.js"></script>
     <script src="js/app.js"></script>

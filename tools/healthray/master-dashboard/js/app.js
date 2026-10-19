@@ -107,7 +107,7 @@ function onRedirectsChanged() {
 
 /** A canonical was removed/replaced (Canonicals tab, the "retired URL" prompt). The visible tab reloads too. */
 function onCanonicalsChanged() {
-    markStale(['canonical']);
+    markStale(['canonical', 'overview']);
 }
 
 /* ══════════════════════════ Keyboard ══════════════════════════
@@ -127,6 +127,8 @@ function tabKey(e) {
 }
 
 function onGlobalKey(e) {
+    // Ctrl/Cmd+K palette + post drawer (js/finder.js) - takes every key while open, prevents its own.
+    if (finderHandleKey(e)) return;
     // Menu Order's Ctrl+S must work while typing and inside its own review dialog
     if (activeView === 'menu' && tabKey(e)) { e.preventDefault(); return; }
     if (isConfirmOpen()) {
@@ -140,7 +142,7 @@ function onGlobalKey(e) {
         if (activeView !== 'menu' && tabKey(e)) e.preventDefault();
         return;
     }
-    if (isHelpOpen() || isHistoryOpen() || document.querySelector('.modal-backdrop.open, .fx-modal-overlay.open, #fr-drawer.fr-open')) return;
+    if (isHelpOpen() || isHistoryOpen() || document.querySelector('.modal-backdrop.open, .fx-modal-overlay.open')) return;
 
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
     if (typing || e.ctrlKey || e.metaKey || e.altKey) {
@@ -164,7 +166,7 @@ function onGlobalKey(e) {
         return;
     }
     if (k === 'g') { gPending = Date.now(); return; }
-    if (k === 'h') { e.preventDefault(); openHistory(); return; }
+    if (k === 'h') { e.preventDefault(); openHistory({ source: '' }); return; }
     if (activeView === 'fixer' && fxHandleKey(e)) { e.preventDefault(); return; }
     if (activeView !== 'menu' && tabKey(e)) e.preventDefault();
 }
@@ -176,6 +178,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindCopyButtons();
     bindConfirmDialog();
     bindHistory();
+    bindFinder();
 
     bindContentTab();
     bindFixerTab();

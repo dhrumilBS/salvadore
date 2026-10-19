@@ -9,6 +9,7 @@
  *   Content         drives #fPostTypeTabs / #fStatus (after #clearFiltersBtn) - no deep-link support of its own
  *   Focus Keywords  drives #kw-post-type / #kw-status / #kw-only-dup and the "Missing keyword" stat card
  *   Redirects       drives #rClearFiltersBtn, #rMatch (origin_live | dest_missing), .redirect-type-cb[value=410]
+ *   Canonicals      drives #cn-kind / #cn-scope (counts from canonical_report.php?summary=1)
  *   Revisions       ../version/?db=<site>&only_old=1 (new browser tab; landing | botphonic only)
  *
  * Broken-link status is not known server-side: "Check links" collects the
@@ -31,10 +32,11 @@
     const nextRedirSignal = latestOnly();
     const nextActivitySignal = latestOnly();
     const nextLinksSignal = latestOnly();
+    const nextCanonSignal = latestOnly();
 
     const st = {
-        core: null, redirects: null, activity: null, // last good payloads
-        coreErr: '', redirErr: '',
+        core: null, redirects: null, activity: null, canon: null, // last good payloads
+        coreErr: '', redirErr: '', canonErr: '',
         loading: { core: false, redirects: false },
         loadedAt: 0,
         timing: {},
@@ -83,6 +85,7 @@
             st.timing.redirects = json.timings && json.timings.request;
         });
         loadActivity();
+        loadCanonicals();
 
         return Promise.all([core, redirects]).then(() => {
             if (gen !== generation) return;
@@ -104,6 +107,22 @@
                 st.activity = null;
                 renderActivity();
             });
+    }
+
+    /** Canonical audit counts (own request - never holds the other cards back). */
+    function loadCanonicals() {
+        st.canonErr = '';
+        api('canonical_report.php', { params: { summary: 1, unmatched: 0 }, signal: nextCanonSignal() })
+            .then(json => {
+                if (!json.success) throw new Error(json.msg || 'Server error');
+                st.canon = json;
+            })
+            .catch(err => {
+                if (isAbort(err)) return;
+                console.error(err);
+                st.canonErr = errText(err);
+            })
+            .finally(renderCanonicals);
     }
 
     const errText = err => (err && err.message && !/JSON|Unexpected token/i.test(err.message)) ? err.message : 'Could not load';
@@ -154,6 +173,7 @@
         content: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/><path d="M8 13h8M8 17h5"/>',
         revisions: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/>',
         activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+        canonical: '<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/>',
     };
     const icon = name => `<svg class="ov-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
     const chevron = '<svg class="ov-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>';
@@ -214,6 +234,25 @@
         renderLinks();
         renderContent();
         renderRevisions();
+        renderCanonicals();
+    }
+
+    function renderCanonicals() {
+        const c = st.canon;
+        if (!c) { setCard('ov-card-canonical', st.canonErr ? errorCard('canonical', 'Canonical URLs', st.canonErr) : skeletonCard('canonical', 'Canonical URLs', 4)); return; }
+        const L = c.live_counts || {}, A = c.counts || {};
+        const live = (L.gone || 0) + (L.redirect || 0) + (L.not_live || 0);
+        const all = (A.gone || 0) + (A.redirect || 0) + (A.not_live || 0);
+        const rows = [
+            row({ label: 'Live posts affected', value: live, sev: sevOf(live, 'danger'), sub: live ? 'Canonical points at a dead / moved URL' : 'Every live canonical resolves', go: { tab: 'canonical', scope: 'live' } }),
+            row({ label: '→ 410 Gone', value: A.gone || 0, sev: L.gone ? 'danger' : 'info', sub: `${fmtNum(L.gone || 0)} live`, go: { tab: 'canonical', kind: 'gone' } }),
+            row({ label: '→ Redirect', value: A.redirect || 0, sev: L.redirect ? 'warn' : 'info', sub: `${fmtNum(L.redirect || 0)} live`, go: { tab: 'canonical', kind: 'redirect' } }),
+            row({ label: '→ Trashed / unpublished post', value: A.not_live || 0, sev: L.not_live ? 'warn' : 'info', sub: `${fmtNum(L.not_live || 0)} live`, go: { tab: 'canonical', kind: 'not_live' } }),
+        ];
+        setCard('ov-card-canonical', card('canonical', 'Canonical URLs', rows.join(''), {
+            issues: live, level: 'danger',
+            note: all > live ? `${fmtNum(all - live)} more on drafts / pending posts (not public yet). ${fmtNum(c.scanned)} posts set a canonical.` : `${fmtNum(c.scanned)} posts set a canonical.`,
+        }));
     }
 
     function renderHead() {
@@ -324,7 +363,7 @@
             label: 'Broken links', value: s.broken, sev: s.broken ? 'danger' : (s.checked ? 'ok' : 'info'),
             sub: s.checked ? `${fmtNum(s.redirect)} redirecting · ${fmtNum(s.checked)} checked` : 'Not checked yet',
             go: { tab: 'fixer', status: 'error' },
-            title: 'Broken links, timeouts and server errors among the checked URLs - opens Link Fixer filtered to broken',
+            title: 'Broken links, timeouts and server errors among the checked URLs - opens the Links tab filtered to broken',
         });
     }
 
@@ -442,7 +481,7 @@
                 `<div class="ov-progress"><i style="width:${L.phase === 'collect' ? 8 : pct}%"></i></div></div>`;
         } else if (!L.urls) {
             check = `<div class="ov-check"><p class="ov-check-hint">Broken-link status isn't stored anywhere - check live. ` +
-                `Up to ${LINK_CAP} unique URLs, most-linked first; results are shared with Link Fixer.</p>` +
+                `Up to ${LINK_CAP} unique URLs, most-linked first; results are shared with the Links tab.</p>` +
                 (L.err ? `<p class="ov-check-err">${escapeHtml(L.err)}</p>` : '') +
                 `<button type="button" class="btn primary" data-ov-act="check-links">Check links</button></div>`;
         } else {
@@ -457,7 +496,7 @@
                 const meta = L.byUrl.get(u);
                 const res = LinkStatus.get(u);
                 const code = res && res.status_code ? res.status_code : 'err';
-                return `<li><button type="button" class="ov-url"${goAttr({ tab: 'fixer', find: u, status: 'error' })} title="Open the posts linking here in Link Fixer">` +
+                return `<li><button type="button" class="ov-url"${goAttr({ tab: 'fixer', find: u, status: 'error' })} title="Open the posts linking here in the Links tab">` +
                     `<span class="ov-url-code">${escapeHtml(String(code))}</span><span class="ov-url-text">${escapeHtml(u)}</span>` +
                     `<span class="ov-url-n">${meta ? pluralize(meta.posts.size, 'post') : ''}</span></button></li>`;
             }).join('');
@@ -694,12 +733,19 @@
         location.hash = target; // app.js: hashchange -> fxReadHash() + showView('fixer')
         const find = $('fx-find');
         if (!spec.find && find && find.value) {
-            toast(`Link Fixer is still searching for "${find.value}" - clear its find box to see every post`, 'warn', 6000);
+            toast(`The Links tab is still searching for "${find.value}" - clear its find box to see every post`, 'warn', 6000);
         }
+    }
+
+    function goCanonical(spec) {
+        enter('canonical');
+        setSelect('cn-kind', spec.kind || '') || fire($('cn-kind'), 'change');
+        setSelect('cn-scope', spec.scope || '');
     }
 
     function go(spec) {
         switch (spec.tab) {
+            case 'canonical': goCanonical(spec); break;
             case 'content': goContent(spec); break;
             case 'redirects': goRedirects(spec); break;
             case 'keywords': goKeywords(spec); break;

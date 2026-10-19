@@ -134,7 +134,7 @@ function confirmDialog({ title, message = '', changes = [], lines = [], okLabel 
     list.hidden = !total;
 
     const label = siteList.find(d => d.key === SITE)?.label || 'the database';
-    document.getElementById('confirmDb').textContent = writes ? `Writes to ${label}` : '';
+    document.getElementById('confirmDb').textContent = !writes ? '' : isLiveSite() ? `⚠ LIVE SITE — writes to ${label}` : `Writes to ${label}`;
     const ok = document.getElementById('confirmOk');
     ok.textContent = okLabel;
     ok.className = `btn ${tone}`;
@@ -602,6 +602,7 @@ function renderDatabaseSwitcher() {
     ).join('');
     const live = isLiveSite();
     document.querySelector('.db-switch').classList.toggle('is-live', live);
+    document.body.classList.toggle('is-live-site', live); // red top edge + LIVE line in every confirm
     document.getElementById('dbLiveFlag').hidden = !live;
 }
 

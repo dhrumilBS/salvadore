@@ -2,12 +2,12 @@
  * Ported from the standalone ../replace/ tool. Search first (read-only
  * preview of every match, grouped by post), pick fields, then Replace after a
  * confirmDialog() naming the site. Every replace is backed up server-side
- * (api/replace_apply.php) and can be undone from this tab's own history
- * drawer (#fr-drawer) as long as the field still holds what we wrote.
+ * (api/replace_apply.php) and can be undone (inline Undo, or the shared History
+ * drawer filtered to Find & Replace) as long as the field still holds what we wrote.
  *
  * Globals exposed (everything else stays inside this IIFE):
  *   bindReplaceTab()  attach listeners (once, before the site is known)
- *   loadReplace()     first show / reload: site info, prefs, history count
+ *   loadReplace()     first show / reload: site info, prefs
  *   frHandleKey(e)    every keydown while this tab is active; true = handled
  *   frHasUnsaved()    a search result has selected, not-yet-replaced fields
  *   frReadHash(q)     "find=...&replace=..." -> prefill + auto-search
@@ -37,14 +37,11 @@
     let shown = PAGE;
     let lastOp = null;        // last replace response (for the Undo notice)
     let busy = false;         // a replace / undo request is in flight
-    let historyOps = [];
-    let historyFilter = '';
     let pendingSearch = false; // frReadHash() ran before the site info was loaded
     let loading = null;        // in-flight loadReplace() promise
 
     const nextSearchSignal = latestOnly();
     const nextSiteSignal = latestOnly();
-    const nextHistorySignal = latestOnly();
 
     const key = f => `${f.kind}:${f.id}`;
     const siteLabel = () => info?.label || siteList.find(d => d.key === SITE)?.label || SITE;
@@ -84,7 +81,6 @@
             }
             $('fr-site-label').textContent = info.label;
             renderFilters();
-            refreshHistoryCount();
             if (pendingSearch) {
                 pendingSearch = false;
                 search();
@@ -384,8 +380,6 @@
             if (res.skipped?.length) toast(`${plural(res.skipped.length, 'field')} skipped: ${res.skipped[0].reason}`, 'warn', 6000);
             busy = false;
             renderResults();
-            refreshHistoryCount();
-            if (isDrawerOpen()) loadHistory();
             changedPosts();
         } catch (e) {
             busy = false;
@@ -412,7 +406,7 @@
 
     async function undo(id, btn) {
         if (busy) return;
-        const op = historyOps.find(o => o.id === id) || (lastOp?.op === id ? { find: searched?.find, replace: searched?.replace, matches: lastOp.matches, fields: lastOp.fields, posts: lastOp.posts } : null);
+        const op = (lastOp?.op === id ? { find: searched?.find, replace: searched?.replace, matches: lastOp.matches, fields: lastOp.fields, posts: lastOp.posts } : null);
         const ok = await confirmDialog({
             title: `Undo this replace on ${siteLabel()}?`,
             message: 'Puts back what each field held before this replace. Fields edited again since then are left alone.',
@@ -432,8 +426,6 @@
                 busy = false;
                 renderResults();
             }
-            refreshHistoryCount();
-            if (isDrawerOpen()) loadHistory();
             changedPosts();
         } catch (e) {
             toast(e.message, 'err');
@@ -444,101 +436,23 @@
         }
     }
 
-    /* ───── History drawer ───── */
-    const isDrawerOpen = () => $('fr-drawer').classList.contains('fr-open');
-
-    function openHistory() {
-        if (document.body.classList.contains('drawer-open')) window.closeHistory();  // the unified History drawer
-        $('fr-drawer').classList.add('fr-open');
-        $('fr-drawer-scrim').classList.add('fr-open');
-        $('fr-drawer').setAttribute('aria-hidden', 'false');
-        $('fr-drawer-site').textContent = siteLabel();
-        loadHistory();
-        $('fr-drawer-close').focus();
-    }
-
-    function closeHistory() {
-        $('fr-drawer').classList.remove('fr-open');
-        $('fr-drawer-scrim').classList.remove('fr-open');
-        $('fr-drawer').setAttribute('aria-hidden', 'true');
-    }
-
-    function renderHistoryCount(n) {
-        const el = $('fr-history-count');
-        el.textContent = fmtNum(n);
-        el.classList.toggle('has-items', n > 0);
-    }
-
-    async function refreshHistoryCount() {
-        try {
-            const json = await call('replace_history.php', { params: { limit: 1 } });
-            renderHistoryCount(json.total);
-        } catch (e) { /* the badge is cosmetic */ }
-    }
-
-    async function loadHistory() {
-        const list = $('fr-drawer-list');
-        list.innerHTML = '<div class="hist-empty"><span class="spinner"></span> Loading…</div>';
-        try {
-            const json = await call('replace_history.php', { signal: nextHistorySignal() });
-            historyOps = json.ops;
-            renderHistoryCount(json.total);
-            renderHistory();
-        } catch (e) {
-            if (isAbort(e)) return;
-            list.innerHTML = `<div class="hist-empty error">${esc(e.message)}</div>`;
-        }
-    }
-
-    function renderHistory() {
-        const list = $('fr-drawer-list');
-        if (!historyOps.length) {
-            list.innerHTML = '<div class="hist-empty">No replacements on this site yet.</div>';
-            return;
-        }
-        const t = historyFilter;
-        const rows = historyOps.filter(op => !t || `${op.find} ${op.replace}`.toLowerCase().includes(t));
-        if (!rows.length) {
-            list.innerHTML = '<div class="hist-empty">No replacements match that filter.</div>';
-            return;
-        }
-        list.innerHTML = rows.map(op => {
-            const when = new Date(op.time);
-            const opts = op.options || {};
-            const flags = [opts.case && 'match case', opts.word && 'whole word', opts.skipTags && 'skip tags', op.elementor && 'Elementor'].filter(Boolean).join(' · ');
-            return `<div class="hist-item${op.undone ? ' is-undone' : ''}">
-                <div class="hist-head">
-                    <span class="hist-title">${plural(op.matches, 'match', 'matches')} · ${plural(op.fields, 'field')} · ${plural(op.posts, 'post')}</span>
-                    <span class="hist-time" title="${esc(op.time)}">${esc(isNaN(when) ? op.time : when.toLocaleString())}</span>
-                </div>
-                <div class="hist-urls">
-                    <div class="cl-from">${esc(op.find)}</div>
-                    <div class="cl-to">${op.replace === '' ? '<em>(removed — replaced with nothing)</em>' : esc(op.replace)}</div>
-                </div>
-                <div class="hist-foot">
-                    <span>${esc(flags)}${op.undone && op.undoSkipped ? ` · ${plural(op.undoSkipped, 'field')} kept on undo` : ''}</span>
-                    ${op.undone ? '<span class="hist-undone">Undone</span>'
-                        : op.canUndo ? `<button type="button" class="btn small" data-fr-undo="${esc(op.id)}">Undo</button>` : '<span class="col-note">Backup missing</span>'}
-                </div>
-            </div>`;
-        }).join('');
-    }
+    /* History: the shared History drawer (js/history.js), filtered to Find & Replace - it lists every
+     * op from this tab's journal and undoes it through fr_undo_op(), same as the inline Undo here. */
+    const openReplaceHistory = () => window.openHistory({ source: 'replace' });
 
     /* ───── Keyboard (called by app.js for every keydown on this tab) ───── */
     function frHandleKey(e) {
         if (e.key === 'Escape') {
-            if (isDrawerOpen()) { closeHistory(); $('fr-history-btn').focus(); return true; }
             const t = e.target;
             if (t && t.id === 'fr-rfilter' && t.value) { t.value = ''; viewText = ''; shown = PAGE; renderResults(); $('fr-rfilter').focus(); return true; }
-            if (t && t.id === 'fr-drawer-search' && t.value) { t.value = ''; historyFilter = ''; renderHistory(); return true; }
             if ($('fr-filters').classList.contains('open') && !/^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName || '')) { toggleFilters(false); return true; }
             return false;
         }
-        if (isDrawerOpen() || isConfirmOpen()) return false;
+        if (isConfirmOpen()) return false;
         const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || '') || e.target?.isContentEditable;
         if (typing || e.ctrlKey || e.metaKey || e.altKey) return false;
         switch (e.key.toLowerCase()) {
-            case 'u': openHistory(); return true;                       // undo history
+            case 'u': openReplaceHistory(); return true;                // History, filtered to Find & Replace
             case 'e': toggleFilters(); return true;                     // filters panel
             case 'a': if (result) { setAllVisible(!$('fr-sel-all').checked); return true; } return false;
             case 'r': if (result && !$('fr-replace-btn').disabled) { confirmReplace(); return true; } return false;
@@ -561,7 +475,7 @@
         else pendingSearch = true;
     }
 
-    /* ───── Events (delegated, scoped to #replaceView and #fr-drawer) ───── */
+    /* ───── Events (delegated, scoped to #replaceView) ───── */
     function bindReplaceTab() {
         const root = $('replaceView');
         const filterResults = debounce(value => {
@@ -635,28 +549,12 @@
             } else if (t.closest('#fr-replace-btn')) {
                 confirmReplace();
             } else if (t.closest('#fr-history-btn')) {
-                openHistory();
+                openReplaceHistory();
             } else {
                 const u = t.closest('[data-fr-undo]');
                 if (u) undo(u.dataset.frUndo, u);
             }
         });
-
-        const drawer = $('fr-drawer');
-        drawer.addEventListener('click', e => {
-            if (e.target.closest('#fr-drawer-close')) closeHistory();
-            else if (e.target.closest('#fr-drawer-reload')) loadHistory();
-            else {
-                const u = e.target.closest('[data-fr-undo]');
-                if (u) undo(u.dataset.frUndo, u);
-            }
-        });
-        drawer.addEventListener('input', debounce(e => {
-            if (e.target.id !== 'fr-drawer-search') return;
-            historyFilter = e.target.value.trim().toLowerCase();
-            renderHistory();
-        }, 150));
-        $('fr-drawer-scrim').addEventListener('click', closeHistory);
     }
 
     Object.assign(window, { bindReplaceTab, loadReplace, frHandleKey, frHasUnsaved, frReadHash });

@@ -64,7 +64,8 @@ index.html          one page, views toggled by a two-level nav: #navGroups (Over
                     #redirects #menu #replace #keywords #canonical; retired #links / #bulk still work via
                     VIEW_ALIASES in app.js; Link Fixer keeps its filters after a "?": #fixer?page=2&status=error&find=...,
                     Find & Replace accepts #replace?find=...&replace=... and searches straight away)
-style.css           datewise base, Links-tab components, then shared dialogs/drawer + fx- Link Fixer styles
+style.css           base + shared components (stat cards, modals, export menu, dialogs, History drawer, nav,
+                    pager); body.is-live-site = red top edge + "LIVE SITE" line in every write confirm
 js/common.js        shared helpers, confirmDialog()/alertDialog(), toast(), LinkStatus
 js/ui.js            shared list building blocks every tab uses: mdPager (pagination footer: "Showing a–b of N",
                     numbered pages, rows/page saved per tab), mdSelection (row selection + select-all state),
@@ -77,11 +78,17 @@ js/redirects.js     Redirects tab (list + add/edit/duplicate/delete, selection b
 js/bulk.js          Bulk by URLs panel at the top of the Content tab (button, #bulk, g b): paste slugs/URLs -> status
 js/menu-order.js    Menu Order tab (IIFE; mo- ids): inline edit order/title/slug/date, drag reorder, renumber, review & save
 js/replace.js       Find & Replace tab (IIFE; fr- ids): literal text search over title/content/excerpt/Elementor/Yoast/meta,
-                    JSON + serialized aware, backups + undo, own history drawer (#fr-drawer)
+                    JSON + serialized aware, backups + undo; its "Replace history" opens the shared History
+                    drawer filtered to Find & Replace (openHistory({source:'replace'}))
 js/keywords.js      Focus Keywords tab (IIFE; kw- ids, read-only): duplicate Yoast focus keywords, client-side table/CSV
 js/canonical.js     Canonicals tab (IIFE; cn- ids, #canonical, g n): canonical URLs that redirect / are gone / name a
                     retired post; remove or "use redirect target", client-side filters + CSV
-css/*.css           one stylesheet per ported tab, scoped to its view
+css/*.css           one stylesheet per tab, scoped to its view (css/links.css = the fx- Links tab, loaded
+                    right after style.css; its fx-modal-* pieces are reused by the Redirects editor)
+js/finder.js        Ctrl/Cmd+K palette + post drawer (read-only; finder_search.php / finder_post.php): search
+                    posts by title/slug/ID/URL, jump to tabs, run actions. Gets every key first (onGlobalKey)
+js/overview.js      Overview cards; each number deep-links into its tab pre-filtered (incl. Canonical URLs,
+                    from canonical_report.php?summary=1)
 js/app.js           view switching, lazy loading, cross-tab staleness, global keyboard shortcuts, init
 api/                endpoints (below); api/lib/ shared PHP (lib/link_editor.php = Link Fixer)
 backups/            activity-<site>.jsonl (unified History log, lib/activity.php),
@@ -156,7 +163,7 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
   `post_modified`; trash/untrash undos never touch 410 redirects; redirect undos go through
   `dw_redirect_restore()` (backup first). Replace/Fixer delegate to `fr_undo_op()` / `dw_fx_undo()`.
 - `js/history.js` wraps `api()` so any POST response carrying `activity_id` refreshes the badge
-  (writes of the last 24 h). Find & Replace keeps its own drawer (`#fr-drawer`) as well.
+  (writes of the last 24 h). `openHistory({source})` preselects a filter chip; the top-bar button and `h` open "All".
 - Tests: define `MD_ACTIVITY_DIR` (or env var, CLI only) to point the log at a temp dir.
 
 ## Rules that must survive changes
@@ -257,8 +264,9 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 | `replace_history.php` | GET | Find & Replace journal, newest first |
 | `kw_options.php` / `kw_list.php` | GET | Focus Keywords: types + categories / rows with duplicate flags |
 | `kw_save.php` | POST | Focus Keywords: save staged keyword edits (JSON `changes:[{post_id, focus_keyword, expected}]`, max 500). All-or-nothing; each row's stored `_yoast_wpseo_focuskw` must still equal `expected` (else 409 + per-row `conflict` errors). Empty = meta deleted; syncs `wp_yoast_indexable.primary_focus_keyword`, bumps `post_modified`. Edits in the tab stage inline and save only via the save bar's Review & save (`confirmDialog`) |
-| `canonical_report.php` | GET/POST | Canonicals: posts whose canonical hits a 410 / 3xx rule / retired post (`paths=` restricts to those URLs, `unmatched=0`, `format=csv`) |
+| `canonical_report.php` | GET/POST | Canonicals: posts whose canonical hits a 410 / 3xx rule / retired post (`paths=` restricts to those URLs, `unmatched=0`, `format=csv`, `summary=1` counts only) |
 | `canonical_fix.php` | POST | `items` JSON `[{post_id, expected, canonical}]` (max 1000, `''` = remove). All-or-nothing, 409 on conflict |
+| `finder_search.php` / `finder_post.php` | GET | Ctrl+K palette: post search / one post's detail (read-only) |
 | `_test_store.php` | CLI | redirect-store self test |
 
 ## Extension pointers

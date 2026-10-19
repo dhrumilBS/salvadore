@@ -11,7 +11,7 @@
  * finderHandleKey(e) -> true when the key was handled (call it first in the global
  * keydown handler; while the palette or drawer is open it takes every key, and it
  * does its own preventDefault - so never preventDefault on its behalf, or typing breaks).
- * Recent posts: localStorage "md.finder.recent.<SITE>" (max 8).
+ * Recent posts: mdStore "finder.recent.<SITE>" (max 8).
  */
 (function () {
     'use strict';
@@ -24,14 +24,13 @@
     /* Tabs offered under "Go to" - filtered at runtime by what VIEWS actually has. */
     const TABS = [
         { key: 'overview',  label: 'Overview',        words: 'home dashboard summary',               g: '' },
-        { key: 'content',   label: 'Content',         words: 'posts pages list edit status meta',    g: 'g c' },
-        { key: 'links',     label: 'Links & UTM',     words: 'links utm tracking domains checker',   g: 'g l' },
-        { key: 'fixer',     label: 'Link Fixer',      words: 'broken links fix unlink edit href',    g: 'g f' },
+        { key: 'content',   label: 'Posts & Pages',   words: 'content posts pages list edit status meta bulk urls', g: 'g c' },
+        { key: 'fixer',     label: 'Links',           words: 'links utm broken fix unlink edit href export', g: 'g l' },
         { key: 'redirects', label: 'Redirects',       words: 'yoast 301 410 redirect rules',         g: 'g r' },
-        { key: 'bulk',      label: 'Bulk URL Update', words: 'bulk urls slugs status trash',         g: 'g b' },
         { key: 'menu',      label: 'Menu Order',      words: 'order reorder drag menu_order',        g: 'g m' },
         { key: 'replace',   label: 'Find & Replace',  words: 'find replace text search',             g: 'g s' },
         { key: 'keywords',  label: 'Focus Keywords',  words: 'yoast focus keyword duplicates seo',   g: 'g k' },
+        { key: 'canonical', label: 'Canonicals',      words: 'canonical seo 301 410 yoast',          g: 'g n' },
     ];
 
     const ICONS = {
@@ -107,17 +106,15 @@
 
     const $ = id => document.getElementById(id);
     const site = () => (typeof SITE === 'string' && SITE) ? SITE : 'default';
-    const recentKey = () => 'md.finder.recent.' + site();
+    const recentKey = () => 'finder.recent.' + site();
 
     /* ══════════════════════════ Recent posts ══════════════════════════ */
     function readRecent() {
-        try {
-            const v = JSON.parse(localStorage.getItem(recentKey()) || '[]');
-            return Array.isArray(v) ? v.filter(r => r && r.id).slice(0, MAX_RECENT) : [];
-        } catch (e) { return []; }
+        const v = mdStore.get(recentKey(), []);
+        return Array.isArray(v) ? v.filter(r => r && r.id).slice(0, MAX_RECENT) : [];
     }
     function writeRecent(list) {
-        try { localStorage.setItem(recentKey(), JSON.stringify(list.slice(0, MAX_RECENT))); } catch (e) { /* storage blocked */ }
+        mdStore.set(recentKey(), list.slice(0, MAX_RECENT));
     }
     function pushRecent(p) {
         const entry = { id: p.id, title_text: p.title_text || p.title || '', post_type: p.post_type, status: p.status, path: p.path || '', permalink: p.permalink || '' };
@@ -232,11 +229,12 @@
             }
         };
         if (q) {
-            add(`Find “${q}” in Link Fixer`, 'Posts whose links contain this text, site-wide', '', () => findInFixer(q), true);
+            add(`Find “${q}” in Links`, 'Posts whose links contain this text, site-wide', '', () => findInFixer(q), true);
             add(`Find & replace “${q}”`, 'Preview every match first — nothing is replaced until you confirm', '', () => findReplace(q), true);
         }
         add('Toggle theme', 'Switch between light and dark', 'dark light mode', () => $('themeToggle')?.click());
-        if (typeof openHistory === 'function') add('Open link history', 'Link Fixer changes on this site, with undo', 'journal undo changes', () => openHistory());
+        if (typeof openHistory === 'function') add('Open history', 'Every change made here on this site, with undo', 'journal undo changes activity', () => openHistory());
+        if (typeof openBulkSection === 'function') add('Bulk by URLs', 'Paste slugs / URLs and change their status', 'bulk trash draft status urls', () => openBulkSection());
         if (typeof openHelp === 'function') add('Keyboard shortcuts', 'Every shortcut on this page', 'help keys hotkeys', () => openHelp());
         if (!q && readRecent().length) add('Clear recent posts', 'Forget the posts opened from here on this site', 'history', () => { writeRecent([]); toast('Recent posts cleared', 'ok'); });
         return list;
@@ -663,7 +661,7 @@
         if (!L.total) {
             return card('Links in content', `<div class="fd-empty-s">No links in this post's content.</div>
                 <div class="fd-btnrow"><button type="button" class="btn fd-btn" data-fd="fixer-to">Find links to this post</button></div>
-                <div class="fd-hint">“Find links to this post” opens Link Fixer's site-wide find with this permalink (inbound links).</div>`);
+                <div class="fd-hint">“Find links to this post” opens the Links tab's site-wide find with this permalink (inbound links).</div>`);
         }
         const seg = (key, label, n) => `<button type="button" class="fd-seg${linkFilter === key ? ' is-on' : ''}" data-fd="lfilter" data-v="${key}">${label} <b>${n}</b></button>`;
         return card('Links in content', `
@@ -676,7 +674,7 @@
             <div class="fd-btnrow">
                 <button type="button" class="btn fd-btn" data-fd="fixer-to">Find links to this post</button>
             </div>
-            <div class="fd-hint">Link Fixer can't filter by post ID: “Find in Link Fixer” on a link shows every post using that URL (this one included); “Find links to this post” lists the posts that link here.</div>`,
+            <div class="fd-hint">The Links tab can't filter by post ID: “Find in Links” on a link shows every post using that URL (this one included); “Find links to this post” lists the posts that link here.</div>`,
             { extra: `<span class="fd-muted">${plural(L.total, 'link')}</span>` });
     }
 
@@ -693,7 +691,7 @@
                 <div class="fd-link-url">${urlCellHtml(l.url)}</div>
                 <div class="fd-link-foot">
                     ${LinkStatus.cell(l.url)}
-                    <button type="button" class="fd-linkbtn fd-small" data-fd="fixer-url" data-url="${esc(l.url)}">Find in Link Fixer</button>
+                    <button type="button" class="fd-linkbtn fd-small" data-fd="fixer-url" data-url="${esc(l.url)}">Find in Links</button>
                 </div>
             </div>`).join('');
     }
@@ -750,7 +748,7 @@
                 <button type="button" class="btn fd-btn" data-fd="content">Content tab</button>
                 ${d.seo.focus_kw ? '<button type="button" class="btn fd-btn" data-fd="keywords">Focus Keywords</button>' : ''}
                 <button type="button" class="btn fd-btn" data-fd="replace-title">Find &amp; replace the title</button>
-                <button type="button" class="btn fd-btn" data-fd="fixer-to">Link Fixer: links to this post</button>
+                <button type="button" class="btn fd-btn" data-fd="fixer-to">Links: links to this post</button>
                 <button type="button" class="btn fd-btn" data-fd="redirects">Redirects tab</button>
             </div>
             <div class="fd-hint">Read-only view. Every change happens in the tab it opens, behind that tab's own confirm step.</div>`);

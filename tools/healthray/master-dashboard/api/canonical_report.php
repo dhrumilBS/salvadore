@@ -6,6 +6,7 @@
  *                                                  "you just retired a URL" prompts); omit = whole site
  *   unmatched=0      leave out canonicals that match no post/redirect (archives, static files...)
  *   format=csv       download the report (every row, cells through dw_csv_write())
+ *   summary=1        counts only (Overview card): counts + live_counts per kind, no rows
  *
  * JSON: {success, home, scanned, rows:[...see dw_canonical_audit()], counts:{kind: n}}
  */
@@ -47,8 +48,16 @@ if (($_GET['format'] ?? '') === 'csv') {
 }
 
 $counts = array_fill_keys(array_keys(dw_canonical_kinds()), 0);
+$liveCounts = $counts;
 foreach ($audit['rows'] as $r) {
     $counts[$r['kind']]++;
+    if ($r['live']) {
+        $liveCounts[$r['kind']]++;
+    }
+}
+
+if (!empty($_GET['summary'])) {
+    json_out(true, 'Canonical summary', ['scanned' => $audit['scanned'], 'counts' => $counts, 'live_counts' => $liveCounts]);
 }
 
 json_out(true, count($audit['rows']) . ' canonical issue(s)', [

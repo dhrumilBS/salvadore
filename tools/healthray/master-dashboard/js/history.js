@@ -13,12 +13,12 @@
  * writes of the last 24 hours (undos not counted).
  *
  * The drawer works with the old markup too (no chips container); the new
- * markup lives in _snippets/history.html. */
+ * markup lives in index.html. */
 
 const HISTORY_PAGE = 200;
 const HISTORY_SOURCES = [
     ['', 'All'], ['content', 'Content'], ['bulk', 'Bulk'], ['redirects', 'Redirects'], ['menu', 'Menu Order'],
-    ['replace', 'Find & Replace'], ['fixer', 'Link Fixer'], ['keywords', 'Keywords'], ['canonical', 'Canonicals'],
+    ['replace', 'Find & Replace'], ['fixer', 'Links'], ['keywords', 'Keywords'], ['canonical', 'Canonicals'],
 ];
 const HISTORY_SOURCE_LABEL = Object.fromEntries(HISTORY_SOURCES.filter(([k]) => k));
 const HISTORY_FIELD_LABEL = {
@@ -357,9 +357,9 @@ async function exportHistoryCsv() {
 /* ── open / close / bind ── */
 const isHistoryOpen = () => document.body.classList.contains('drawer-open');
 
-function openHistory() {
-    // Never stack on top of the Find & Replace drawer.
-    if (document.getElementById('fr-drawer')?.classList.contains('fr-open')) document.getElementById('fr-drawer-close').click();
+/** Open the drawer; `source` (e.g. 'replace') preselects that filter chip. */
+function openHistory({ source } = {}) {
+    if (source === '' || HISTORY_SOURCE_LABEL[source] !== undefined) hist.source = source;
     document.body.classList.add('drawer-open');
     document.getElementById('historyDrawer').setAttribute('aria-hidden', 'false');
     document.getElementById('historyClose').focus();
@@ -372,7 +372,7 @@ function closeHistory() {
 }
 
 function bindHistory() {
-    document.getElementById('historyBtn').addEventListener('click', openHistory);
+    document.getElementById('historyBtn').addEventListener('click', () => openHistory({ source: '' }));
     document.getElementById('historyClose').addEventListener('click', closeHistory);
     document.getElementById('drawerScrim').addEventListener('click', closeHistory);
     document.getElementById('historyCsv').addEventListener('click', exportHistoryCsv);
