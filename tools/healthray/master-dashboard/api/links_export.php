@@ -113,7 +113,7 @@ if ($doCheck && $linkRows) {
     set_time_limit(0); // a full live-checked export can legitimately take minutes
     $uniqueUrls  = array_values(array_unique(array_map(fn($row) => $row['link']['url'], $linkRows)));
     [$pins]      = dw_check_plans($conn, $uniqueUrls);
-    $statusByUrl = dw_check_urls_concurrent(array_keys($pins), 20, 6, $pins);
+    $statusByUrl = dw_check_urls_concurrent(array_keys($pins), 20, DW_CHECK_TIMEOUT, $pins);
 
     if ($statusWanted !== '') {
         $linkRows = array_values(array_filter($linkRows, function ($row) use ($statusByUrl, $statusWanted) {

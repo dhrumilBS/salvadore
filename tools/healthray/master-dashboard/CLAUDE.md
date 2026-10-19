@@ -48,6 +48,10 @@ Don't fork this per site: a new WordPress site is a new `$DATABASES` entry in
   the vetted IP is pinned so curl can't re-resolve (DNS rebinding); redirects
   are never followed. Every caller must pass the pins (`dw_check_plans()`) to
   `dw_check_urls_concurrent()` / `dw_check_url_once()`.
+  Load: max `DW_CHECK_PER_HOST` (3) requests per host per call, `DW_CHECK_TIMEOUT` 15s, timeouts get one
+  more try at 1 per host. Cloudflare doesn't cache HEAD, so each check renders on the WP origin - 30 at
+  once made healthray.com time out on good pages. Status 0 results carry `error_kind`
+  (timeout/dns/connect/ssl/error, from curl errno); the badges label it via `noResponse()` (common.js).
 - **Frontend**: `js/common.js` holds the shared helpers (qs/escape/toast/copy,
   `urlCellHtml`, theme, site switcher, filter options, trash->410 prompts) and
   the **`LinkStatus`** checker. Its cache is keyed **by URL**, shared across

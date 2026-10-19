@@ -190,7 +190,10 @@ function fxStatusBadge(url) {
     if (!c) return '<span class="fx-badge s-pend">Unchecked</span>';
     const code = c.status_code;
     if (c.bucket === 'blocked') return '<span class="fx-badge s-4xx" title="This URL isn\'t allowed to be checked (private/internal address)">Blocked</span>';
-    if (code === 0) return '<span class="fx-badge s-4xx" title="No response — timeout, DNS failure or refused connection">Timeout</span>';
+    if (code === 0) {
+        const [label, why] = noResponse(c.error_kind);
+        return `<span class="fx-badge s-4xx" title="${escapeHtml(why)}">${label}</span>`;
+    }
     if (fxIsOk(c)) return `<span class="fx-badge s-200" title="HTTP ${code} — reachable">${code} OK</span>`;
     if (fxIsRedirect(c)) return `<span class="fx-badge s-3xx" title="HTTP ${code} — redirects to another URL">${code}</span>`;
     return `<span class="fx-badge s-4xx" title="HTTP ${code} — broken or unavailable">${code}</span>`;

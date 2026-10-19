@@ -22,4 +22,4 @@ if ($pin === null) {
     json_out(false, 'That URL is not allowed to be checked (must be a public http/https address).');
 }
 
-json_out(true, 'Checked', dw_check_url_once($url, 8, $pin));
+json_out(true, 'Checked', dw_check_url_once($url, DW_CHECK_TIMEOUT, $pin));

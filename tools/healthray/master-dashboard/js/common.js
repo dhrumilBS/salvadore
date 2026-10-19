@@ -270,6 +270,16 @@ function urlCellHtml(href, text = null, emptyLabel = '—') {
  * Finished results are kept in sessionStorage per site for CHECK_TTL, so a
  * reload or paging back never re-checks what's already known. */
 
+/** Status 0 = no HTTP answer; error_kind (from the server's curl errno) says why: [badge label, tooltip]. */
+const NO_RESPONSE = {
+    timeout: ['Timeout', 'No answer within the time limit (checked twice) — the server is slow or overloaded'],
+    dns: ['DNS fail', 'The host name doesn\'t resolve'],
+    connect: ['Refused', 'The server refused the connection'],
+    ssl: ['SSL error', 'The HTTPS handshake failed'],
+    error: ['No response', 'The request failed before any HTTP answer'],
+};
+const noResponse = kind => NO_RESPONSE[kind] || NO_RESPONSE.error;
+
 const LinkStatus = (() => {
     const cache = {}; // url -> {checking} | {error} | {status_code, bucket, redirect_url, is_redirect, t}
     const listeners = [];
@@ -301,6 +311,7 @@ const LinkStatus = (() => {
             status_code: info.status_code,
             bucket: info.bucket,
             redirect_url: info.redirect_url || null,
+            error_kind: info.error_kind || null,
             is_redirect: info.status_code >= 300 && info.status_code < 400,
             t: Date.now(),
         };
@@ -335,7 +346,8 @@ const LinkStatus = (() => {
         const redirectNote = s.redirect_url
             ? `<span class="ls-target" title="${escapeHtml(s.redirect_url)}">→ ${escapeHtml(s.redirect_url)}</span>`
             : '';
-        return `<span class="badge ls-${s.bucket}">${s.status_code}</span>` +
+        const [label, why] = s.status_code === 0 ? noResponse(s.error_kind) : [s.status_code, ''];
+        return `<span class="badge ls-${s.bucket}"${why ? ` title="${escapeHtml(why)}"` : ''}>${label}</span>` +
             `<button type="button" class="btn-check-link" data-check-url="${u}" title="Recheck">↻</button>` +
             redirectNote;
     }

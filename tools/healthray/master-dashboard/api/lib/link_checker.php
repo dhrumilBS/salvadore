@@ -7,7 +7,15 @@
  * Links-tab URLs come straight out of post_content and can point anywhere on
  * the internet, so every check of an arbitrary URL must pass dw_check_plan()
  * first as an SSRF guard before curl ever touches it.
+ *
+ * Load: at most DW_CHECK_PER_HOST requests per host are in flight per call.
+ * HEAD answers are not served from Cloudflare cache, so every check renders
+ * the page on the WordPress origin; 30 at once made healthray.com answer
+ * slower than the timeout and good pages showed up as "Timeout".
  */
+
+const DW_CHECK_TIMEOUT  = 15; // seconds per request
+const DW_CHECK_PER_HOST = 3;  // per call; the browser runs 2 calls at once (LinkStatus.checkMany)
 
 /** Is this a globally routable address (not loopback/private/link-local/CGNAT/reserved, v4 or v6)? */
 function dw_ip_is_public($ip)
@@ -192,11 +200,25 @@ function dw_resolve_redirect($url, $redirect)
     return $redirect;
 }
 
+/** curl errno -> what to call a request that got no HTTP answer (timeout / dns / connect / ssl / error). */
+function dw_curl_error_kind($errno)
+{
+    switch ((int) $errno) {
+        case CURLE_OPERATION_TIMEDOUT:   return "timeout";
+        case CURLE_COULDNT_RESOLVE_HOST: return "dns";
+        case CURLE_COULDNT_CONNECT:      return "connect";
+        case CURLE_SSL_CONNECT_ERROR:
+        case CURLE_PEER_FAILED_VERIFICATION: return "ssl";
+        default:                         return "error";
+    }
+}
+
 /** Shape one result the way every check endpoint returns it. */
-function dw_status_result($code, $redirectUrl)
+function dw_status_result($code, $redirectUrl, $errno = 0)
 {
     $code = (int) $code;
     return [
+        "error_kind"   => $code === 0 ? dw_curl_error_kind($errno) : null,
         'status_code'  => $code,
         'bucket'       => dw_bucket_for_code($code),
         'redirect_url' => $redirectUrl,
@@ -208,7 +230,7 @@ function dw_status_result($code, $redirectUrl)
 }
 
 /** One-off HEAD check of a single URL. Caller must have vetted it with dw_check_plan() and pass its pin. */
-function dw_check_url_once($url, $timeoutSec = 8, $pin = '')
+function dw_check_url_once($url, $timeoutSec = DW_CHECK_TIMEOUT, $pin = '')
 {
     foreach (['HEAD', 'GET'] as $method) {
         $ch = curl_init($url);
@@ -216,23 +238,26 @@ function dw_check_url_once($url, $timeoutSec = 8, $pin = '')
         curl_exec($ch);
         $code     = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $redirect = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+        $errno    = curl_errno($ch);
         curl_close($ch);
         if (!in_array($code, dw_head_retry_codes(), true)) {
             break;
         }
     }
 
-    return dw_status_result($code, dw_resolve_redirect($url, $redirect));
+    return dw_status_result($code, dw_resolve_redirect($url, $redirect), $errno);
 }
 
 /**
  * Concurrent (curl_multi) HEAD check of many URLs - a rolling window of
  * $concurrency requests instead of one at a time, so checking hundreds of
- * URLs doesn't take minutes. Returns url => ['code'=>int,'redirect_url'=>?string].
+ * URLs doesn't take minutes, capped at DW_CHECK_PER_HOST per host. URLs that
+ * time out get one more, slower try (one at a time per host) before being
+ * reported. Returns url => ['code'=>int,'redirect_url'=>?string,'errno'=>int].
  * $pins (url => dw_check_plan() entry) is required for anything that isn't the
  * site's own URL - pass dw_check_plans()' allowed map.
  */
-function dw_check_urls_concurrent(array $urls, $concurrency = 20, $timeoutSec = 6, array $pins = [])
+function dw_check_urls_concurrent(array $urls, $concurrency = 20, $timeoutSec = DW_CHECK_TIMEOUT, array $pins = [])
 {
     $results = dw_check_urls_pass(array_values(array_unique($urls)), $concurrency, $timeoutSec, $pins, 'HEAD');
 
@@ -241,28 +266,44 @@ function dw_check_urls_concurrent(array $urls, $concurrency = 20, $timeoutSec = 
     if ($retry) {
         $results = array_replace($results, dw_check_urls_pass($retry, $concurrency, $timeoutSec, $pins, 'GET'));
     }
+
+    // Last pass for timeouts only: a busy origin usually answers once it isn't being asked for several pages at once.
+    $slow = array_keys(array_filter($results, fn($r) => $r['code'] === 0 && $r['errno'] === CURLE_OPERATION_TIMEDOUT));
+    if ($slow) {
+        $results = array_replace($results, dw_check_urls_pass($slow, $concurrency, $timeoutSec, $pins, 'HEAD', 1));
+    }
     return $results;
 }
 
 /** One curl_multi pass of dw_check_urls_concurrent() with a single request method. */
-function dw_check_urls_pass(array $urls, $concurrency, $timeoutSec, array $pins, $method)
+function dw_check_urls_pass(array $urls, $concurrency, $timeoutSec, array $pins, $method, $perHost = DW_CHECK_PER_HOST)
 {
     $results = [];
     $queue   = $urls;
     $mh      = curl_multi_init();
-    $handles = []; // (int) curl handle id => ['ch'=>..., 'url'=>...]
+    $handles = []; // (int) curl handle id => ['ch'=>..., 'url'=>..., 'host'=>...]
+    $busy    = []; // host => requests in flight
 
-    $startNext = function () use (&$queue, &$handles, $mh, $timeoutSec, $pins, $method) {
-        $url = array_shift($queue);
-        $ch = curl_init($url);
-        curl_setopt_array($ch, dw_curl_opts($timeoutSec, $pins[$url] ?? '', $method));
-        curl_multi_add_handle($mh, $ch);
-        $handles[(int) $ch] = ['ch' => $ch, 'url' => $url];
+    // Start queued URLs (in order) whose host is under $perHost, until $concurrency are in flight.
+    $fill = function () use (&$queue, &$handles, &$busy, $mh, $timeoutSec, $pins, $method, $concurrency, $perHost) {
+        foreach ($queue as $i => $url) {
+            if (count($handles) >= $concurrency) {
+                return;
+            }
+            $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+            if (($busy[$host] ?? 0) >= $perHost) {
+                continue;
+            }
+            unset($queue[$i]);
+            $busy[$host] = ($busy[$host] ?? 0) + 1;
+            $ch = curl_init($url);
+            curl_setopt_array($ch, dw_curl_opts($timeoutSec, $pins[$url] ?? '', $method));
+            curl_multi_add_handle($mh, $ch);
+            $handles[(int) $ch] = ['ch' => $ch, 'url' => $url, 'host' => $host];
+        }
     };
 
-    while (count($handles) < $concurrency && $queue) {
-        $startNext();
-    }
+    $fill();
 
     while ($handles) {
         do {
@@ -281,15 +322,14 @@ function dw_check_urls_pass(array $urls, $concurrency, $timeoutSec, array $pins,
                 $results[$url] = [
                     'code'         => (int) curl_getinfo($ch, CURLINFO_HTTP_CODE),
                     'redirect_url' => dw_resolve_redirect($url, curl_getinfo($ch, CURLINFO_REDIRECT_URL)),
+                    'errno'        => (int) $info['result'],
                 ];
+                $busy[$handles[$key]['host']]--;
             }
             curl_multi_remove_handle($mh, $ch);
             curl_close($ch);
             unset($handles[$key]);
-
-            if ($queue) {
-                $startNext();
-            }
+            $fill();
         }
     }
 

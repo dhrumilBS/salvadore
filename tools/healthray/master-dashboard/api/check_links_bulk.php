@@ -33,8 +33,8 @@ foreach ($refused as $u) {
 }
 
 set_time_limit(0);
-foreach (dw_check_urls_concurrent(array_keys($pins), 15, 6, $pins) as $u => $info) {
-    $results[$u] = dw_status_result($info['code'], $info['redirect_url']);
+foreach (dw_check_urls_concurrent(array_keys($pins), 15, DW_CHECK_TIMEOUT, $pins) as $u => $info) {
+    $results[$u] = dw_status_result($info['code'], $info['redirect_url'], $info['errno']);
 }
 
 json_out(true, 'Checked', ['results' => $results, 'truncated' => $truncated]);
