@@ -190,7 +190,7 @@
                     </div>
                 </div>
 
-                <div class="toolbar">
+                <div class="toolbar bulk-apply-bar">
                     <label class="col-check"><input type="checkbox" id="bulkSelectAll"> Select all matched</label>
                     <div class="toolbar-sep" aria-hidden="true"></div>
                     <span class="col-note">Set status to</span>
@@ -209,14 +209,14 @@
                     <table id="bulkTable">
                         <thead>
                             <tr>
-                                <th></th>
-                                <th>ID</th>
-                                <th>Post Type</th>
-                                <th>Title</th>
-                                <th>Slug</th>
-                                <th class="url-col">Permalink</th>
-                                <th>Status</th>
-                                <th>Matched from</th>
+                                <th class="bk-sel" aria-label="Select"></th>
+                                <th class="bk-id">ID</th>
+                                <th class="bk-type">Post Type</th>
+                                <th class="bk-title">Title</th>
+                                <th class="bk-slug">Slug</th>
+                                <th class="bk-url">Permalink</th>
+                                <th class="bk-status">Status</th>
+                                <th class="bk-from">Matched from</th>
                             </tr>
                         </thead>
                         <tbody id="bulkTableBody"></tbody>

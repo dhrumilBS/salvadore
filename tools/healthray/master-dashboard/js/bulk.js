@@ -26,12 +26,12 @@ function renderBulkTable() {
     }
     tbody.innerHTML = bulkMatched.map(r => `
         <tr>
-            <td><input type="checkbox" class="bulk-row-cb" data-id="${r.id}"${bulkSelected.has(r.id) ? ' checked' : ''}></td>
+            <td class="bk-sel"><input type="checkbox" class="bulk-row-cb" data-id="${r.id}"${bulkSelected.has(r.id) ? ' checked' : ''}></td>
             <td class="mono">${r.id}</td>
             <td><span class="badge badge-neutral">${escapeHtml(r.post_type)}</span></td>
-            <td>${escapeHtml(decodeEntities(r.title))}</td>
-            <td class="mono">${escapeHtml(r.slug)}</td>
-            <td class="url-col">${urlCellHtml(r.permalink)}</td>
+            <td class="bk-title">${escapeHtml(decodeEntities(r.title))}</td>
+            <td class="mono bk-slug">${escapeHtml(r.slug)}</td>
+            <td class="bk-url">${urlCellHtml(r.permalink)}</td>
             <td>${statusBadge(r.status)}</td>
             <td><span class="truncate" title="${escapeHtml(r.matched_input)}">${escapeHtml(r.matched_input)}</span></td>
         </tr>`).join('');

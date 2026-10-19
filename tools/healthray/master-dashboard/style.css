@@ -1918,6 +1918,24 @@ body.drawer-open #drawerScrim { opacity: 1; pointer-events: auto; }
 .bulk-steps li.is-done::before { content: "✓"; background: var(--ok); color: #fff; }
 @media (max-width: 760px) { .bulk-steps { grid-template-columns: 1fr; } }
 
+/* Bulk by URLs results: fixed column widths so the table fits the card (long slugs/URLs wrap
+   instead of pushing Permalink/Status off the right edge); below 960px it scrolls inside .table-wrap. */
+.bulk-apply-bar { margin-bottom: 12px; }
+.bulk-apply-bar .col-check { height: 34px; padding: 0 12px; }
+.bulk-apply-bar select { height: 34px; }
+#bulkTable { table-layout: fixed; min-width: 960px; }
+#bulkTable td { max-width: none; overflow-wrap: anywhere; vertical-align: middle; }
+#bulkTable .bk-sel { width: 40px; padding-right: 0; }
+#bulkTable .bk-sel input { display: block; margin: 0; accent-color: var(--accent); }
+#bulkTable .bk-id { width: 76px; }
+#bulkTable .bk-type { width: 100px; }
+#bulkTable .bk-title { width: 24%; color: var(--text); }
+#bulkTable .bk-slug { width: 20%; }
+#bulkTable .bk-url { width: 28%; }
+#bulkTable .bk-status { width: 100px; }
+#bulkTable .bk-from { width: 16%; }
+#bulkTable .truncate { max-width: 100%; }
+
 /* ── Shared KPI card look (same as Link Fixer's .fx-stat) ──────
    .stat-card is used by Links & UTM (and any tab that wants a KPI row).
    --c = the card's meaning colour; .is-zero mutes a 0 so it reads calm. */
