@@ -230,6 +230,10 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
   (cross-domain) canonicals are out of scope. `canonical_fix.php` is all-or-nothing with an `expected` check,
   syncs `wp_yoast_indexable.canonical`, does not bump `post_modified`, logs source `canonical`
   (undo = the generic meta undo + indexable sync in `activity_undo.php`).
+- **Site time**: local <-> GMT goes through `dw_site_timezone()` (`dw_local_to_gmt()`, `dw_site_now()`; Menu Order has
+  its own `mo_site_timezone()`), never a fixed hour offset and never MySQL `NOW()` (the DB clock is UTC). Botphonic uses a
+  named zone (`America/Los_Angeles`, empty `gmt_offset`, -7/-8h with DST); Healthray uses `gmt_offset` 5.5. A publish-date
+  write or undo also syncs `wp_yoast_indexable.object_published_at` (`dw_sync_published_indexable()`).
 - **Yoast meta keys** use the `_yoast_wpseo_*` prefix on these installs.
 - **Robots (Yoast "Advanced": noindex / nofollow)** are Content-tab fields `robots_index` (`''` = post type default,
   `index`, `noindex`) and `robots_follow` (`follow`, `nofollow`), stored as Yoast does (`DW_ROBOTS_META` in

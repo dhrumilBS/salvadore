@@ -92,16 +92,16 @@ switch ($field) {
             json_out(false, 'Invalid date - expected YYYY-MM-DD HH:MM:SS');
         }
         $localStr = $dt->format('Y-m-d H:i:s');
-        // DateTime::modify() mis-parses fractional-hour offsets (e.g. "-5.5 hours"
-        // silently comes out as +5 hours) - convert to whole seconds first.
-        $offsetSeconds = (int) round(dw_gmt_offset_hours($conn) * 3600);
-        $gmt = clone $dt;
-        $gmt->modify(($offsetSeconds >= 0 ? '-' : '+') . abs($offsetSeconds) . ' seconds');
-        $gmtStr = $gmt->format('Y-m-d H:i:s');
+        // Through the site's timezone, not a fixed offset: a named zone (Botphonic's
+        // America/Los_Angeles) is -7h in summer and -8h in winter.
+        $gmtStr = dw_local_to_gmt($conn, $localStr);
 
         $stmt = $conn->prepare('UPDATE wp_posts SET post_date = ?, post_date_gmt = ? WHERE ID = ?');
         $stmt->bind_param('ssi', $localStr, $gmtStr, $id);
         $ok = $stmt->execute();
+        if ($ok) {
+            dw_sync_published_indexable($conn, $id, $gmtStr);
+        }
         $saved = $localStr;
         break;
 

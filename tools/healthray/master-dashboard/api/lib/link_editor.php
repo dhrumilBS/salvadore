@@ -169,12 +169,14 @@ function dw_fx_save_source(mysqli $conn, $postId, $source, $metaKey, $value)
         $stmt->bind_param('sis', $value, $postId, $metaKey);
         $ok = $stmt->execute();
         // The post itself changed too, as far as caches/sitemaps/"recently modified" lists care.
-        $stmt = $conn->prepare('UPDATE wp_posts SET post_modified = NOW(), post_modified_gmt = UTC_TIMESTAMP() WHERE ID = ?');
-        $stmt->bind_param('i', $postId);
+        $now  = dw_site_now($conn); // site timezone - MySQL NOW() is the DB server's clock
+        $stmt = $conn->prepare('UPDATE wp_posts SET post_modified = ?, post_modified_gmt = UTC_TIMESTAMP() WHERE ID = ?');
+        $stmt->bind_param('si', $now, $postId);
         return $ok && $stmt->execute();
     }
-    $stmt = $conn->prepare('UPDATE wp_posts SET post_content = ?, post_modified = NOW(), post_modified_gmt = UTC_TIMESTAMP() WHERE ID = ?');
-    $stmt->bind_param('si', $value, $postId);
+    $now  = dw_site_now($conn);
+    $stmt = $conn->prepare('UPDATE wp_posts SET post_content = ?, post_modified = ?, post_modified_gmt = UTC_TIMESTAMP() WHERE ID = ?');
+    $stmt->bind_param('ssi', $value, $now, $postId);
     return $stmt->execute();
 }
 

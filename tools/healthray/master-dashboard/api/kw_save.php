@@ -115,10 +115,8 @@ try {
         json_out(false, count($errors) . ' change(s) could not be saved - nothing was written', ['saved' => [], 'errors' => $errors]);
     }
 
-    $offsetSeconds = (int) round(dw_gmt_offset_hours($conn) * 3600);
-    $now    = time();
-    $modGmt = gmdate('Y-m-d H:i:s', $now);
-    $mod    = gmdate('Y-m-d H:i:s', $now + $offsetSeconds);
+    $modGmt = gmdate('Y-m-d H:i:s');
+    $mod    = dw_site_now($conn);
 
     $delMeta   = $conn->prepare('DELETE FROM wp_postmeta WHERE post_id = ? AND meta_key = ?');
     $delExtra  = $conn->prepare('DELETE FROM wp_postmeta WHERE post_id = ? AND meta_key = ? AND meta_value <> ?');

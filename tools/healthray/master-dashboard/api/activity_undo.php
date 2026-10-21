@@ -251,19 +251,24 @@ if ($dbChanges) {
             }
         }
 
+        // post_modified in the site's timezone - MySQL NOW() is the DB server's clock, not the site's.
+        $siteNow = dw_site_now($conn);
         foreach ($postSets as $pid => $set) {
             $cols = array_keys($set);
             $sql = 'UPDATE wp_posts SET ' . implode(', ', array_map(fn($col) => "$col = ?", $cols))
-                . ($isMenu ? ', post_modified = NOW(), post_modified_gmt = UTC_TIMESTAMP()' : '') . ' WHERE ID = ?';
-            $types = implode('', array_map(fn($col) => $col === 'menu_order' ? 'i' : 's', $cols)) . 'i';
-            $vals = array_merge(array_values($set), [$pid]);
+                . ($isMenu ? ', post_modified = ?, post_modified_gmt = UTC_TIMESTAMP()' : '') . ' WHERE ID = ?';
+            $types = implode('', array_map(fn($col) => $col === 'menu_order' ? 'i' : 's', $cols)) . ($isMenu ? 's' : '') . 'i';
+            $vals = array_merge(array_values($set), $isMenu ? [$siteNow] : [], [$pid]);
             $stmt = $conn->prepare($sql); // columns come from MD_UNDO_POST_COLS only
             $stmt->bind_param($types, ...$vals);
             $stmt->execute();
+            if (isset($set['post_date_gmt'])) {
+                dw_sync_published_indexable($conn, $pid, $set['post_date_gmt']); // Yoast's copy of the publish date
+            }
         }
         foreach (array_keys($bumpIds) as $pid) { // focus keyword restores, like kw_save.php
-            $stmt = $conn->prepare('UPDATE wp_posts SET post_modified = NOW(), post_modified_gmt = UTC_TIMESTAMP() WHERE ID = ?');
-            $stmt->bind_param('i', $pid);
+            $stmt = $conn->prepare('UPDATE wp_posts SET post_modified = ?, post_modified_gmt = UTC_TIMESTAMP() WHERE ID = ?');
+            $stmt->bind_param('si', $siteNow, $pid);
             $stmt->execute();
         }
         $conn->commit();

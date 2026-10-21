@@ -345,17 +345,67 @@ function dw_build_post_path($structure, array $row, $categoryPath)
     return trim($path, '/');
 }
 
-/** Site's configured UTC offset in hours (wp_options "gmt_offset"), cached per request. */
-function dw_gmt_offset_hours(mysqli $conn)
+/**
+ * The site's timezone, resolved the way WordPress does: the named zone
+ * (timezone_string, e.g. Botphonic's "America/Los_Angeles") when set, else the
+ * numeric gmt_offset. A named zone has daylight saving, so local <-> GMT must
+ * go through DateTime with this zone, never a fixed hour offset - gmt_offset
+ * is empty on sites that use a named zone. Cached per request.
+ */
+function dw_site_timezone(mysqli $conn)
 {
-    static $offset = null;
-    if ($offset !== null) {
-        return $offset;
+    static $tz = null;
+    if ($tz !== null) {
+        return $tz;
     }
-    $res = $conn->query("SELECT option_value FROM wp_options WHERE option_name = 'gmt_offset' LIMIT 1");
-    $row = $res ? $res->fetch_assoc() : null;
-    $offset = $row ? (float) $row['option_value'] : 0.0;
-    return $offset;
+    $opts = [];
+    foreach ($conn->query("SELECT option_name, option_value FROM wp_options WHERE option_name IN ('timezone_string', 'gmt_offset')") as $r) {
+        $opts[$r['option_name']] = (string) $r['option_value'];
+    }
+    if (($opts['timezone_string'] ?? '') !== '') {
+        try {
+            return $tz = new DateTimeZone($opts['timezone_string']);
+        } catch (Exception $e) { /* fall through to the offset */
+        }
+    }
+    $offset = (float) ($opts['gmt_offset'] ?? 0);
+    $abs    = abs($offset);
+    $hours  = (int) floor($abs);
+    return $tz = new DateTimeZone(sprintf('%s%02d:%02d', $offset < 0 ? '-' : '+', $hours, (int) round(($abs - $hours) * 60)));
+}
+
+/** A site-local "Y-m-d H:i:s" -> its GMT "Y-m-d H:i:s", daylight saving included (post_date -> post_date_gmt). */
+function dw_local_to_gmt(mysqli $conn, $local)
+{
+    return (new DateTime($local, dw_site_timezone($conn)))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+}
+
+/** Now in the site's local time (post_modified next to gmdate() for post_modified_gmt). */
+function dw_site_now(mysqli $conn)
+{
+    return (new DateTime('now', dw_site_timezone($conn)))->format('Y-m-d H:i:s');
+}
+
+/**
+ * Keep Yoast's copy of the publish date in step after post_date_gmt changes:
+ * wp_yoast_indexable.object_published_at (= post_date_gmt) feeds the
+ * datePublished in Yoast's schema. No-op when the table/column isn't there.
+ */
+function dw_sync_published_indexable(mysqli $conn, $postId, $gmt)
+{
+    static $has = null;
+    if ($has === null) {
+        $res = $conn->query("SELECT 1 FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wp_yoast_indexable' AND COLUMN_NAME = 'object_published_at' LIMIT 1");
+        $has = $res && $res->fetch_row();
+    }
+    if (!$has) {
+        return;
+    }
+    $stmt = $conn->prepare("UPDATE wp_yoast_indexable SET object_published_at = ? WHERE object_id = ? AND object_type = 'post'");
+    $postId = (int) $postId;
+    $stmt->bind_param('si', $gmt, $postId);
+    $stmt->execute();
 }
 
 /*
