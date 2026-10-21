@@ -35,6 +35,7 @@ const contentState = {
     mod_to: '',
     search: '',
     seo: '',      // SEO gap filter: missing_title | missing_desc | missing_kw | dup_title
+    category: '', // category term_id - Post tab only (cleared on any other type)
     sort: 'post_date',
     dir: 'DESC',
     page: 1,
@@ -81,6 +82,16 @@ function robotsSelect(r, field) {
 
 const STATUS_OPTIONS = ['publish', 'draft', 'pending', 'private', 'future', 'trash'];
 const WIDE_URL_COLUMNS = ['permalink'];
+
+/** Column key -> server sort key (dw_sort_columns()). Link Status is a live check, not stored, so it can't sort. */
+const SORT_BY_COLUMN = {
+    id: 'id', post_type: 'post_type', title: 'title', slug: 'slug',
+    permalink: 'slug', // the permalink is built from the slug - sorting by it orders by slug
+    status: 'status', category: 'category', meta_title: 'meta_title', meta_description: 'meta_description',
+    publish_date: 'post_date', robots_index: 'robots_index', robots_follow: 'robots_follow',
+};
+/** Sorts whose first click is newest/highest first; text columns start A-Z. */
+const SORT_DESC_FIRST = ['post_date', 'post_modified', 'id', 'menu_order'];
 
 let contentRows = [];
 let visibleColumns = loadVisibleColumns();
@@ -169,9 +180,80 @@ function updateContentExportLink() {
 /* ---------- table ---------- */
 function renderContentHead() {
     document.getElementById('tableHead').innerHTML =
-        '<tr>' + activeColumns().map(c =>
-            `<th class="col-${c.key}${WIDE_URL_COLUMNS.includes(c.key) ? ' url-col' : ''}">${c.label}</th>`).join('')
+        '<tr>' + activeColumns().map(c => {
+            const cls = `col-${c.key}${WIDE_URL_COLUMNS.includes(c.key) ? ' url-col' : ''}`;
+            const key = SORT_BY_COLUMN[c.key];
+            if (!key) return `<th class="${cls}">${c.label}</th>`;
+            const on = contentState.sort === key;
+            const asc = contentState.dir === 'ASC';
+            const next = on ? (asc ? 'descending' : 'ascending') : (SORT_DESC_FIRST.includes(key) ? 'descending' : 'ascending');
+            const note = c.key === 'permalink' ? ' (by slug)' : '';
+            return `<th class="${cls}${on ? ' sort-active' : ''}" aria-sort="${on ? (asc ? 'ascending' : 'descending') : 'none'}">` +
+                `<button type="button" class="th-sort" data-sort-col="${c.key}" title="Sort by ${c.label}${note} - ${next}">` +
+                `<span>${c.label}</span><span class="th-sort-ind" aria-hidden="true">${on ? (asc ? '▲' : '▼') : '⇅'}</span></button></th>`;
+        }).join('')
         + '<th class="col-actions">Actions</th></tr>';
+}
+
+/** Header arrows, the Sort dropdown and the direction button all show contentState.sort/dir. */
+function syncSortControls() {
+    const sel = document.getElementById('fSort');
+    if ([...sel.options].some(o => o.value === contentState.sort)) sel.value = contentState.sort;
+    document.getElementById('fDir').textContent = contentState.dir === 'DESC' ? '↓ DESC' : '↑ ASC';
+    renderContentHead();
+}
+
+/** Header click: same column flips the direction, a new column starts in its natural order. */
+function sortContentBy(key) {
+    if (contentState.sort === key) contentState.dir = contentState.dir === 'ASC' ? 'DESC' : 'ASC';
+    else { contentState.sort = key; contentState.dir = SORT_DESC_FIRST.includes(key) ? 'DESC' : 'ASC'; }
+    contentState.page = 1;
+    syncSortControls();
+    loadContent();
+}
+
+/* ---------- category filter (Post tab only) ---------- */
+const contentCategoryCache = {}; // status -> {categories, total}; the page reloads on site switch
+
+/** Show/hide + fill the Category dropdown for the current type/status. Clears the filter off the Post tab. */
+function renderContentCategory() {
+    const sel = document.getElementById('fCategory');
+    const isPost = contentState.post_type === 'post';
+    sel.hidden = !isPost;
+    if (!isPost) { contentState.category = ''; return; }
+
+    const status = contentState.status;
+    const data = contentCategoryCache[status];
+    if (!data) {
+        sel.innerHTML = '<option value="">Categories…</option>';
+        sel.disabled = true;
+        api('category_counts.php', { params: { status } })
+            .then(json => {
+                if (!json.success) throw new Error(json.msg);
+                contentCategoryCache[status] = json;
+                if (contentState.status === status) renderContentCategory();
+            })
+            .catch(err => {
+                console.error(err);
+                sel.innerHTML = '<option value="">Categories (failed)</option>';
+            });
+        return;
+    }
+
+    // Parent > child order, indented; a category shows when it (or a child) has posts in this status, or is selected.
+    const byParent = {};
+    data.categories.forEach(c => { (byParent[c.parent] ||= []).push(c); });
+    const shown = c => c.count > 0 || String(c.id) === String(contentState.category) || (byParent[c.id] || []).some(shown);
+    const options = [];
+    const walk = (parent, depth) => (byParent[parent] || []).filter(shown).forEach(c => {
+        const pad = depth ? '   '.repeat(depth) + '└ ' : '';
+        options.push(`<option value="${c.id}"${String(c.id) === String(contentState.category) ? ' selected' : ''}>${escapeHtml(pad + decodeEntities(c.name))} (${fmtNum(c.count)})</option>`);
+        walk(c.id, depth + 1);
+    });
+    walk(0, 0);
+    sel.innerHTML = `<option value="">All categories (${fmtNum(data.total)})</option>` + options.join('');
+    sel.disabled = false;
+    sel.classList.toggle('is-set', !!contentState.category);
 }
 
 function editableInput(r, field, extraClass = '') {
@@ -499,6 +581,7 @@ function defaultContentPostType() {
 function populateContentPostTypes(postTypes) {
     contentPostTypes = postTypes;
     renderContentTypeTabs();
+    renderContentCategory();
 }
 
 /**
@@ -575,13 +658,23 @@ function bindContentTab() {
         loadContent();
     }, 350));
 
-    [['fStatus', 'status'], ['fSort', 'sort'], ['fSeo', 'seo']].forEach(([id, key]) => {
+    [['fStatus', 'status'], ['fSort', 'sort'], ['fSeo', 'seo'], ['fCategory', 'category']].forEach(([id, key]) => {
         document.getElementById(id).addEventListener('change', e => {
             contentState[key] = e.target.value;
             contentState.page = 1;
-            if (key === 'status' && renderContentTypeTabs()) renderContentStatusCounts(); // the type tabs follow the status; the type may have changed
+            if (key === 'status') {
+                if (renderContentTypeTabs()) renderContentStatusCounts(); // the type tabs follow the status; the type may have changed
+                renderContentCategory(); // counts are per status
+            }
+            if (key === 'category') e.target.classList.toggle('is-set', !!e.target.value);
+            if (key === 'sort') syncSortControls();
             loadContent();
         });
+    });
+
+    document.getElementById('tableHead').addEventListener('click', e => {
+        const btn = e.target.closest('.th-sort');
+        if (btn) sortContentBy(SORT_BY_COLUMN[btn.dataset.sortCol]);
     });
 
     document.getElementById('fPostTypeTabs').addEventListener('click', e => {
@@ -592,6 +685,7 @@ function bindContentTab() {
         contentState.post_type = tab.dataset.type;
         contentState.page = 1;
         renderContentStatusCounts();
+        renderContentCategory();
         loadContent();
     });
 
@@ -613,7 +707,8 @@ function bindContentTab() {
 
     document.getElementById('fDir').addEventListener('click', () => {
         contentState.dir = contentState.dir === 'DESC' ? 'ASC' : 'DESC';
-        document.getElementById('fDir').textContent = contentState.dir === 'DESC' ? '↓ DESC' : '↑ ASC';
+        contentState.page = 1;
+        syncSortControls();
         loadContent();
     });
 
@@ -635,11 +730,12 @@ function bindContentTab() {
     document.getElementById('clearFiltersBtn').addEventListener('click', () => {
         Object.assign(contentState, {
             post_type: defaultContentPostType(), status: 'publish',
-            date_from: '', date_to: '', mod_from: '', mod_to: '', search: '', seo: '', page: 1,
+            date_from: '', date_to: '', mod_from: '', mod_to: '', search: '', seo: '', category: '', page: 1,
         });
         document.getElementById('fSeo').value = '';
         renderContentTypeTabs();
         renderContentStatusCounts(); // back on "publish", counted for the default type
+        renderContentCategory();
         ['fDateFrom', 'fDateTo', 'fModFrom', 'fModTo', 'fSearch'].forEach(id => { document.getElementById(id).value = ''; });
         loadContent();
     });

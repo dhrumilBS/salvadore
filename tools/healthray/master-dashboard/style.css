@@ -1894,6 +1894,31 @@ body.drawer-open #drawerScrim { opacity: 1; pointer-events: auto; }
 #dataTable .col-permalink .url-full { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #dataTable .col-category .truncate { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Sortable headers: the whole label is a button; ⇅ = sortable, ▲/▼ = current sort (js/content.js) */
+#dataTable .th-sort {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin: -4px -6px; padding: 4px 6px; border: 0; border-radius: 6px;
+    background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit;
+    cursor: pointer; white-space: nowrap;
+}
+#dataTable .th-sort:hover { background: var(--surface3); color: var(--text); }
+#dataTable .th-sort:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#dataTable .th-sort-ind { font-size: 9px; opacity: .35; transition: opacity .15s; }
+#dataTable .th-sort:hover .th-sort-ind { opacity: .8; }
+#dataTable th.sort-active { color: var(--accent); }
+#dataTable th.sort-active .th-sort-ind { opacity: 1; }
+
+/* Sort dropdown + direction button read as one control */
+.sort-control { display: inline-flex; align-items: stretch; }
+.sort-control select { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.sort-control .sort-dir { margin-left: -1px; border-top-left-radius: 0; border-bottom-left-radius: 0; min-width: 74px; }
+.sort-control select:focus, .sort-control .sort-dir:focus-visible { position: relative; z-index: 1; }
+
+/* Category filter (Post tab only): highlighted while it narrows the list */
+#fCategory { max-width: 260px; }
+#fCategory.is-set { border-color: var(--accent); background: var(--accent-dim); color: var(--text); font-weight: 600; }
+#fCategory[hidden] { display: none; }
+
 /* 2-line text boxes for title / meta */
 .cell-input.cell-text {
     height: auto;

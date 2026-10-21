@@ -82,15 +82,34 @@ function dw_needed_meta_keys()
         '_yoast_wpseo_meta-robots-noindex', '_yoast_wpseo_meta-robots-nofollow'];
 }
 
-/** sort key (as sent by the client) => safe SQL order-by expression. */
+/**
+ * sort key (as sent by the client) => safe SQL order-by expression. The Content
+ * tab's column headers sort by these keys (js/content.js SORT_KEYS); meta and
+ * category sorts are correlated subqueries, fine at a few thousand posts.
+ */
 function dw_sort_columns()
 {
+    $meta = fn($key) => "(SELECT pm.meta_value FROM wp_postmeta pm WHERE pm.post_id = p.ID AND pm.meta_key = '$key' LIMIT 1)";
     return [
-        'post_date'     => 'p.post_date',
-        'post_modified' => 'p.post_modified',
-        'title'         => 'p.post_title',
-        'menu_order'    => 'p.menu_order',
-        'author'        => 'author_name',
+        'post_date'        => 'p.post_date',
+        'post_modified'    => 'p.post_modified',
+        'title'            => 'p.post_title',
+        'menu_order'       => 'p.menu_order',
+        'author'           => 'author_name',
+        'id'               => 'p.ID',
+        'post_type'        => 'p.post_type',
+        'slug'             => 'p.post_name',
+        'status'           => 'p.post_status',
+        // First category name A-Z - the same name the Category column lists first.
+        'category'         => "(SELECT MIN(t.name) FROM wp_term_relationships tr
+                                INNER JOIN wp_term_taxonomy tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'category'
+                                INNER JOIN wp_terms t ON t.term_id = tt.term_id
+                                WHERE tr.object_id = p.ID)",
+        // An empty Yoast title shows the post title (dw_hydrate_batch), so it sorts as one too.
+        'meta_title'       => "COALESCE(NULLIF({$meta('_yoast_wpseo_title')}, ''), p.post_title)",
+        'meta_description' => $meta('_yoast_wpseo_metadesc'),
+        'robots_index'     => $meta('_yoast_wpseo_meta-robots-noindex'),
+        'robots_follow'    => $meta('_yoast_wpseo_meta-robots-nofollow'),
     ];
 }
 

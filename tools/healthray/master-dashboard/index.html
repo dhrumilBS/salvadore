@@ -256,6 +256,8 @@
                 <!-- Row 2: how to arrange it, and what to do with it -->
                 <div class="toolbar">
                     <select id="fStatus" title="Status"></select>
+                    <!-- Post tab only: filled from category_counts.php, "(n)" = posts in the selected status (js/content.js) -->
+                    <select id="fCategory" class="f-category" title="Category - posts filed directly under it" hidden></select>
                     <select id="fSeo" title="Show only posts with an SEO gap">
                         <option value="">All posts</option>
                         <option value="missing_title">Missing meta title</option>
@@ -265,14 +267,32 @@
                         <option value="noindex">Hidden from search (noindex)</option>
                         <option value="nofollow">Links not followed (nofollow)</option>
                     </select>
-                    <select id="fSort" title="Sort by">
-                        <option value="post_date">Publish Date</option>
-                        <option value="post_modified">Modified Date</option>
-                        <option value="title">Title</option>
-                        <option value="menu_order">Menu Order</option>
-                        <option value="author">Author</option>
-                    </select>
-                    <button type="button" class="btn" id="fDir" title="Toggle sort direction">↓ DESC</button>
+                    <!-- Same keys as the clickable column headers (SORT_BY_COLUMN in js/content.js) -->
+                    <div class="sort-control" title="Sort by - or click any column header">
+                        <select id="fSort" aria-label="Sort by">
+                            <optgroup label="Dates">
+                                <option value="post_date">Publish Date</option>
+                                <option value="post_modified">Modified Date</option>
+                            </optgroup>
+                            <optgroup label="Columns">
+                                <option value="id">ID</option>
+                                <option value="title">Title</option>
+                                <option value="slug">Slug / Permalink</option>
+                                <option value="status">Status</option>
+                                <option value="category">Category</option>
+                                <option value="meta_title">Meta Title</option>
+                                <option value="meta_description">Meta Description</option>
+                                <option value="robots_index">Show in Search</option>
+                                <option value="robots_follow">Follow Links</option>
+                                <option value="post_type">Post Type</option>
+                            </optgroup>
+                            <optgroup label="Other">
+                                <option value="menu_order">Menu Order</option>
+                                <option value="author">Author</option>
+                            </optgroup>
+                        </select>
+                        <button type="button" class="btn sort-dir" id="fDir" title="Toggle sort direction">↓ DESC</button>
+                    </div>
 
                     <div class="toolbar-sep" aria-hidden="true"></div>
 

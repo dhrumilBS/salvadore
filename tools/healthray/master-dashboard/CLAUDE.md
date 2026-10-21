@@ -254,6 +254,7 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 |---|---|---|
 | `databases.php` | GET | configured sites + current |
 | `filter_options.php` | GET | post types (with counts) + status map |
+| `category_counts.php` | GET | Content tab Category dropdown (Post tab only): post categories + posts per category in `status=`, `total` |
 | `list_posts.php` | GET | Content list (paged server-side) |
 | `update_post.php` | POST | save one field on one post |
 | `export.php` | GET | Content CSV (batched, optional live-check filter) |
@@ -290,5 +291,7 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 
 - New editable field: `renderCell()` + `FIELD_LABELS` (`js/content.js`) + a case in `update_post.php`.
 - New export column: `$allColumns` in `export.php` + the key in `dw_hydrate_batch()`.
+- New sortable column: a key in `dw_sort_columns()` (constants.php) + `SORT_BY_COLUMN` and the `#fSort` option (Content headers,
+  dropdown and ↓/↑ button stay in sync via `syncSortControls()`). Link Status is live-only and never sorts.
 - New filter shared by Content + Links: `dw_parse_input()` / `dw_build_where()`, then a control + state key in each tab.
 - Excluded post types / statuses / sort columns: `api/lib/constants.php`.
