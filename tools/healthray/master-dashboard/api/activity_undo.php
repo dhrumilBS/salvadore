@@ -24,7 +24,7 @@ require __DIR__ . '/lib/redirect_store.php';
 require_once __DIR__ . '/lib/activity.php';
 require_post_method();
 
-const MD_UNDO_POST_COLS = ['post_title', 'post_name', 'post_status', 'post_date', 'post_date_gmt', 'menu_order'];
+const MD_UNDO_POST_COLS = ['post_title', 'post_name', 'post_status', 'post_date', 'post_date_gmt', 'post_modified', 'post_modified_gmt', 'menu_order'];
 
 $id = (string) ($_POST['id'] ?? '');
 if ($id === '' || !preg_match('/^[A-Za-z0-9_-]{1,80}$/', $id)) {
@@ -255,15 +255,22 @@ if ($dbChanges) {
         $siteNow = dw_site_now($conn);
         foreach ($postSets as $pid => $set) {
             $cols = array_keys($set);
+            // A restore that names post_modified itself (a dates cleanup) puts it back; otherwise Menu undos bump it.
+            $bump = $isMenu && !isset($set['post_modified']);
             $sql = 'UPDATE wp_posts SET ' . implode(', ', array_map(fn($col) => "$col = ?", $cols))
-                . ($isMenu ? ', post_modified = ?, post_modified_gmt = UTC_TIMESTAMP()' : '') . ' WHERE ID = ?';
-            $types = implode('', array_map(fn($col) => $col === 'menu_order' ? 'i' : 's', $cols)) . ($isMenu ? 's' : '') . 'i';
-            $vals = array_merge(array_values($set), $isMenu ? [$siteNow] : [], [$pid]);
+                . ($bump ? ', post_modified = ?, post_modified_gmt = UTC_TIMESTAMP()' : '') . ' WHERE ID = ?';
+            $types = implode('', array_map(fn($col) => $col === 'menu_order' ? 'i' : 's', $cols)) . ($bump ? 's' : '') . 'i';
+            $vals = array_merge(array_values($set), $bump ? [$siteNow] : [], [$pid]);
             $stmt = $conn->prepare($sql); // columns come from MD_UNDO_POST_COLS only
             $stmt->bind_param($types, ...$vals);
             $stmt->execute();
             if (isset($set['post_date_gmt'])) {
                 dw_sync_published_indexable($conn, $pid, $set['post_date_gmt']); // Yoast's copy of the publish date
+            }
+            if (isset($set['post_modified_gmt'])) { // and of the last-modified date (object_last_modified = post_modified_gmt)
+                $ix = $conn->prepare("UPDATE wp_yoast_indexable SET object_last_modified = ? WHERE object_id = ? AND object_type = 'post'");
+                $ix->bind_param('si', $set['post_modified_gmt'], $pid);
+                $ix->execute();
             }
         }
         foreach (array_keys($bumpIds) as $pid) { // focus keyword restores, like kw_save.php

@@ -22,7 +22,7 @@ const HISTORY_SOURCES = [
 ];
 const HISTORY_SOURCE_LABEL = Object.fromEntries(HISTORY_SOURCES.filter(([k]) => k));
 const HISTORY_FIELD_LABEL = {
-    post_title: 'Title', post_name: 'Slug', post_status: 'Status', post_date: 'Publish date', post_date_gmt: 'Publish date (GMT)',
+    post_title: 'Title', post_name: 'Slug', post_status: 'Status', post_date: 'Publish date', post_date_gmt: 'Publish date (GMT)', post_modified: 'Modified date', post_modified_gmt: 'Modified date (GMT)',
     menu_order: 'Menu order', post_content: 'Post content', _yoast_wpseo_title: 'Meta title', _yoast_wpseo_metadesc: 'Meta description',
     _yoast_wpseo_focuskw: 'Focus keyword', _yoast_wpseo_canonical: 'Canonical URL',
 };
