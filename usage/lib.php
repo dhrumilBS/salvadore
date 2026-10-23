@@ -245,7 +245,7 @@ function usage_tool_for(string $path): string
             }
         }
     }
-    $dir = preg_replace('#[^/]*$#', '', $path);
+    $dir = preg_replace('#[^/]*$#', '', preg_replace('#/{2,}#', '/', $path)); // '/salvadore//x/' = '/salvadore/x/'
     return $tools[$dir] ?? (trim(preg_replace('#^/salvadore/(tools/)?#', '', $dir), '/') ?: $path);
 }
 
