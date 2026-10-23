@@ -1,19 +1,17 @@
 <?php
-
 header('Content-Type: application/json');
-
 $logFile = __DIR__ . '/access-history.json';
-
 $data = json_decode(file_get_contents('php://input'), true);
-
 function getClientIP()
 {
-    foreach ([
-        'HTTP_CF_CONNECTING_IP',
-        'HTTP_X_FORWARDED_FOR',
-        'HTTP_CLIENT_IP',
-        'REMOTE_ADDR'
-    ] as $key) {
+    foreach (
+        [
+            'HTTP_CF_CONNECTING_IP',
+            'HTTP_X_FORWARDED_FOR',
+            'HTTP_CLIENT_IP',
+            'REMOTE_ADDR'
+        ] as $key
+    ) {
         if (!empty($_SERVER[$key])) {
             return trim(explode(',', $_SERVER[$key])[0]);
         }
