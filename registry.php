@@ -6,7 +6,8 @@
  *   tags   any of: db (reads/writes a WordPress database), writes (can change
  *          live data), login (has its own login), lan (only reachable from this
  *          PC + office LAN - see .htaccess), api (no page; used by other tools),
- *          node (needs `node server.js` running), multi (switches between sites)
+ *          node (needs `node server.js` running), multi (switches between sites),
+ *          me (this PC only - hidden from the dashboard everywhere else)
  *   icon   assets/icons/<icon>.svg (the tool's favicon too), or a path to an SVG
  *   desc   one line - shown as the card's tooltip and matched by the search
  *
@@ -50,6 +51,8 @@ return [
                 'desc' => 'Unix timestamps ⇄ dates.'],
             ['name' => 'Phone Number Validation', 'path' => 'tools/phone-validator/', 'icon' => 'phone-validator', 'tags' => [],
                 'desc' => 'Validate phone numbers.'],
+            ['name' => 'Tool Usage', 'path' => 'usage/report/', 'icon' => 'usage-report', 'tags' => ['me'],
+                'desc' => 'Who used which tool, when, from where and for how long. Signed, append-only log; opens on this PC only.'],
         ],
     ],
     'assets' => [

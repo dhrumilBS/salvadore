@@ -7,11 +7,16 @@
  * Read-only: this page never creates, edits or deletes anything.
  */
 $groups = require __DIR__ . '/registry.php';
+require __DIR__ . '/usage/lib.php';
 
-// Drop entries whose folder/file is gone, then any group left empty.
+// 'me' tools (the usage report) refuse everyone but this PC - don't even show them elsewhere.
+$isThisPc = usage_is_this_pc();
+
+// Drop entries whose folder/file is gone (or that aren't for this viewer), then any group left empty.
 $listed = [];
 foreach ($groups as $key => $g) {
-    $groups[$key]['items'] = array_values(array_filter($g['items'], fn($it) => file_exists(__DIR__ . '/' . strtok($it['path'], '#'))));
+    $groups[$key]['items'] = array_values(array_filter($g['items'], fn($it) => file_exists(__DIR__ . '/' . strtok($it['path'], '#'))
+        && ($isThisPc || !in_array('me', $it['tags'], true))));
     if (!$groups[$key]['items']) {
         unset($groups[$key]);
         continue;
@@ -46,6 +51,7 @@ $TAGS = [
     'lan'    => ['LAN only', 'Only reachable from this PC and the office network'],
     'api'    => ['No page', 'Used by other tools or holds files - nothing to open'],
     'node'   => ['Needs Node', 'Start its node server first'],
+    'me'     => ['This PC only', 'Opens on this PC only - hidden from everyone else'],
 ];
 
 $total = array_sum(array_map(fn($g) => count($g['items']), $groups));
@@ -75,6 +81,7 @@ $icon = function (array $it) use ($e) {
     <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="<?= $e($v('assets/home.css')) ?>">
     <script src="<?= $e($v('assets/home.js')) ?>" defer></script>
+    <script src="usage/track.js" defer></script>
 </head>
 
 <body>

@@ -83,6 +83,7 @@ $kb = fn($b) => $b >= 1024 ? round($b / 1024, 1) . ' KB' : $b . ' B';
         .acts button:hover, .acts a:hover { border-color: var(--accent); color: var(--accent); }
         .acts .done { border-color: var(--ok); color: var(--ok); }
     </style>
+    <script src="../usage/track.js" defer></script>
 </head>
 
 <body data-bg="check">

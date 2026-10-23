@@ -1,0 +1,13 @@
+# Usage tracking. track.js and collect.php are open to everyone (they record
+# visits); the rest are included by PHP or run from the command line. The
+# report has its own rule.
+<FilesMatch "^(lib|backup|import-apache)\.php$">
+    Require all denied
+</FilesMatch>
+
+# Pages load track.js without a version - make browsers check for a newer one each time.
+<IfModule mod_headers.c>
+    <Files "track.js">
+        Header set Cache-Control "no-cache"
+    </Files>
+</IfModule>

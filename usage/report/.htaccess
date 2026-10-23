@@ -1,0 +1,3 @@
+# Usage report: this PC only (localhost or this PC's own address).
+# The PHP files check the same again in usage_require_this_pc().
+Require local

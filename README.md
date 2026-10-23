@@ -33,6 +33,13 @@ salvadore/
 │   ├── home.css, home.js   Dashboard styles + search / filter / "Recently opened"
 │   ├── icons/         One SVG per tool — its dashboard card icon and its favicon
 │   └── brand/         Company logos and the site favicon (linked from outside — never rename)
+├── usage/            Tool usage tracking
+│   ├── track.js, collect.php   On every tool page; appends visits to the log (rate-limited)
+│   ├── backup.php     Hourly (Task Scheduler "Salvadore usage backup"): copies the log to the
+│   │                  folder in backup-dir.txt (OneDrive) + records an anchor so deletions show
+│   ├── import-apache.php  One-time import of page views from Apache's access.log (done Oct 2026)
+│   └── report/        Who used which tool, when, where, how long - opens on this PC only
+│                      The log itself is in D:\xampp\salvadore-usage\ (outside htdocs, signed, append-only)
 └── tools/
     ├── healthray/     WordPress tools (table above)
     │                  conn.php + .env = the database connection for all of them
@@ -76,6 +83,8 @@ committed (see `.gitignore`).
 - **Writes need a same-origin header and a confirmation.** Master Dashboard requires
   `X-Master-Dashboard: 1`, Template Pages `X-Template-Pages: 1`; both show what will change and
   ask before saving. Nothing auto-saves.
+- **Every tool page loads the usage tracker**: `<script src="<relative>/usage/track.js" defer></script>`
+  before `</head>`. A new page without it doesn't show up in the usage report.
 - **CSV exports escape cells** starting with `= + - @` so they can't run as Excel formulas.
 
 ## Adding a tool
