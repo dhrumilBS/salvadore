@@ -16,6 +16,7 @@ Internal tools for the Healthray, Botphonic and Bigscal WordPress sites. Served 
 | **Botphonic API** | `tools/botphonic/` | Endpoints for the Botphonic database. No page. |
 | **Image Downloader** | `tools/image-downloader/` | Pull every image from a site into a local folder. LAN only. |
 | **Blog Content Builder** | `tools/bigscal/` | Bigscal blog post, content boxes and CTAs in WordPress paste format; loads Google Docs (office network only). |
+| **Botphonic Cover Studio** | `tools/botphonic-blog-feature-img/` | Botphonic blog feature images that match the existing set: 1600 × 900 WebP under 90 KB, named after the post slug. One at a time or a week's batch as .zip; `make-covers.mjs` does the same from the command line. |
 | **Browser Snippets** | `tools/browser-snippets/` | DevTools snippets: alt-text fixer, schema generator, link editor… |
 | **Timestamp Converter** / **Phone Validator** | `tools/timestamp/`, `tools/phone-validator/` | Small standalone helpers. |
 
@@ -37,11 +38,13 @@ salvadore/
     │                  conn.php + .env = the database connection for all of them
     ├── botphonic/     Botphonic database API (own conn.php + .env)
     ├── bigscal/       Blog Content Builder (page + api/read_doc.php for Google Docs)
+    ├── botphonic-blog-feature-img/  Botphonic Cover Studio (blog feature images; page + make-covers.mjs)
     └── image-downloader/  browser-snippets/  timestamp/  phone-validator/
 ```
 
 Bigger tools keep their own notes next to the code: `tools/healthray/master-dashboard/CLAUDE.md`,
-`tools/healthray/lead/CLAUDE.md`, `tools/healthray/wp_options/README.md`.
+`tools/healthray/lead/CLAUDE.md`, `tools/healthray/wp_options/README.md`,
+`tools/botphonic-blog-feature-img/HOW-TO-USE.txt` (+ `AGENTS.md` for AI coding tools).
 
 ## Setup on a new machine
 

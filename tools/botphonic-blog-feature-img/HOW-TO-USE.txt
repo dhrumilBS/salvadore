@@ -1,0 +1,40 @@
+BOTPHONIC COVER KIT - make blog feature images that match the existing set
+
+Pick whichever way suits you. All three give the same look: WebP, 1600 x 900, under 90 KB,
+file named after the post's URL slug.
+
+-------------------------------------------------------------------------------
+WAY 1: THE STUDIO (no AI needed)
+-------------------------------------------------------------------------------
+1. Open "Botphonic Cover Studio" on the Salvadore dashboard (under Utilities), or
+   double-click index.html in this folder. Use Chrome or Edge, and stay online
+   (the page loads its two fonts from Google Fonts).
+2. Paste the post URL, write a cover title (3 to 7 words, no year) and a second line
+   (under 45 characters). Keep the suggested style unless the post is clearly another type.
+3. Press "Download cover".
+Several posts: press "Add to this week" for each, then "Download all as .zip".
+
+-------------------------------------------------------------------------------
+WAY 2: CHATGPT (or Gemini, Copilot...) WRITES THE TEXT, THE STUDIO MAKES THE IMAGE
+-------------------------------------------------------------------------------
+1. Open PROMPT-for-ChatGPT.md, copy the prompt into a new chat, and paste your
+   article titles and URLs where it says.
+2. It returns one line per article:  URL | Cover title | Second line | Style
+3. In the studio, paste those lines into "Paste lines from ChatGPT", press
+   "Add these lines to this week", then "Download all as .zip".
+Do not ask ChatGPT to make the image itself. Image generators redraw from scratch
+and will not match the set.
+
+-------------------------------------------------------------------------------
+WAY 3: KIRO, CURSOR, CODEX OR ANY AI CODING TOOL (fully automatic)
+-------------------------------------------------------------------------------
+Open this folder in the tool and ask it:
+   "Follow AGENTS.md and make covers for these posts: <titles and URLs>"
+It writes covers.txt and runs:  node make-covers.mjs covers.txt
+The images land in the "covers" folder with _image-index.csv.
+Needs Node 22 or newer and Chrome or Edge installed.
+
+-------------------------------------------------------------------------------
+Never edit index.html or script.js. The design is locked inside them so every
+image matches the set. To remake an existing cover, fill it in as a new post with
+the same URL, cover title, second line and style: the same values give the same image.

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Botphonic Cover Studio</title>
+  <link rel="icon" href="../../assets/icons/cover-studio.svg" type="image/svg+xml">
+  <meta name="claude:viewport-fit-sides" content="cover">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Same font request as the batch that made the set: covers only match byte for byte with these exact font files. -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@700&family=Newsreader:ital,wght@1,400&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Botphonic <em>Cover Studio</em></h1>
+    <ol class="steps">
+      <li><b>1. Paste the post URL</b>It becomes the file name, so nobody mixes images up.</li>
+      <li><b>2. Write two short lines</b>A cover title and a second line. Pick a style, or keep the suggestion.</li>
+      <li><b>3. Download</b>WebP, 1600 × 900, under 90 KB, the same look as the full set.</li>
+    </ol>
+  </header>
+
+  <div class="tool">
+    <form class="panel" id="form" autocomplete="off">
+      <div class="field">
+        <label for="f-url">Post URL</label>
+        <input id="f-url" placeholder="https://botphonic.ai/blog/your-post-slug/">
+        <div class="row"><span>File name: <code id="o-file">your-post-slug.webp</code></span></div>
+      </div>
+      <div class="field">
+        <label for="f-title">Cover title</label>
+        <input id="f-title" maxlength="70" placeholder="When call volume suddenly spikes">
+        <div class="row"><span id="o-tcount">0 words · 0 characters</span><span class="chip ok" id="o-tchip">Fits</span></div>
+      </div>
+      <div class="field">
+        <label for="f-sub">Second line</label>
+        <input id="f-sub" maxlength="70" placeholder="What to do in the first hour">
+        <div class="row"><span id="o-scount">0 characters</span><span class="chip ok" id="o-schip">Fits</span></div>
+      </div>
+      <div class="field">
+        <label for="f-style">Style</label>
+        <select id="f-style"></select>
+        <div class="hint" id="o-suggest">Suggested from the title and URL.</div>
+      </div>
+      <div class="btns">
+        <button type="button" class="primary" id="b-dl" disabled>Download cover</button>
+        <button type="button" id="b-add" disabled>Add to this week</button>
+      </div>
+      <p class="status" id="o-status" aria-live="polite">Loading fonts…</p>
+    </form>
+
+    <div class="preview">
+      <canvas id="pv" width="1600" height="900" role="img" aria-label="Cover preview"></canvas>
+      <div class="under">
+        <figure><canvas id="th" width="320" height="180" aria-hidden="true"></canvas><figcaption>320 px: how it looks in a blog grid</figcaption></figure>
+        <div class="spec">WebP · 1600 × 900 · under 90 KB<br>Same post URL and style always give the same image.</div>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <h2>This week</h2>
+    <p class="sub">Add your 3 or 4 covers, then download them together with an index of which image goes where.</p>
+    <div class="paste">
+      <label for="f-paste">Paste lines from ChatGPT (optional)</label>
+      <textarea id="f-paste" rows="4" placeholder="https://botphonic.ai/blog/your-post-slug/ | Cover title | Second line | Style"></textarea>
+      <div class="hint">One post per line: URL | cover title | second line | style. The ChatGPT prompt that writes these lines comes with the studio kit.</div>
+      <div class="btns"><button type="button" id="b-paste">Add these lines to this week</button></div>
+    </div>
+    <div class="qwrap"><table><thead><tr><th>File</th><th>Cover title</th><th>Style</th><th></th></tr></thead><tbody id="q-body"></tbody></table></div>
+    <p class="empty" id="q-empty">Nothing added yet. Fill in a post above and press <b>Add to this week</b>.</p>
+    <div class="btns"><button type="button" class="primary" id="b-zip" disabled>Download all as .zip</button><button type="button" id="b-clear" disabled>Clear list</button></div>
+    <p class="status" id="q-status" aria-live="polite"></p>
+  </section>
+
+  <section>
+    <h2>House rules</h2>
+    <p class="sub">These keep every new cover in line with the 57 already on the blog.</p>
+    <div class="rules">
+      <div><h3>Cover title</h3><ul><li>3 to 7 words, sentence case</li><li>No year: it dates the image</li><li>Brand names spelled their way: Smith.ai, Kore.ai</li></ul></div>
+      <div><h3>Second line</h3><ul><li>Under 45 characters</li><li>Taken from the post's own subtitle or first heading</li><li>No full stop at the end</li></ul></div>
+      <div><h3>Style</h3><ul><li>Keep the suggestion unless the post is clearly another type</li><li>Same kind of post, same style</li></ul></div>
+      <div><h3>Never changes</h3><ul><li>Colours, fonts, grain, layout</li><li>1600 × 900 WebP under 90 KB</li><li>File name = the post's URL slug</li></ul></div>
+    </div>
+  </section>
+  <footer>Works best in Chrome or Edge. Renderer version 1.0, the same code that made the October 2026 set of 57 covers.</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

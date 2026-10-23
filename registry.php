@@ -42,6 +42,8 @@ return [
                 'desc' => 'Pull every image from a site into a local folder.'],
             ['name' => 'Blog Content Builder', 'path' => 'tools/bigscal/', 'icon' => 'blog-builder', 'tags' => [],
                 'desc' => 'Bigscal blog content builder: blog post, content boxes and CTAs in WordPress paste format, loads Google Docs directly (office network).'],
+            ['name' => 'Botphonic Cover Studio', 'path' => 'tools/botphonic-blog-feature-img/', 'icon' => 'cover-studio', 'tags' => [],
+                'desc' => 'Botphonic blog feature images that match the existing set: 1600 × 900 WebP under 90 KB, named after the post slug. One at a time, or the whole week as a .zip.'],
             ['name' => 'Browser Snippets', 'path' => 'tools/browser-snippets/', 'icon' => 'browser-snippets', 'tags' => [],
                 'desc' => 'DevTools snippets: alt-text fixer, schema generator, link editor, auto-logins…'],
             ['name' => 'Timestamp Converter', 'path' => 'tools/timestamp/', 'icon' => 'timestamp', 'tags' => [],
