@@ -22,6 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeAdtypeFilter = null;  // 'Organic' | 'Ads' | null
     let activeLeadtypeFilter = null;  // 'Demo Request' | 'Email Signup' | null (Botphonic only)
     let activeIntlFilter = false;  // true = show only non +91 (outside India) numbers
+    let activeBigBedFilter = false;  // true = show only 100+ bed leads (Healthray only)
 
     /* Accordion open state - persisted across re-renders */
     const breakdownOpen = { campaign: false, source: false, date: false, page: false, adtype: false, leadtype: false };
@@ -57,6 +58,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const SITE_PROFILES = {
         landing: {
             phoneCol: "your-number",
+            bedCol: "bed_size",     // "101 – 300 beds" / "300+ or a group" get the 100+ Beds highlight
             pageKeys: ["page-name", "handl_url_cf7-264"],
             adsHint: "Ads = rows with a utm_campaign value · Organic = rows without one",
             isAds: row => hasUtmCampaign(row),
@@ -65,7 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
             columnOrder: null,      // keep the API's first-seen order
             defaultShow: null,      // use the API's defaultShow
             compactCols: ["your-name", "your-email", "your-number", "submit_time"],
-            mobileFields: ["your-email", "your-number", "utm_source", "utm_medium", "utm_campaign", "your-city", "your-country", "submit_time"],
+            mobileFields: ["your-email", "your-number", "bed_size", "utm_source", "utm_medium", "utm_campaign", "your-city", "your-country", "submit_time"],
             copyFields: ["Your Name", "Your Number", "Your Email", "Your City", "Your Business", "Bed Size", "Speciality", "Page Name", "Submit Time", "User Ip"],
             pk92Cols: [["Name", "your-name"], ["Email", "your-email"], ["Phone", "your-number"], ["City", "your-city"], ["Submit Time", "submit_time"]],
             pk92ExportCols: ["your-name", "your-email", "your-number", "your-city", "your-country", "submit_time"],
@@ -76,6 +78,7 @@ document.addEventListener("DOMContentLoaded", () => {
                "full_phone" has it ("+918601695454") but is sometimes just "+91".
                normalize() picks the usable one into a "phone" column. */
             phoneCol: "phone",
+            bedCol: null,           // no bed size on Botphonic forms
             pageKeys: ["full_url", "handl_ref", "handl_url_base_cf7"],
             adsHint: "Ads = Google click id (gclid), a paid utm_medium (cpc / Lead-search) or an *Ads utm_source · Organic = everything else, incl. utm_campaign \"seo\"",
             isAds: row => {
@@ -228,6 +231,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function applySiteLayout() {
         const p = site();
         document.getElementById("bc-leadtype").hidden = !p.leadType;
+        document.getElementById("cardBigBed").hidden = !p.bedCol;
         document.querySelector(".breakdown-bar").classList.toggle("six", p.leadType);
         document.querySelector("#bc-adtype .breakdown-hdr-text strong").title = p.adsHint;
     }
@@ -317,6 +321,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("cardDupPhone").addEventListener("click", () => toggleDupFilter("phone"));
     document.getElementById("cardDupTime").addEventListener("click", () => toggleDupFilter("time"));
     document.getElementById("cardOutsideIndia").addEventListener("click", toggleIntlFilter);
+    document.getElementById("cardBigBed").addEventListener("click", toggleBigBedFilter);
     document.getElementById("clearDupFilter").addEventListener("click", () => { clearAllFilters(); applyFilters(); });
 
     /* +92 (Pakistan/test) data lives in its own panel, entirely separate from
@@ -561,6 +566,31 @@ document.addEventListener("DOMContentLoaded", () => {
         return !/^(\+91|0091)/.test(cleaned);
     }
 
+    /* 100+ beds - "101 – 300 beds" ("lg") or "300+ or a group" ("xl"). Read off the
+       numbers in the label or the word "group", so a reworded option such as
+       "101-300" or "Hospital group" still matches. Healthray only. */
+    function bedTier(row) {
+        const col = site().bedCol;
+        if (!col) return null;
+        const v = String(row[col] ?? "");
+        if (/group/i.test(v)) return "xl";
+        const nums = (v.match(/\d+/g) || []).map(Number);
+        const max = nums.length ? Math.max(...nums) : 0;
+        if (max > 300 || (max === 300 && /\+/.test(v))) return "xl";
+        if (max > 100) return "lg";
+        return null;
+    }
+    function isBigBedLead(row) { return bedTier(row) !== null; }
+
+    const BED_TIER = {
+        lg: { icon: "★", label: "101–300 Beds" },
+        xl: { icon: "♛", label: "300+ / Group" },
+    };
+    function bigBedBadge(tier, row) {
+        const t = BED_TIER[tier];
+        return `<span class="bigbed-badge ${tier}" title="High-value lead · ${esc(rawValue(site().bedCol, row))}"><span class="bb-ico" aria-hidden="true">${t.icon}</span>${t.label}</span>`;
+    }
+
     /* DUPLICATE ANALYSIS - rows passed in never include +92 rows,
        so no exclusion logic is needed here. */
     function analyseDuplicates(rows) {
@@ -739,6 +769,7 @@ document.addEventListener("DOMContentLoaded", () => {
             adtype: activeAdtypeFilter,
             leadtype: activeLeadtypeFilter,
             intl: activeIntlFilter,
+            bigBed: activeBigBedFilter,
         };
     }
 
@@ -785,6 +816,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (state.intl) {
             out = out.filter(row => isNonIndiaNumber(getPhone(row)));
         }
+        if (state.bigBed) {
+            out = out.filter(isBigBedLead);
+        }
         return out;
     }
 
@@ -815,6 +849,10 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("statDupEmail").textContent = dupEmailCount;
         document.getElementById("statDupPhone").textContent = dupPhoneCount;
         document.getElementById("statDupTime").textContent = dupTimeCount;
+        /* Dropdown button shows rows flagged by ANY of the three */
+        const dupAnyCount = scopedRows.filter(row => { const m = dupMeta[originalRows.indexOf(row)]; return m && (m.email || m.phone || m.time); }).length;
+        document.getElementById("statDupAny").textContent = dupAnyCount;
+        document.getElementById("dupDdToggle").classList.toggle("has-dups", dupAnyCount > 0);
 
         /* Outside India count scoped by every OTHER active filter, same pattern
            as the dup counts above - so e.g. Source=Ads narrows it to Ads-only. */
@@ -822,6 +860,16 @@ document.addEventListener("DOMContentLoaded", () => {
         const scopedForIntl = computeFilteredRows(originalRows, dupMeta, nonIntlState);
         const intlCount = scopedForIntl.filter(row => isNonIndiaNumber(getPhone(row))).length;
         document.getElementById("statOutsideIndia").textContent = intlCount;
+
+        /* 100+ Beds count - same "every OTHER filter" scoping as Outside India */
+        const nonBigBedState = { ...state, bigBed: false };
+        const bigBedRows = computeFilteredRows(originalRows, dupMeta, nonBigBedState).filter(isBigBedLead);
+        const bigBedCount = bigBedRows.length;
+        const xlCount = bigBedRows.filter(r => bedTier(r) === "xl").length;
+        document.getElementById("statBigBed").textContent = bigBedCount;
+        document.getElementById("statBigBedLg").textContent = bigBedCount - xlCount;
+        document.getElementById("statBigBedXl").textContent = xlCount;
+        document.getElementById("cardBigBed").classList.toggle("has-leads", bigBedCount > 0);
 
         if (compareRows != null) {
             setDeltaText(
@@ -846,8 +894,11 @@ document.addEventListener("DOMContentLoaded", () => {
             const scopedPrevForIntl = computeFilteredRows(compareRows, compareDupMeta, nonIntlState);
             const prevIntlCount = scopedPrevForIntl.filter(row => isNonIndiaNumber(getPhone(row))).length;
             setDeltaText(document.getElementById("statOutsideIndiaDelta"), intlCount, prevIntlCount, lastPrevRange);
+
+            const prevBigBedCount = computeFilteredRows(compareRows, compareDupMeta, nonBigBedState).filter(isBigBedLead).length;
+            setDeltaText(document.getElementById("statBigBedDelta"), bigBedCount, prevBigBedCount, lastPrevRange);
         } else {
-            ["statTotalDelta", "statShowingDelta", "statDupEmailDelta", "statDupPhoneDelta", "statDupTimeDelta", "statOutsideIndiaDelta"].forEach(id => {
+            ["statTotalDelta", "statShowingDelta", "statDupEmailDelta", "statDupPhoneDelta", "statDupTimeDelta", "statOutsideIndiaDelta", "statBigBedDelta"].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) { el.textContent = ""; el.className = "stat-delta"; el.removeAttribute("title"); }
             });
@@ -942,6 +993,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (activeAdtypeFilter) chips.push({ label: `Type: ${activeAdtypeFilter}`, onRemove: () => { activeAdtypeFilter = null; updateFilterStrip(); applyFilters(); } });
         if (activeLeadtypeFilter) chips.push({ label: `Lead: ${activeLeadtypeFilter}`, onRemove: () => { activeLeadtypeFilter = null; updateFilterStrip(); applyFilters(); } });
         if (activeIntlFilter) chips.push({ label: "Outside India", onRemove: () => toggleIntlFilter() });
+        if (activeBigBedFilter) chips.push({ label: "100+ Beds", onRemove: () => toggleBigBedFilter() });
 
         if (chips.length === 0) {
             filterStrip.classList.remove("visible");
@@ -969,6 +1021,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ["email", "phone", "time"].forEach(t =>
             document.getElementById(`cardDup${cap(t)}`).classList.toggle("active-filter", activeDupFilters.has(t))
         );
+        document.getElementById("dupDdToggle").classList.toggle("active", activeDupFilters.size > 0);
         updateFilterStrip();
         applyFilters();
     }
@@ -982,6 +1035,14 @@ document.addEventListener("DOMContentLoaded", () => {
         applyFilters();
     }
 
+    /* 100+ Beds toggle - plain AND filter, same as Outside India */
+    function toggleBigBedFilter() {
+        activeBigBedFilter = !activeBigBedFilter;
+        document.getElementById("cardBigBed").classList.toggle("active-filter", activeBigBedFilter);
+        updateFilterStrip();
+        applyFilters();
+    }
+
     function clearAllFilters() {
         activeDupFilters.clear();
         activeCampaignFilter = null;
@@ -991,10 +1052,13 @@ document.addEventListener("DOMContentLoaded", () => {
         activeAdtypeFilter = null;
         activeLeadtypeFilter = null;
         activeIntlFilter = false;
+        activeBigBedFilter = false;
         ["email", "phone", "time"].forEach(t =>
             document.getElementById(`cardDup${cap(t)}`).classList.remove("active-filter")
         );
+        document.getElementById("dupDdToggle").classList.remove("active");
         document.getElementById("cardOutsideIndia").classList.remove("active-filter");
+        document.getElementById("cardBigBed").classList.remove("active-filter");
         updateFilterStrip();
     }
 
@@ -1130,7 +1194,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const rowIdx = allRows.indexOf(row);
             const isPk = isPk92Number(getPhone(row));
             const dup = dupMeta[originalRows.indexOf(row)] || {};
-            const rowCls = isPk ? "dup-pk92" : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
+            const bigBed = isPk ? null : bedTier(row);
+            const rowCls = isPk ? "dup-pk92" : bigBed ? `big-bed ${bigBed}` : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
 
             const cells = allColumns.map(col => {
                 const hidden = !visibleCols.has(col);
@@ -1138,16 +1203,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 const isEmailCol = col === "your-email";
                 const isPhoneCol = col === site().phoneCol;
                 const isTimeCol = col === "submit_time";
+                const isBedCol = col === site().bedCol;
 
-                let cellDupCls = "", dupTag = "";
+                let cellDupCls = "", dupTag = "", cellHtml = null;
                 if (isEmailCol && dup.email) { cellDupCls = "dup-cell-email"; dupTag = `<span class="dup-tag email">dup</span>`; }
                 if (isPhoneCol && dup.phone) { cellDupCls = "dup-cell-phone"; dupTag = `<span class="dup-tag phone">dup</span>`; }
                 if (isTimeCol && dup.time) { cellDupCls = "dup-cell-time"; dupTag = `<span class="dup-tag time">same</span>`; }
+                if (isBedCol && bigBed) { cellDupCls = "bigbed-cell"; cellHtml = `<span class="bed-pill ${bigBed}">${esc(rawValue(col, row))}</span>`; }
+                /* Bed Size is hidden by default, so flag the lead on the name too */
+                /* name + badge share one flex row: a long name ellipsises, the badge never gets clipped */
+                if (isName && bigBed) cellHtml = `<span class="nm-wrap">${formatCell(col, row[col])}${bigBedBadge(bigBed, row)}</span>`;
                 if (isPhoneCol && isPk) { cellDupCls = "dup-cell-pk92"; dupTag = `<span class="dup-tag pk92" title="Pakistan / Test - not counted in totals or analytics">PK/Test</span>`; }
 
                 const cls = [tdClass(col), cellDupCls, isName ? "lead-name-link" : ""].filter(Boolean).join(" ");
                 const rowAttr = isName ? ` data-row="${rowIdx}"` : "";
-                return `<td data-col="${esc(col)}"${rowAttr} class="${cls}" title="${esc(rawValue(col, row))}" style="${hidden ? "display:none" : ""}">${formatCell(col, row[col])}${dupTag}</td>`;
+                return `<td data-col="${esc(col)}"${rowAttr} class="${cls}" title="${esc(rawValue(col, row))}" style="${hidden ? "display:none" : ""}">${cellHtml ?? formatCell(col, row[col])}${dupTag}</td>`;
             }).join("");
 
             return `<tr class="${rowCls}">${cells}</tr>`;
@@ -1170,9 +1240,11 @@ document.addEventListener("DOMContentLoaded", () => {
             const rowIdx = allRows.indexOf(row);
             const isPk = isPk92Number(getPhone(row));
             const dup = dupMeta[originalRows.indexOf(row)] || {};
-            const rowCls = isPk ? "dup-pk92" : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
+            const bigBed = isPk ? null : bedTier(row);
+            const rowCls = isPk ? "dup-pk92" : bigBed ? `big-bed ${bigBed}` : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
             const tags = [
                 isPk ? `<span class="dup-tag pk92">PK/Test</span>` : "",
+                bigBed ? bigBedBadge(bigBed, row) : "",
                 dup.email ? `<span class="dup-tag email">dup</span>` : "",
                 dup.phone ? `<span class="dup-tag phone">dup</span>` : "",
                 dup.time ? `<span class="dup-tag time">same</span>` : "",

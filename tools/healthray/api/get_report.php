@@ -121,7 +121,6 @@ $defaultShow = [
     'utm_source',
     'utm_medium',
     'utm_campaign',
-    'utm_placement',
     'your-city',
     'submit_time',
     'handl_url_cf7-264',

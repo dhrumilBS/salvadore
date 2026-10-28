@@ -7,7 +7,7 @@
     <title>Report Dashboard</title>
     <link rel="icon" href="../../../assets/icons/lead-report.svg" type="image/svg+xml">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="css/report.css?v=6">
+    <link rel="stylesheet" href="css/report.css?v=7">
     <script>
         (function () {
             try {
@@ -170,29 +170,23 @@
                 <div class="stat-delta" id="statShowingDelta" role="button" tabindex="0" title="Click for comparison details"></div>
                 <div class="stat-delta-detail" id="statShowingDeltaDetail"></div>
             </div>
-            <div class="stat-card dup-email clickable" id="cardDupEmail" title="Click to filter duplicate emails">
-                <div class="stat-label">Dup. Email</div>
-                <div class="stat-value c-email" id="statDupEmail">0</div>
-                <div class="stat-delta" id="statDupEmailDelta"></div>
-                <div class="stat-hint">Click to filter</div>
-            </div>
-            <div class="stat-card dup-phone clickable" id="cardDupPhone" title="Click to filter duplicate phones">
-                <div class="stat-label">Dup. Phone</div>
-                <div class="stat-value c-phone" id="statDupPhone">0</div>
-                <div class="stat-delta" id="statDupPhoneDelta"></div>
-                <div class="stat-hint">Click to filter</div>
-            </div>
-            <div class="stat-card dup-time clickable" id="cardDupTime" title="Click to filter same submit time">
-                <div class="stat-label">Same Time</div>
-                <div class="stat-value c-time" id="statDupTime">0</div>
-                <div class="stat-delta" id="statDupTimeDelta"></div>
-                <div class="stat-hint">Click to filter</div>
-            </div>
             <div class="stat-card dup-intl clickable" id="cardOutsideIndia" title="Click to filter numbers outside +91 (India)">
                 <div class="stat-label">Outside India</div>
                 <div class="stat-value c-intl" id="statOutsideIndia">0</div>
                 <div class="stat-delta" id="statOutsideIndiaDelta"></div>
                 <div class="stat-hint">Non +91 · Click to filter</div>
+            </div>
+            <div class="stat-card big-bed clickable" id="cardBigBed" title="Click to filter leads with 101 - 300 beds or 300+ / a group - high-value, needs extra care">
+                <span class="bigbed-card-ico" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M12 8v6M9 11h6"/><path d="M9 21v-3h6v3"/></svg>
+                </span>
+                <div class="stat-label">Priority · 100+ Beds</div>
+                <div class="stat-value c-bigbed" id="statBigBed">0</div>
+                <div class="stat-delta" id="statBigBedDelta"></div>
+                <div class="bigbed-split">
+                    <span class="bb-chip lg" title="101 – 300 beds">★ <b id="statBigBedLg">0</b> 101–300</span>
+                    <span class="bb-chip xl" title="300+ or a group">♛ <b id="statBigBedXl">0</b> 300+ / Group</span>
+                </div>
             </div>
             <div class="stat-card dup-pk92 clickable" id="cardDupPk92" title="Pakistan / Test data - shown highlighted in the table but excluded from analytics, click to view">
                 <div class="stat-label">Pakistan / Test</div>
@@ -370,7 +364,40 @@
             </div>
 
             <div class="table-card-hdr">
-                <span id="tableHdrLabel">Submissions</span>
+                <div class="table-hdr-left">
+                    <span id="tableHdrLabel">Submissions</span>
+
+                    <!-- Duplicates - compact dropdown (multi-select, OR combined) -->
+                    <div class="dropdown dup-dropdown">
+                        <button type="button" class="dup-dd-toggle dropdown-toggle" id="dupDdToggle" title="Duplicate email / phone / same submit time">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 00-2-2H5a2 2 0 00-2 2v9a2 2 0 002 2h3"/></svg>
+                            Duplicates
+                            <span class="dup-dd-count" id="statDupAny">0</span>
+                            <span class="dup-dd-caret">▾</span>
+                        </button>
+                        <div class="dropdown-menu dup-dd-menu">
+                            <div class="dup-dd-hint">Click to filter · pick one or more</div>
+                            <button type="button" class="dup-dd-item email" id="cardDupEmail">
+                                <span class="dup-dd-check" aria-hidden="true"></span>
+                                <span class="dup-dd-label">Dup. Email</span>
+                                <span class="stat-delta" id="statDupEmailDelta"></span>
+                                <span class="dup-dd-num" id="statDupEmail">0</span>
+                            </button>
+                            <button type="button" class="dup-dd-item phone" id="cardDupPhone">
+                                <span class="dup-dd-check" aria-hidden="true"></span>
+                                <span class="dup-dd-label">Dup. Phone</span>
+                                <span class="stat-delta" id="statDupPhoneDelta"></span>
+                                <span class="dup-dd-num" id="statDupPhone">0</span>
+                            </button>
+                            <button type="button" class="dup-dd-item time" id="cardDupTime">
+                                <span class="dup-dd-check" aria-hidden="true"></span>
+                                <span class="dup-dd-label">Same Time</span>
+                                <span class="stat-delta" id="statDupTimeDelta"></span>
+                                <span class="dup-dd-num" id="statDupTime">0</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
                 <span id="tableHdrMeta" style="color:var(--muted);font-weight:400"></span>
             </div>
             <div class="table-wrap">
@@ -441,7 +468,7 @@
 
 
 
-    <script src="js/report.js?v=8"></script>
+    <script src="js/report.js?v=9"></script>
 </body>
 
 </html>
