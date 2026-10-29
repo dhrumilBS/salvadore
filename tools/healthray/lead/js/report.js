@@ -1262,6 +1262,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     let showEmptyFields = false;
 
+    /* Gmail compose in a new tab - mailto: does nothing on PCs without a desktop mail app */
+    function gmailCompose(to) { return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(String(to).trim())}`; }
+
     function isEmptyValue(v) { return v == null || v === "" || (Array.isArray(v) && v.length === 0); }
 
     /* Modal-only value rendering: email / phone / URLs become links, the rest uses the table formatter */
@@ -1269,7 +1272,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const v = row[col];
         if (isEmptyValue(v)) return formatValue(col, v);
         const str = Array.isArray(v) ? v.join(", ") : String(v);
-        if (col.includes("email")) return `<a href="mailto:${esc(str)}">${esc(str)}</a>`;
+        if (col.includes("email")) return `<a href="${gmailCompose(str)}" target="_blank" rel="noopener" title="Write in Gmail">${esc(str)}</a>`;
         if (col === site().phoneCol) return `<a href="tel:${esc(str.replace(/[^\d+]/g, ""))}">${esc(str)}</a>`;
         if (col === site().bedCol && bedTier(row)) return `<span class="bed-pill ${bedTier(row)}">${esc(str)}</span>`;
         if (/^https?:\/\//i.test(str)) {
@@ -1297,7 +1300,7 @@ document.addEventListener("DOMContentLoaded", () => {
             acts.push(`<a class="m-act call" href="tel:${esc(phone.replace(/[^\d+]/g, ""))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012.1 4.2 2 2 0 014.1 2h3a2 2 0 012 1.7c.1.9.4 1.8.7 2.7a2 2 0 01-.5 2.1L8 9.8a16 16 0 006 6l1.3-1.3a2 2 0 012.1-.4c.9.3 1.8.6 2.7.7a2 2 0 011.7 2z"/></svg>Call</a>`);
             acts.push(`<a class="m-act wa" href="https://wa.me/${digits.length === 10 ? "91" + digits : digits}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 01-12.4 7.4L3 21l2.1-5.4A8.5 8.5 0 1121 11.5z"/></svg>WhatsApp</a>`);
         }
-        if (email) acts.push(`<a class="m-act mail" href="mailto:${esc(email)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 6l-10 7L2 6"/></svg>Email</a>`);
+        if (email) acts.push(`<a class="m-act mail" href="${gmailCompose(email)}" target="_blank" rel="noopener" title="Write in Gmail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 6l-10 7L2 6"/></svg>Email</a>`);
         return acts.join("");
     }
 
