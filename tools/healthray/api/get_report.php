@@ -32,11 +32,7 @@ if (!isValidDate($from) || !isValidDate($to)) {
     exit;
 }
 
-/*
- * Range bounds: avoid DATE() wrapper on the column so MySQL can use
- * an index on created_date (e.g. INDEX idx_created_date (created_date)).
- * DATE(col) >= ? forces a full-table scan even with an index in place.
- */
+/* Range bounds: avoid DATE() wrapper on the column so MySQL can use an index on created_date (e.g. INDEX idx_created_date (created_date)). DATE(col) >= ? forces a full-table scan even with an index in place. */
 $fromTs = $from . ' 00:00:00';
 $toTs   = $to   . ' 23:59:59';
 
@@ -59,14 +55,7 @@ $stmt->bind_param("ssi", $fromTs, $toTs, $limit);
 $stmt->execute();
 $result = $stmt->get_result();
 
-/*
- * Some sites' Contact Form 7 setups (e.g. Botphonic) log UTM fields under
- * a "_cf7"-suffixed key instead of the plain name Healthray uses. Alias the
- * plain key onto the same value (when the plain key isn't already present)
- * so the dashboard's breakdown widgets/filters - which read the plain key -
- * work the same regardless of which site's data is loaded. The original
- * "_cf7" key is left in place too, so it still shows up in the raw column list.
- */
+/* Some sites' Contact Form 7 setups (e.g. Botphonic) log UTM fields under a "_cf7"-suffixed key instead of the plain name Healthray uses. Alias the plain key onto the same value (when the plain key isn't already present) so the dashboard's breakdown widgets/filters - which read the plain key - work the same regardless of which site's data is loaded. The original "_cf7" key is left in place too, so it still shows up in the raw column list. */
 $utmKeyAliases = [
     'utm_campaign' => 'utm_campaign_cf7',
     'utm_source'   => 'utm_source_cf7',

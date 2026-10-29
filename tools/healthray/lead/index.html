@@ -4,10 +4,13 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Report Dashboard</title>
+    <title>Lead Report</title>
     <link rel="icon" href="../../../assets/icons/lead-report.svg" type="image/svg+xml">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="css/report.css?v=7">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+    <link rel="stylesheet" href="css/report.css?v=11">
     <script>
         (function () {
             try {
@@ -22,15 +25,20 @@
 <body>
 
     <!-- ═══════ TOPBAR ═══════ -->
-    <div class="topbar">
-        <div class="topbar-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <rect x="3" y="3" width="18" height="18" rx="3" />
-                <path d="M9 9h6M9 12h6M9 15h4" />
-            </svg>
+    <header class="topbar">
+        <div class="brand">
+            <div class="topbar-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 3v18h18" />
+                    <path d="M7 15l4-4 3 3 5-6" />
+                </svg>
+            </div>
+            <div class="brand-text">
+                <h1>Lead Report</h1>
+                <span>Form submissions</span>
+            </div>
         </div>
-        <h1>Form Submission Report</h1>
-        <div class="topbar-badge" id="statusBadge">Loading…</div>
+        <div class="topbar-badge" id="statusBadge" data-state="loading">Loading…</div>
         <div class="db-switch" id="dbSwitch" role="tablist" aria-label="Database source">
             <button type="button" class="db-switch-btn active" data-db="landing" role="tab" aria-selected="true">Healthray</button>
             <button type="button" class="db-switch-btn" data-db="botphonic" role="tab" aria-selected="false">Botphonic</button>
@@ -50,31 +58,37 @@
                 <path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z" />
             </svg>
         </button>
-    </div>
+    </header>
 
-    <div class="page">
+    <main class="page">
 
-        <!-- ═══════ DATE FILTER + EXPORT (sticky) ═══════ -->
+        <!-- ═══════ CONTROLS (sticky): Date range → Quick range → Actions → Search ═══════ -->
         <div class="controls-bar" id="controlsBar">
             <div class="controls-bar-inner">
                 <form id="filterForm">
                     <div class="controls">
-                        <div class="control-group">
+                        <div class="control-group date-range">
                             <div class="field-group">
-                                <label>From</label>
+                                <label for="from">From</label>
                                 <input type="date" id="from">
                             </div>
+                            <span class="date-sep" aria-hidden="true">→</span>
                             <div class="field-group">
-                                <label>To</label>
+                                <label for="to">To</label>
                                 <input type="date" id="to">
                             </div>
                         </div>
 
-                        <div class="control-divider"></div>
-
                         <div class="control-group">
                             <div class="dropdown presets-dropdown">
-                                <button type="button" class="btn btn-success dropdown-toggle"> View ▾ </button>
+                                <button type="button" class="btn btn-outline dropdown-toggle">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                        <rect x="3" y="4" width="18" height="18" rx="2" />
+                                        <path d="M16 2v4M8 2v4M3 10h18" />
+                                    </svg>
+                                    <span class="preset-label">Quick range</span>
+                                    <span class="caret" aria-hidden="true">▾</span>
+                                </button>
                                 <div class="dropdown-menu">
                                     <button type="button" class="preset-btn" data-days="1">Today</button>
                                     <button type="button" class="preset-btn" data-days="7">Last 7 Days</button>
@@ -84,31 +98,31 @@
                                     <button type="button" class="preset-btn" data-days="180">Last 6 Months</button>
                                 </div>
                             </div>
+
+                            <button type="submit" class="btn btn-primary">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M20 6L9 17l-5-5" />
+                                </svg>
+                                Apply
+                            </button>
                         </div>
 
                         <div class="control-divider"></div>
 
                         <div class="control-group">
-                            <button type="submit" class="btn btn-primary">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                                    <circle cx="11" cy="11" r="7" />
-                                    <path d="M21 21l-4-4" />
-                                </svg>
-                                Apply Filter
-                            </button>
-
-                            <button type="button" id="resetBtn" class="btn btn-ghost">Reset</button>
-                            <button type="button" id="showAllBtn" class="btn btn-ghost" title="Clear all active filters but keep the date range">Show All</button>
+                            <button type="button" id="showAllBtn" class="btn btn-text" title="Clear every active filter but keep the date range">Clear filters</button>
+                            <button type="button" id="resetBtn" class="btn btn-text" title="Back to the default date range with no filters">Reset</button>
 
                             <!-- Export dropdown -->
                             <div class="dropdown export-dropdown">
-                                <button type="button" class="btn btn-success dropdown-toggle">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                <button type="button" class="btn btn-outline dropdown-toggle">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
                                         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
                                         <polyline points="7 10 12 15 17 10" />
                                         <line x1="12" y1="15" x2="12" y2="3" />
                                     </svg>
-                                    Export ▾
+                                    Export
+                                    <span class="caret" aria-hidden="true">▾</span>
                                 </button>
                                 <div class="dropdown-menu">
                                     <button id="exportCSV" class="dropdown-item">
@@ -128,8 +142,8 @@
                                     <hr>
                                     <button id="exportDupCSV" class="dropdown-item">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                                            <circle cx="12" cy="12" r="10" />
-                                            <path d="M12 8v4M12 16h.01" />
+                                            <rect x="8" y="8" width="13" height="13" rx="2" />
+                                            <path d="M16 8V5a2 2 0 00-2-2H5a2 2 0 00-2 2v9a2 2 0 002 2h3" />
                                         </svg>
                                         Duplicates Only (CSV)
                                     </button>
@@ -149,38 +163,44 @@
                                 <circle cx="11" cy="11" r="7" />
                                 <path d="M21 21l-4-4" />
                             </svg>
-                            <input type="search" id="tableSearch" placeholder="Search anything…">
+                            <input type="search" id="tableSearch" placeholder="Search name, email, phone, city…">
                         </div>
                     </div>
                 </form>
             </div>
         </div>
 
-        <!-- ═══════ STAT BAR - Summary ═══════ -->
-        <div class="stat-bar">
-            <div class="stat-card">
-                <div class="stat-label">Real Leads</div>
+        <!-- ═══════ KPI ROW ═══════ -->
+        <section class="stat-bar" aria-label="Summary">
+            <div class="stat-card kpi-total">
+                <div class="stat-top">
+                    <div class="stat-label">Real Leads</div>
+                    <span class="stat-ico" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /></svg>
+                    </span>
+                </div>
                 <div class="stat-value accent" id="statTotal">-</div>
                 <div class="stat-delta" id="statTotalDelta" role="button" tabindex="0" title="Click for comparison details"></div>
                 <div class="stat-delta-detail" id="statTotalDeltaDetail"></div>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Showing</div>
+            <div class="stat-card kpi-showing">
+                <div class="stat-top">
+                    <div class="stat-label">Showing</div>
+                    <span class="stat-ico" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg>
+                    </span>
+                </div>
                 <div class="stat-value" id="statShowing">-</div>
                 <div class="stat-delta" id="statShowingDelta" role="button" tabindex="0" title="Click for comparison details"></div>
                 <div class="stat-delta-detail" id="statShowingDeltaDetail"></div>
             </div>
-            <div class="stat-card dup-intl clickable" id="cardOutsideIndia" title="Click to filter numbers outside +91 (India)">
-                <div class="stat-label">Outside India</div>
-                <div class="stat-value c-intl" id="statOutsideIndia">0</div>
-                <div class="stat-delta" id="statOutsideIndiaDelta"></div>
-                <div class="stat-hint">Non +91 · Click to filter</div>
-            </div>
             <div class="stat-card big-bed clickable" id="cardBigBed" title="Click to filter leads with 101 - 300 beds or 300+ / a group - high-value, needs extra care">
-                <span class="bigbed-card-ico" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M12 8v6M9 11h6"/><path d="M9 21v-3h6v3"/></svg>
-                </span>
-                <div class="stat-label">Priority · 100+ Beds</div>
+                <div class="stat-top">
+                    <div class="stat-label">Priority · 100+ Beds</div>
+                    <span class="stat-ico bigbed-card-ico" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M12 8v6M9 11h6" /><path d="M9 21v-3h6v3" /></svg>
+                    </span>
+                </div>
                 <div class="stat-value c-bigbed" id="statBigBed">0</div>
                 <div class="stat-delta" id="statBigBedDelta"></div>
                 <div class="bigbed-split">
@@ -188,12 +208,28 @@
                     <span class="bb-chip xl" title="300+ or a group">♛ <b id="statBigBedXl">0</b> 300+ / Group</span>
                 </div>
             </div>
-            <div class="stat-card dup-pk92 clickable" id="cardDupPk92" title="Pakistan / Test data - shown highlighted in the table but excluded from analytics, click to view">
-                <div class="stat-label">Pakistan / Test</div>
-                <div class="stat-value c-pk92" id="statDupPk92">0</div>
-                <div class="stat-hint">Excluded from analytics · click to view</div>
+            <div class="stat-card dup-intl clickable" id="cardOutsideIndia" title="Click to filter numbers outside +91 (India)">
+                <div class="stat-top">
+                    <div class="stat-label">Outside India</div>
+                    <span class="stat-ico" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" /></svg>
+                    </span>
+                </div>
+                <div class="stat-value c-intl" id="statOutsideIndia">0</div>
+                <div class="stat-delta" id="statOutsideIndiaDelta"></div>
+                <div class="stat-hint">Non +91 numbers · click to filter</div>
             </div>
-        </div>
+            <div class="stat-card dup-pk92 clickable" id="cardDupPk92" title="Pakistan / Test data - shown highlighted in the table but excluded from analytics, click to view">
+                <div class="stat-top">
+                    <div class="stat-label">Pakistan / Test</div>
+                    <span class="stat-ico" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" /><path d="M12 9v4M12 17h.01" /></svg>
+                    </span>
+                </div>
+                <div class="stat-value c-pk92" id="statDupPk92">0</div>
+                <div class="stat-hint">Not counted · click to view</div>
+            </div>
+        </section>
 
         <!-- ═══════ PAKISTAN / TEST DATA PANEL (own section, excluded from all analytics) ═══════ -->
         <div class="pk92-panel" id="pk92Panel">
@@ -206,166 +242,148 @@
             <div class="pk92-panel-body" id="pk92PanelBody"></div>
         </div>
 
-        <!-- ═══════ BREAKDOWN BAR - Campaign / Source / Date ═══════ -->
-        <div class="breakdown-bar">
+        <!-- ═══════ INSIGHTS - collapsible breakdowns ═══════ -->
+        <section class="insights" id="insights">
+            <button type="button" class="section-hdr" id="insightsToggle" aria-expanded="true" aria-controls="insightsBody">
+                <span class="section-title">Breakdowns</span>
+                <span class="section-sub">Campaign · Source · Date · Page · Organic / Ads - click any row to filter</span>
+                <span class="section-toggle">
+                    <span class="when-open">Hide</span><span class="when-closed">Show</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6" /></svg>
+                </span>
+            </button>
 
-            <!-- UTM Campaign -->
-            <div class="breakdown-card bc-campaign" id="bc-campaign">
-                <div class="breakdown-hdr">
-                    <div class="breakdown-hdr-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                        </svg>
+            <div class="breakdown-bar" id="insightsBody">
+
+                <!-- UTM Campaign -->
+                <div class="breakdown-card bc-campaign" id="bc-campaign">
+                    <div class="breakdown-hdr">
+                        <div class="breakdown-hdr-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                            </svg>
+                        </div>
+                        <div class="breakdown-hdr-text">
+                            <strong>UTM Campaign</strong>
+                            <span class="breakdown-unique"></span>
+                        </div>
+                        <span class="breakdown-total">-</span>
                     </div>
-                    <div class="breakdown-hdr-text">
-                        <strong>UTM Campaign</strong>
-                        <span class="breakdown-unique"></span>
-                    </div>
-                    <span class="breakdown-total">-</span>
+                    <div class="breakdown-list"></div>
                 </div>
-                <div class="breakdown-list"></div>
-            </div>
 
-            <!-- UTM Source -->
-            <div class="breakdown-card bc-source" id="bc-source">
-                <div class="breakdown-hdr">
-                    <div class="breakdown-hdr-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="2" y1="12" x2="22" y2="12" />
-                            <path d="M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
-                        </svg>
+                <!-- UTM Source -->
+                <div class="breakdown-card bc-source" id="bc-source">
+                    <div class="breakdown-hdr">
+                        <div class="breakdown-hdr-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <line x1="2" y1="12" x2="22" y2="12" />
+                                <path d="M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
+                            </svg>
+                        </div>
+                        <div class="breakdown-hdr-text">
+                            <strong>UTM Source</strong>
+                            <span class="breakdown-unique"></span>
+                        </div>
+                        <span class="breakdown-total">-</span>
                     </div>
-                    <div class="breakdown-hdr-text">
-                        <strong>UTM Source</strong>
-                        <span class="breakdown-unique"></span>
-                    </div>
-                    <span class="breakdown-total">-</span>
+                    <div class="breakdown-list"></div>
                 </div>
-                <div class="breakdown-list"></div>
-            </div>
 
-            <!-- Date wise -->
-            <div class="breakdown-card bc-date" id="bc-date">
-                <div class="breakdown-hdr">
-                    <div class="breakdown-hdr-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <rect x="3" y="4" width="18" height="18" rx="2" />
-                            <line x1="16" y1="2" x2="16" y2="6" />
-                            <line x1="8" y1="2" x2="8" y2="6" />
-                            <line x1="3" y1="10" x2="21" y2="10" />
-                        </svg>
+                <!-- Date wise -->
+                <div class="breakdown-card bc-date" id="bc-date">
+                    <div class="breakdown-hdr">
+                        <div class="breakdown-hdr-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <rect x="3" y="4" width="18" height="18" rx="2" />
+                                <line x1="16" y1="2" x2="16" y2="6" />
+                                <line x1="8" y1="2" x2="8" y2="6" />
+                                <line x1="3" y1="10" x2="21" y2="10" />
+                            </svg>
+                        </div>
+                        <div class="breakdown-hdr-text">
+                            <strong>Date Wise</strong>
+                            <span class="breakdown-unique"></span>
+                        </div>
+                        <span class="breakdown-total">-</span>
                     </div>
-                    <div class="breakdown-hdr-text">
-                        <strong>Date Wise</strong>
-                        <span class="breakdown-unique"></span>
-                    </div>
-                    <span class="breakdown-total">-</span>
+                    <div class="breakdown-list"></div>
                 </div>
-                <div class="breakdown-list"></div>
-            </div>
 
-            <!-- Page Name -->
-            <div class="breakdown-card bc-page" id="bc-page">
-                <div class="breakdown-hdr">
-                    <div class="breakdown-hdr-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                            <polyline points="14 2 14 8 20 8" />
-                            <path d="M9 13h6M9 17h6M9 9h1" />
-                        </svg>
+                <!-- Page Name -->
+                <div class="breakdown-card bc-page" id="bc-page">
+                    <div class="breakdown-hdr">
+                        <div class="breakdown-hdr-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                                <polyline points="14 2 14 8 20 8" />
+                                <path d="M9 13h6M9 17h6M9 9h1" />
+                            </svg>
+                        </div>
+                        <div class="breakdown-hdr-text">
+                            <strong>Page Name</strong>
+                            <span class="breakdown-unique"></span>
+                        </div>
+                        <span class="breakdown-total">-</span>
                     </div>
-                    <div class="breakdown-hdr-text">
-                        <strong>Page Name</strong>
-                        <span class="breakdown-unique"></span>
-                    </div>
-                    <span class="breakdown-total">-</span>
+                    <div class="breakdown-list"></div>
                 </div>
-                <div class="breakdown-list"></div>
-            </div>
 
-            <!-- Organic / Ads -->
-            <div class="breakdown-card bc-adtype" id="bc-adtype">
-                <div class="breakdown-hdr">
-                    <div class="breakdown-hdr-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <circle cx="12" cy="12" r="10" />
-                            <circle cx="12" cy="12" r="6" />
-                            <circle cx="12" cy="12" r="2" />
-                        </svg>
+                <!-- Organic / Ads -->
+                <div class="breakdown-card bc-adtype" id="bc-adtype">
+                    <div class="breakdown-hdr">
+                        <div class="breakdown-hdr-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <circle cx="12" cy="12" r="6" />
+                                <circle cx="12" cy="12" r="2" />
+                            </svg>
+                        </div>
+                        <div class="breakdown-hdr-text">
+                            <strong title="Ads = rows with a utm_campaign value · Organic = rows without one">Organic / Ads</strong>
+                            <span class="breakdown-unique"></span>
+                        </div>
+                        <span class="breakdown-total">-</span>
                     </div>
-                    <div class="breakdown-hdr-text">
-                        <strong title="Ads = rows with a utm_campaign value · Organic = rows without one">Organic / Ads</strong>
-                        <span class="breakdown-unique"></span>
-                    </div>
-                    <span class="breakdown-total">-</span>
+                    <div class="breakdown-list"></div>
                 </div>
-                <div class="breakdown-list"></div>
-            </div>
 
-            <!-- Lead Type (Botphonic only: demo-request form vs email-only signup) -->
-            <div class="breakdown-card bc-leadtype" id="bc-leadtype" hidden>
-                <div class="breakdown-hdr">
-                    <div class="breakdown-hdr-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-                            <circle cx="12" cy="7" r="4" />
-                        </svg>
+                <!-- Lead Type (Botphonic only: demo-request form vs email-only signup) -->
+                <div class="breakdown-card bc-leadtype" id="bc-leadtype" hidden>
+                    <div class="breakdown-hdr">
+                        <div class="breakdown-hdr-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                                <circle cx="12" cy="7" r="4" />
+                            </svg>
+                        </div>
+                        <div class="breakdown-hdr-text">
+                            <strong title="Demo Request = contact form with name / phone · Email Signup = email-only form">Lead Type</strong>
+                            <span class="breakdown-unique"></span>
+                        </div>
+                        <span class="breakdown-total">-</span>
                     </div>
-                    <div class="breakdown-hdr-text">
-                        <strong title="Demo Request = contact form with name / phone · Email Signup = email-only form">Lead Type</strong>
-                        <span class="breakdown-unique"></span>
-                    </div>
-                    <span class="breakdown-total">-</span>
+                    <div class="breakdown-list"></div>
                 </div>
-                <div class="breakdown-list"></div>
-            </div>
-        </div><!-- /.breakdown-bar -->
+            </div><!-- /.breakdown-bar -->
+        </section>
 
-        <!-- ═══════ ACTIVE FILTER STRIP ═══════ -->
-        <div class="filter-strip" id="filterStrip">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <path d="M3 4h18M7 9h10M11 14h2" />
-            </svg>
-            <div class="filter-chips" id="filterChips"></div>
-            <button id="clearDupFilter">✕ Clear All</button>
-        </div>
-
-        <!-- ═══════ COLUMN SELECTOR ═══════ -->
-        <div class="col-selector">
-            <div class="col-selector-hdr" id="colSelectorHdr">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <rect x="3" y="3" width="7" height="7" rx="1" />
-                    <rect x="14" y="3" width="7" height="7" rx="1" />
-                    <rect x="3" y="14" width="7" height="7" rx="1" />
-                    <rect x="14" y="14" width="7" height="7" rx="1" />
-                </svg>
-                Column Visibility
-                <div class="col-selector-actions" id="colSelectorActions">
-                    <button id="btnCompact" type="button">Compact</button>
-                    <button id="btnReset" type="button">Standard</button>
-                    <button id="btnShowAll" type="button">Full</button>
-                    <button id="btnHideAll" type="button">Hide All</button>
-                </div>
-                <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M6 9l6 6 6-6" />
-                </svg>
-            </div>
-            <div class="col-pills" id="colPills"></div>
-        </div>
-
-
-        <!-- ═══════ TABLE ═══════ -->
-        <div class="table-card">
+        <!-- ═══════ LEADS TABLE ═══════ -->
+        <section class="table-card">
             <!-- ═══════ LOADER ═══════ -->
             <div class="loader-wrap" id="loaderWrap">
                 <div class="spinner"></div>
                 Fetching data…
             </div>
 
+            <!-- Toolbar: title + range · duplicates · columns -->
             <div class="table-card-hdr">
                 <div class="table-hdr-left">
-                    <span id="tableHdrLabel">Submissions</span>
+                    <div class="table-title">
+                        <span id="tableHdrLabel">Submissions</span>
+                        <span id="tableHdrMeta"></span>
+                    </div>
 
                     <!-- Duplicates - compact dropdown (multi-select, OR combined) -->
                     <div class="dropdown dup-dropdown">
@@ -398,8 +416,45 @@
                         </div>
                     </div>
                 </div>
-                <span id="tableHdrMeta" style="color:var(--muted);font-weight:400"></span>
+
+                <button type="button" class="tool-btn col-selector-hdr" id="colSelectorHdr" aria-controls="colPanel">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <rect x="3" y="3" width="7" height="7" rx="1" />
+                        <rect x="14" y="3" width="7" height="7" rx="1" />
+                        <rect x="3" y="14" width="7" height="7" rx="1" />
+                        <rect x="14" y="14" width="7" height="7" rx="1" />
+                    </svg>
+                    Columns
+                    <svg class="arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <path d="M6 9l6 6 6-6" />
+                    </svg>
+                </button>
             </div>
+
+            <!-- Column visibility panel (toggled by the Columns button) -->
+            <div class="col-panel" id="colPanel">
+                <div class="col-selector-actions" id="colSelectorActions">
+                    <span class="col-panel-label">Presets</span>
+                    <button id="btnCompact" type="button">Compact</button>
+                    <button id="btnReset" type="button">Standard</button>
+                    <button id="btnShowAll" type="button">Full</button>
+                    <button id="btnHideAll" type="button">Hide All</button>
+                </div>
+                <div class="col-pills" id="colPills"></div>
+            </div>
+
+            <!-- Active filters -->
+            <div class="filter-strip" id="filterStrip">
+                <span class="filter-strip-label">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+                    </svg>
+                    Filtered by
+                </span>
+                <div class="filter-chips" id="filterChips"></div>
+                <button id="clearDupFilter" type="button">Clear all</button>
+            </div>
+
             <div class="table-wrap">
                 <div class="empty-state" id="emptyState">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
@@ -407,8 +462,8 @@
                         <circle cx="17" cy="17" r="4" />
                         <path d="M21 21l-2-2" />
                     </svg>
-                    <p>No results found</p>
-                    <span>Try adjusting the date range or clearing the filters</span>
+                    <p>No leads match</p>
+                    <span>Try a wider date range or clear the filters</span>
                 </div>
                 <table id="mainTable">
                     <thead id="tableHead"></thead>
@@ -418,10 +473,15 @@
             <div class="mobile-cards" id="mobileCards"></div>
             <div class="pagination-bar">
                 <span id="paginationInfo"></span>
+                <span class="legend" aria-label="Row colour legend">
+                    <span class="lg-item"><i class="lg-dot bigbed"></i>100+ beds</span>
+                    <span class="lg-item"><i class="lg-dot dup"></i>Duplicate</span>
+                    <span class="lg-item"><i class="lg-dot pk92"></i>Pakistan / Test</span>
+                </span>
             </div>
-        </div>
+        </section>
 
-    </div><!-- /.page -->
+    </main><!-- /.page -->
 
     <!-- ═══════ LEAD DETAIL MODAL ═══════ -->
     <div class="modal-overlay" id="leadModal">
@@ -463,12 +523,7 @@
         <span id="toastMsg"></span>
     </div>
 
-
-
-
-
-
-    <script src="js/report.js?v=9"></script>
+    <script src="js/report.js?v=11"></script>
 </body>
 
 </html>

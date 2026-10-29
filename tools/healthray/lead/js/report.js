@@ -1,8 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
 
-    /* ══════════════════════════════════════
-       STATE
-    ══════════════════════════════════════ */
+    /* ═══ STATE ═══ */
     let originalRows = [];     // current-period rows, +92 test data already excluded
     let pk92Rows = [];         // current-period +92 (Pakistan/test) rows - own group, excluded from all analytics
     let allColumns = [];
@@ -27,19 +25,14 @@ document.addEventListener("DOMContentLoaded", () => {
     /* Accordion open state - persisted across re-renders */
     const breakdownOpen = { campaign: false, source: false, date: false, page: false, adtype: false, leadtype: false };
 
-    /* Period-over-period comparison state (previous equivalent date range).
-       compareRows / compareDupMeta / compareFilteredRows always mirror
-       originalRows / dupMeta / filteredRows so every metric is compared
-       like-for-like under the SAME active filters. */
+    /* Period-over-period comparison state (previous equivalent date range). compareRows / compareDupMeta / compareFilteredRows always mirror originalRows / dupMeta / filteredRows so every metric is compared like-for-like under the SAME active filters. */
     let compareRows = null;            // previous-period rows (+92 excluded), or null if not yet loaded/unavailable
     let compareDupMeta = {};
     let compareFilteredRows = null;    // previous-period rows run through the current filter state
     let compareRequestId = 0;          // guards against stale async responses
     let lastPrevRange = null;          // { from, to } of the last loaded comparison period
 
-    /* Active data source ('landing' = Healthray, 'botphonic' = Botphonic).
-       Kept in its own localStorage key - separate from any other tool's
-       DB/site selection - so switching here never affects other pages. */
+    /* Active data source ('landing' = Healthray, 'botphonic' = Botphonic). Kept in its own localStorage key - separate from any other tool's DB/site selection - so switching here never affects other pages. */
     const DB_KEY = "reportDb";
     const VALID_DBS = ["landing", "botphonic"];
     let activeDb = "landing";
@@ -48,13 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (VALID_DBS.includes(stored)) activeDb = stored;
     } catch (e) { /* ignore */ }
 
-    /* ══════════════════════════════════════
-       PER-SITE FIELD PROFILES
-       Healthray and Botphonic run different Contact Form 7 setups, so the
-       same concept (phone, landing page, paid vs organic) lives under
-       different keys. Every site-specific field name lives here - the rest
-       of the dashboard only asks the profile.
-    ══════════════════════════════════════ */
+    /* ═══ PER-SITE FIELD PROFILES ═══ Healthray and Botphonic run different Contact Form 7 setups, so the same concept (phone, landing page, paid vs organic) lives under different keys. Every site-specific field name lives here - the rest of the dashboard only asks the profile. */
     const SITE_PROFILES = {
         landing: {
             phoneCol: "your-number",
@@ -74,9 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
             leadType: false,
         },
         botphonic: {
-            /* "your-number" is typed without a country code ("86016 95454");
-               "full_phone" has it ("+918601695454") but is sometimes just "+91".
-               normalize() picks the usable one into a "phone" column. */
+            /* "your-number" is typed without a country code ("86016 95454"); "full_phone" has it ("+918601695454") but is sometimes just "+91". normalize() picks the usable one into a "phone" column. */
             phoneCol: "phone",
             bedCol: null,           // no bed size on Botphonic forms
             pageKeys: ["full_url", "handl_ref", "handl_url_base_cf7"],
@@ -88,20 +73,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 return /cpc|ppc|paid|lead-search/.test(medium) || /ads$|adwords/.test(source);
             },
             normalize: row => {
-                /* Botphonic logs submit_time in UTC (= created_date); Healthray's is
-                   already IST. Convert so times, Date Wise and Same Time match. */
+                /* Botphonic logs submit_time in UTC (= created_date); Healthray's is already IST. Convert so times, Date Wise and Same Time match. */
                 row["submit_time"] = utcToIst(row["submit_time"]);
                 const full = String(row["full_phone"] || "").trim();
                 row["phone"] = full.replace(/\D/g, "").length >= 8 ? full : (row["your-number"] || full || "");
                 row["lead-type"] = (row["your-name"] || row["your-number"] || row["submit"]) ? "Demo Request" : "Email Signup";
-                /* Full submitted-from URL (query string kept), like Healthray's
-                   "handl_url_cf7-264": contact form → full_url, footer email form → handl_url_base_cf7 */
+                /* Full submitted-from URL (query string kept), like Healthray's "handl_url_cf7-264": contact form → full_url, footer email form → handl_url_base_cf7 */
                 row["form-url"] = row["full_url"] || row["handl_url_base_cf7"] || row["handl_ref"] || "";
                 const page = getPageName(row);
                 row["page"] = page === "(unknown)" ? "" : page;
             },
-            /* UTM "_cf7" keys are aliased to the plain names by the API, "submit"
-               is folded into "lead-type" - showing them again is just noise. */
+            /* UTM "_cf7" keys are aliased to the plain names by the API, "submit" is folded into "lead-type" - showing them again is just noise. */
             dropCols: ["utm_campaign_cf7", "utm_source_cf7", "utm_medium_cf7", "gclid_cf7", "submit"],
             columnOrder: ["your-name", "your-email", "phone", "lead-type", "company-website", "use-case", "employees", "call-minutes", "your-message", "form-url", "page", "utm_source", "utm_medium", "utm_campaign", "submit_time"],
             defaultShow: ["your-name", "your-email", "phone", "lead-type", "use-case", "employees", "form-url", "utm_source", "utm_medium", "utm_campaign", "submit_time"],
@@ -133,8 +115,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (p.normalize && rows.length) {
             Object.keys(rows[0]).forEach(c => { if (!out.includes(c)) out.push(c); });
         }
-        /* The name cell opens the lead detail modal, so keep it even when
-           the range only has nameless (email-only) Botphonic rows */
+        /* The name cell opens the lead detail modal, so keep it even when the range only has nameless (email-only) Botphonic rows */
         if (p.normalize && !out.includes("your-name")) out.unshift("your-name");
         if (p.columnOrder) {
             const first = p.columnOrder.filter(c => out.includes(c));
@@ -146,9 +127,7 @@ document.addEventListener("DOMContentLoaded", () => {
     /* Table sort state - persists across filter changes */
     let sortState = { col: null, dir: 1 };  // dir: 1 = asc, -1 = desc
 
-    /* ══════════════════════════════════════
-       DATE DEFAULTS
-    ══════════════════════════════════════ */
+    /* ═══ DATE DEFAULTS ═══ */
     const today = new Date();
     const fromDate = new Date();
     fromDate.setDate(today.getDate() - 2);
@@ -156,9 +135,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("to").value = fmt(today);
     function fmt(d) { return d.toISOString().split("T")[0]; }
 
-    /* ══════════════════════════════════════
-       DOM REFS
-    ══════════════════════════════════════ */
+    /* ═══ DOM REFS ═══ */
     const loaderWrap = document.getElementById("loaderWrap");
     const tableHead = document.getElementById("tableHead");
     const tableBody = document.getElementById("tableBody");
@@ -171,15 +148,32 @@ document.addEventListener("DOMContentLoaded", () => {
     const filterStrip = document.getElementById("filterStrip");
     const filterChips = document.getElementById("filterChips");
     const presetBtns = document.querySelectorAll(".preset-btn");
-    const presetToggle = document.querySelector(".presets-dropdown .dropdown-toggle");
+    const presetToggle = document.querySelector(".presets-dropdown .preset-label");
 
-    /* ══════════════════════════════════════
-       COLUMN SELECTOR
-    ══════════════════════════════════════ */
+    /* ═══ COLUMN SELECTOR ═══ */
+    /* "Columns" button in the table toolbar opens the panel (presets + pills) below it */
+    const colPanel = document.getElementById("colPanel");
     colSelectorHdr.addEventListener("click", e => {
         if (e.target.closest("#colSelectorActions")) return;
-        colSelectorHdr.classList.toggle("open");
-        colPills.classList.toggle("visible");
+        const open = colSelectorHdr.classList.toggle("open");
+        colPills.classList.toggle("visible", open);
+        colPanel.classList.toggle("visible", open);
+        colSelectorHdr.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+
+    /* ═══ BREAKDOWNS SECTION - collapsible, remembered per browser ═══ */
+    const INSIGHTS_KEY = "reportInsightsCollapsed";
+    const insights = document.getElementById("insights");
+    const insightsToggle = document.getElementById("insightsToggle");
+    function setInsightsCollapsed(collapsed) {
+        insights.classList.toggle("collapsed", collapsed);
+        insightsToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    }
+    try { setInsightsCollapsed(localStorage.getItem(INSIGHTS_KEY) === "1"); } catch (e) { /* ignore */ }
+    insightsToggle.addEventListener("click", () => {
+        const collapsed = !insights.classList.contains("collapsed");
+        setInsightsCollapsed(collapsed);
+        try { localStorage.setItem(INSIGHTS_KEY, collapsed ? "1" : "0"); } catch (e) { /* ignore */ }
     });
     document.getElementById("btnShowAll").addEventListener("click", e => {
         e.stopPropagation();
@@ -203,9 +197,7 @@ document.addEventListener("DOMContentLoaded", () => {
         applyVisibility();
     });
 
-    /* ══════════════════════════════════════
-       THEME TOGGLE (light/dark, persisted)
-    ══════════════════════════════════════ */
+    /* ═══ THEME TOGGLE (light/dark, persisted) ═══ */
     const THEME_KEY = "reportTheme";
     document.getElementById("themeToggle").addEventListener("click", () => {
         const current = document.documentElement.getAttribute("data-theme");
@@ -215,9 +207,7 @@ document.addEventListener("DOMContentLoaded", () => {
         try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
     });
 
-    /* ══════════════════════════════════════
-       DATA SOURCE SWITCH (Healthray / Botphonic)
-    ══════════════════════════════════════ */
+    /* ═══ DATA SOURCE SWITCH (Healthray / Botphonic) ═══ */
     const dbSwitch = document.getElementById("dbSwitch");
 
     function setActiveDbButton(db) {
@@ -247,8 +237,7 @@ document.addEventListener("DOMContentLoaded", () => {
         try { localStorage.setItem(DB_KEY, activeDb); } catch (e) { /* ignore */ }
         setActiveDbButton(activeDb);
 
-        /* Switching source is a full reload of this dashboard's data - the
-           previous DB's rows/comparison must never linger and get mixed in. */
+        /* Switching source is a full reload of this dashboard's data - the previous DB's rows/comparison must never linger and get mixed in. */
         compareRows = null;
         compareDupMeta = {};
         compareFilteredRows = null;
@@ -259,16 +248,12 @@ document.addEventListener("DOMContentLoaded", () => {
         loadData();
     });
 
-    /* ══════════════════════════════════════
-       MOBILE FILTERS TOGGLE
-    ══════════════════════════════════════ */
+    /* ═══ MOBILE FILTERS TOGGLE ═══ */
     document.getElementById("mobileFiltersToggle").addEventListener("click", () => {
         document.getElementById("controlsBar").classList.toggle("mobile-open");
     });
 
-    /* ══════════════════════════════════════
-       FORM / SEARCH
-    ══════════════════════════════════════ */
+    /* ═══ FORM / SEARCH ═══ */
     document.getElementById("filterForm").addEventListener("submit", e => {
         e.preventDefault();
         loadData();
@@ -288,9 +273,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     tableSearch.addEventListener("input", applyFilters);
 
-    /* ══════════════════════════════════════
-       DATE RANGE PRESETS
-    ══════════════════════════════════════ */
+    /* ═══ DATE RANGE PRESETS ═══ */
     presetBtns.forEach(btn => {
         btn.addEventListener("click", () => {
             const days = parseInt(btn.dataset.days, 10);
@@ -310,13 +293,11 @@ document.addEventListener("DOMContentLoaded", () => {
     function setActivePreset(activeBtn) {
         presetBtns.forEach(b => b.classList.toggle("active", b === activeBtn));
         if (presetToggle) {
-            presetToggle.textContent = activeBtn ? activeBtn.textContent + " ▾" : "View ▾";
+            presetToggle.textContent = activeBtn ? activeBtn.textContent : "Quick range";
         }
     }
 
-    /* ══════════════════════════════════════
-       DUP FILTER CARDS
-    ══════════════════════════════════════ */
+    /* ═══ DUP FILTER CARDS ═══ */
     document.getElementById("cardDupEmail").addEventListener("click", () => toggleDupFilter("email"));
     document.getElementById("cardDupPhone").addEventListener("click", () => toggleDupFilter("phone"));
     document.getElementById("cardDupTime").addEventListener("click", () => toggleDupFilter("time"));
@@ -324,8 +305,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("cardBigBed").addEventListener("click", toggleBigBedFilter);
     document.getElementById("clearDupFilter").addEventListener("click", () => { clearAllFilters(); applyFilters(); });
 
-    /* +92 (Pakistan/test) data lives in its own panel, entirely separate from
-       the dup OR-filter set - it's a data-quality segregation, not a lead filter. */
+    /* +92 (Pakistan/test) data lives in its own panel, entirely separate from the dup OR-filter set - it's a data-quality segregation, not a lead filter. */
     document.getElementById("cardDupPk92").addEventListener("click", () => {
         document.getElementById("pk92Panel").classList.toggle("open");
     });
@@ -333,11 +313,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("pk92Panel").classList.remove("open");
     });
 
-    /* ══════════════════════════════════════
-       COMPARISON DELTA - click to expand full details
-       (primary metric stays a plain percentage; date range +
-       previous-period count live in this secondary panel)
-    ══════════════════════════════════════ */
+    /* ═══ COMPARISON DELTA - click to expand full details ═══ (primary metric stays a plain percentage; date range + previous-period count live in this secondary panel) */
     document.getElementById("statTotalDelta").addEventListener("click", () => {
         document.getElementById("statTotalDeltaDetail").classList.toggle("open");
     });
@@ -345,9 +321,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("statShowingDeltaDetail").classList.toggle("open");
     });
 
-    /* ══════════════════════════════════════
-       DROPDOWN COMPONENT
-    ══════════════════════════════════════ */
+    /* ═══ DROPDOWN COMPONENT ═══ */
     initDropdowns();
 
     function initDropdowns() {
@@ -394,10 +368,16 @@ document.addEventListener("DOMContentLoaded", () => {
     /* INITIAL LOAD */
     loadData();
 
+    /* Status pill - data-state drives the coloured dot (live / loading / truncated / error) */
+    function setStatus(state, label) {
+        statusBadge.dataset.state = state;
+        statusBadge.textContent = label;
+    }
+
     /* FETCH */
     async function loadData() {
         showLoader(true);
-        statusBadge.textContent = "Loading…";
+        setStatus("loading", "Loading…");
         try {
             const res = await fetch("./../api/get_report.php", {
                 method: "POST",
@@ -415,28 +395,21 @@ document.addEventListener("DOMContentLoaded", () => {
             loadComparison();
             if (data.truncated) {
                 showToast(`Showing first ${data.limit.toLocaleString()} rows - narrow the date range to see all`, "error");
-                statusBadge.textContent = "Truncated";
+                setStatus("truncated", "Truncated");
             } else {
                 showToast(`Loaded ${(data.rows || []).length} rows`, "success");
-                statusBadge.textContent = "Live";
+                setStatus("live", "Live");
             }
         } catch (err) {
             console.error(err);
             showToast(err.message, "error");
-            statusBadge.textContent = "Error";
+            setStatus("error", "Error");
         } finally {
             showLoader(false);
         }
     }
 
-    /* ════════════════════════════════════════════════════════
-       PERIOD-OVER-PERIOD COMPARISON
-       Fetches the immediately preceding period of equal length
-       (e.g. this week vs last week). Every active filter (search,
-       dup flags, source, campaign, date, page, adtype) is re-applied
-       to the previous period identically, so every metric - totals,
-       dup counts, breakdown items - compares like-for-like.
-    ════════════════════════════════════════════════════════ */
+    /* ═══ PERIOD-OVER-PERIOD COMPARISON ═══ Fetches the immediately preceding period of equal length (e.g. this week vs last week). Every active filter (search, dup flags, source, campaign, date, page, adtype) is re-applied to the previous period identically, so every metric - totals, dup counts, breakdown items - compares like-for-like. */
     function getPreviousRange(fromStr, toStr) {
         const from = new Date(fromStr + "T00:00:00");
         const to = new Date(toStr + "T00:00:00");
@@ -497,9 +470,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    /* Primary metric is percentage-only (e.g. "▼ -63%"); full detail
-       (date range + previous count) goes in the tooltip and, for the
-       two headline KPIs, an expandable detail panel below the metric. */
+    /* Primary metric is percentage-only (e.g. "▼ -63%"); full detail (date range + previous count) goes in the tooltip and, for the two headline KPIs, an expandable detail panel below the metric. */
     function setDeltaText(el, cur, prev, prevRange, detailEl) {
         if (!el) return;
         if (prev == null || !prevRange) {
@@ -530,9 +501,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    /* Small "vs previous period" badge for breakdown rows - prevMap is
-       already built from compareFilteredRows, so it's scoped by every
-       other active filter exactly like the current-side count is. */
+    /* Small "vs previous period" badge for breakdown rows - prevMap is already built from compareFilteredRows, so it's scoped by every other active filter exactly like the current-side count is. */
     function buildDeltaBadge(prevMap, value, count) {
         if (!prevMap) return "";
         const prev = prevMap[value] || 0;
@@ -544,31 +513,21 @@ document.addEventListener("DOMContentLoaded", () => {
         return `<span class="bi-delta ${cls}" title="Previous period: ${prev}">${arrow}${pct > 0 ? "+" : ""}${pct}%</span>`;
     }
 
-    /* ════════════════════════════════════════════════════════
-       +92 / PAKISTAN-TEST DETECTION
-       Numbers beginning with +92 / 0092 are data-entry/testing
-       records - detected once, then fully removed from originalRows
-       (and everything derived from it: dedup, breakdowns, comparison,
-       KPIs) and rendered separately in their own panel.
-    ════════════════════════════════════════════════════════ */
+    /* ═══ +92 / PAKISTAN-TEST DETECTION ═══ Numbers beginning with +92 / 0092 are data-entry/testing records - detected once, then fully removed from originalRows (and everything derived from it: dedup, breakdowns, comparison, KPIs) and rendered separately in their own panel. */
     function isPk92Number(v) {
         if (v == null || v === "") return false;
         const cleaned = String(v).trim().replace(/[\s\-().]/g, "");
         return /^(\+92|0092)/.test(cleaned);
     }
 
-    /* "Outside India" filter - numbers NOT beginning with +91 / 0091.
-       Unlike +92, these rows are NOT excluded from analytics - this is just
-       a lens on the existing dataset, same as the Source/Campaign filters. */
+    /* "Outside India" filter - numbers NOT beginning with +91 / 0091. Unlike +92, these rows are NOT excluded from analytics - this is just a lens on the existing dataset, same as the Source/Campaign filters. */
     function isNonIndiaNumber(v) {
         if (v == null || v === "") return false;
         const cleaned = String(v).trim().replace(/[\s\-().]/g, "");
         return !/^(\+91|0091)/.test(cleaned);
     }
 
-    /* 100+ beds - "101 – 300 beds" ("lg") or "300+ or a group" ("xl"). Read off the
-       numbers in the label or the word "group", so a reworded option such as
-       "101-300" or "Hospital group" still matches. Healthray only. */
+    /* 100+ beds - "101 – 300 beds" ("lg") or "300+ or a group" ("xl"). Read off the numbers in the label or the word "group", so a reworded option such as "101-300" or "Hospital group" still matches. Healthray only. */
     function bedTier(row) {
         const col = site().bedCol;
         if (!col) return null;
@@ -591,8 +550,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return `<span class="bigbed-badge ${tier}" title="High-value lead · ${esc(rawValue(site().bedCol, row))}"><span class="bb-ico" aria-hidden="true">${t.icon}</span>${t.label}</span>`;
     }
 
-    /* DUPLICATE ANALYSIS - rows passed in never include +92 rows,
-       so no exclusion logic is needed here. */
+    /* DUPLICATE ANALYSIS - rows passed in never include +92 rows, so no exclusion logic is needed here. */
     function analyseDuplicates(rows) {
         const meta = {};
         rows.forEach((_, i) => (meta[i] = { email: false, phone: false, time: false }));
@@ -618,10 +576,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function phoneKey(v) { const d = String(v ?? "").replace(/\D/g, ""); return d.length >= 6 ? d : null; }
     function norm(v) { return (v == null || v === "") ? null : String(v).trim().toLowerCase(); }
 
-    /* BREAKDOWN HELPERS
-       extractUtmVal  - resolve UTM param from raw column value
-       getRowDate     - extract YYYY-MM-DD from a row's time fields
-     */
+    /* BREAKDOWN HELPERS extractUtmVal - resolve UTM param from raw column value getRowDate - extract YYYY-MM-DD from a row's time fields */
     function extractUtmVal(raw, colName) {
         if (raw == null || raw === "") return "";
         try {
@@ -638,11 +593,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return m ? m[0] : String(t).slice(0, 10) || "(unknown)";
     }
 
-    /* Page the form was submitted from - shown as the URL path (e.g. "/emr-software/").
-       Healthray logs this as "page-name"/"handl_url_cf7-264"; Botphonic's CF7 setup
-       has no equivalent of those two keys at all, so without a fallback this always
-       reads "(unknown)" for Botphonic even though the same URL is captured under
-       "handl_url_base_cf7" (or "full_url" on a different form variant). */
+    /* Page the form was submitted from - shown as the URL path (e.g. "/emr-software/"). Healthray logs this as "page-name"/"handl_url_cf7-264"; Botphonic's CF7 setup has no equivalent of those two keys at all, so without a fallback this always reads "(unknown)" for Botphonic even though the same URL is captured under "handl_url_base_cf7" (or "full_url" on a different form variant). */
     function getPageName(row) {
         const key = site().pageKeys.find(k => row[k]);
         const raw = key ? row[key] : "";
@@ -653,12 +604,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch { return String(raw); }
     }
 
-    /* Organic vs Ads - driven purely by utm_campaign.
-       A row with a real utm_campaign value counts as "Ads"; a row with no
-       campaign (empty, or a tracking placeholder that was never filled in such
-       as "(not set)", "undefined", "{campaign}") counts as "Organic".
-       The value is resolved the same way as the UTM Campaign widget
-       (extractUtmVal), so both widgets always agree. */
+    /* Organic vs Ads - driven purely by utm_campaign. A row with a real utm_campaign value counts as "Ads"; a row with no campaign (empty, or a tracking placeholder that was never filled in such as "(not set)", "undefined", "{campaign}") counts as "Organic". The value is resolved the same way as the UTM Campaign widget (extractUtmVal), so both widgets always agree. */
     const EMPTY_CAMPAIGN_VALUES = new Set(["", "(none)", "(not set)", "not set", "(direct)", "none", "null", "undefined", "-", "n/a", "na"]);
     function hasUtmCampaign(row) {
         const val = extractUtmVal(row["utm_campaign"], "utm_campaign").trim().toLowerCase();
@@ -708,8 +654,7 @@ document.addEventListener("DOMContentLoaded", () => {
         allRows = normalizeRows(data.rows || []);
         allColumns = siteColumns(data.allColumns || [], allRows);
 
-        /* Split off +92 (Pakistan/test) rows FIRST - everything downstream
-           (dedup, breakdowns, KPIs, comparisons) only ever sees originalRows. */
+        /* Split off +92 (Pakistan/test) rows FIRST - everything downstream (dedup, breakdowns, KPIs, comparisons) only ever sees originalRows. */
         pk92Rows = allRows.filter(r => isPk92Number(getPhone(r)));
         originalRows = allRows.filter(r => !isPk92Number(getPhone(r)));
 
@@ -727,11 +672,7 @@ document.addEventListener("DOMContentLoaded", () => {
         updatePagination();
     }
 
-    /* ════════════════════════════════════════════════════════
-       +92 / PAKISTAN-TEST PANEL
-       Its own section, entirely outside the filtered dataset -
-       never counted in totals, dup counts, breakdowns or comparisons.
-    ════════════════════════════════════════════════════════ */
+    /* ═══ +92 / PAKISTAN-TEST PANEL ═══ Its own section, entirely outside the filtered dataset - never counted in totals, dup counts, breakdowns or comparisons. */
     function renderPk92Panel() {
         document.getElementById("statDupPk92").textContent = pk92Rows.length;
         document.getElementById("pk92PanelCount").textContent =
@@ -753,11 +694,7 @@ document.addEventListener("DOMContentLoaded", () => {
             `</tbody></table>`;
     }
 
-    /* ════════════════════════════════════════════════════════
-       ACTIVE FILTER STATE + UNIFIED FILTERING
-       One function, shared by the current period AND the
-       comparison period, so both are always filtered identically.
-    ════════════════════════════════════════════════════════ */
+    /* ═══ ACTIVE FILTER STATE + UNIFIED FILTERING ═══ One function, shared by the current period AND the comparison period, so both are always filtered identically. */
     function getActiveFilterState() {
         return {
             keyword: tableSearch.value.toLowerCase().trim(),
@@ -773,9 +710,7 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     }
 
-    /* Applies every filter in `state` to `rows`, using `meta` (a dupMeta-shaped
-       map keyed by index into `rows`) for the dup conditions. Works for either
-       (originalRows, dupMeta) or (compareRows, compareDupMeta). */
+    /* Applies every filter in `state` to `rows`, using `meta` (a dupMeta-shaped map keyed by index into `rows`) for the dup conditions. Works for either (originalRows, dupMeta) or (compareRows, compareDupMeta). */
     function computeFilteredRows(rows, meta, state) {
         let out = [...rows];
 
@@ -822,12 +757,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return out;
     }
 
-    /* ════════════════════════════════════════════════════════
-       REFRESH STATS
-       Called after EVERY filter change and after every comparison
-       load so every KPI, dup count, and breakdown card - current
-       AND previous period - always reflects the same active filters.
-    ════════════════════════════════════════════════════════ */
+    /* ═══ REFRESH STATS ═══ Called after EVERY filter change and after every comparison load so every KPI, dup count, and breakdown card - current AND previous period - always reflects the same active filters. */
     function refreshStats() {
         const fromVal = document.getElementById("from").value;
         const toVal = document.getElementById("to").value;
@@ -838,9 +768,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("statTotal").textContent = originalRows.length;
         document.getElementById("statShowing").textContent = filteredRows.length;
 
-        /* Dup counts scoped by every OTHER active filter (source/campaign/date/
-           page/adtype/search) but not by the dup toggles themselves - e.g.
-           Source=Ads narrows "Dup. Email" down to Ads-only duplicates. */
+        /* Dup counts scoped by every OTHER active filter (source/campaign/date/ page/adtype/search) but not by the dup toggles themselves - e.g. Source=Ads narrows "Dup. Email" down to Ads-only duplicates. */
         const nonDupState = { ...state, dupFilters: new Set() };
         const scopedRows = computeFilteredRows(originalRows, dupMeta, nonDupState);
         const dupEmailCount = scopedRows.filter(row => dupMeta[originalRows.indexOf(row)]?.email).length;
@@ -854,8 +782,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("statDupAny").textContent = dupAnyCount;
         document.getElementById("dupDdToggle").classList.toggle("has-dups", dupAnyCount > 0);
 
-        /* Outside India count scoped by every OTHER active filter, same pattern
-           as the dup counts above - so e.g. Source=Ads narrows it to Ads-only. */
+        /* Outside India count scoped by every OTHER active filter, same pattern as the dup counts above - so e.g. Source=Ads narrows it to Ads-only. */
         const nonIntlState = { ...state, intl: false };
         const scopedForIntl = computeFilteredRows(originalRows, dupMeta, nonIntlState);
         const intlCount = scopedForIntl.filter(row => isNonIndiaNumber(getPhone(row))).length;
@@ -904,8 +831,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
 
-        /* Breakdown cards - ALWAYS computed from filteredRows/compareFilteredRows
-           so counts (current AND previous) update reactively with every filter. */
+        /* Breakdown cards - ALWAYS computed from filteredRows/compareFilteredRows so counts (current AND previous) update reactively with every filter. */
         refreshBreakdownCard("bc-campaign", "utm_campaign", "campaign", activeCampaignFilter);
         refreshBreakdownCard("bc-source", "utm_source", "source", activeSourceFilter);
         refreshBreakdownCard("bc-date", "date", "date", activeDateFilter);
@@ -914,12 +840,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (site().leadType) refreshBreakdownCard("bc-leadtype", "leadtype", "leadtype", activeLeadtypeFilter);
     }
 
-    /* ════════════════════════════════════════════════════════
-       REFRESH BREAKDOWN CARD
-       Re-renders list items from current filteredRows, with a
-       vs-previous-period delta per item built from compareFilteredRows
-       (already scoped by every other active filter).
-    ════════════════════════════════════════════════════════ */
+    /* ═══ REFRESH BREAKDOWN CARD ═══ Re-renders list items from current filteredRows, with a vs-previous-period delta per item built from compareFilteredRows (already scoped by every other active filter). */
     function refreshBreakdownCard(cardId, dimension, filterKey, activeVal) {
         const card = document.getElementById(cardId);
         const list = card.querySelector(".breakdown-list");
@@ -976,14 +897,11 @@ document.addEventListener("DOMContentLoaded", () => {
         applyFilters();
     }
 
-    /* ════════════════════════════════════════════════════════
-       FILTER STRIP
-    ════════════════════════════════════════════════════════ */
+    /* ═══ FILTER STRIP ═══ */
     const dupLabels = { email: "Dup Email", phone: "Dup Phone", time: "Same Time" };
 
     function updateFilterStrip() {
-        /* Each chip carries its own removal handler so filters can be
-           cleared individually without disturbing the others or the date range. */
+        /* Each chip carries its own removal handler so filters can be cleared individually without disturbing the others or the date range. */
         const chips = [];
         activeDupFilters.forEach(t => chips.push({ label: dupLabels[t], onRemove: () => toggleDupFilter(t) }));
         if (activeCampaignFilter) chips.push({ label: `Campaign: ${activeCampaignFilter}`, onRemove: () => { activeCampaignFilter = null; updateFilterStrip(); applyFilters(); } });
@@ -1010,11 +928,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    /* ════════════════════════════════════════════════════════
-       DUP FILTER TOGGLE
-       Email / Phone / Same-Time can all be active together -
-       a row matching ANY active condition is shown (OR logic).
-    ════════════════════════════════════════════════════════ */
+    /* ═══ DUP FILTER TOGGLE ═══ Email / Phone / Same-Time can all be active together - a row matching ANY active condition is shown (OR logic). */
     function toggleDupFilter(type) {
         if (activeDupFilters.has(type)) activeDupFilters.delete(type);
         else activeDupFilters.add(type);
@@ -1026,8 +940,7 @@ document.addEventListener("DOMContentLoaded", () => {
         applyFilters();
     }
 
-    /* Outside-India toggle - a plain AND filter (like source/adtype), not
-       part of the dup OR-set, since it's a country lens, not a duplicate flag. */
+    /* Outside-India toggle - a plain AND filter (like source/adtype), not part of the dup OR-set, since it's a country lens, not a duplicate flag. */
     function toggleIntlFilter() {
         activeIntlFilter = !activeIntlFilter;
         document.getElementById("cardOutsideIndia").classList.toggle("active-filter", activeIntlFilter);
@@ -1064,12 +977,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
-    /* ════════════════════════════════════════════════════════
-       APPLY ALL FILTERS
-       Rebuilds filteredRows AND compareFilteredRows from the exact
-       same filter state, so the comparison never drifts from
-       whatever the user is currently looking at.
-    ════════════════════════════════════════════════════════ */
+    /* ═══ APPLY ALL FILTERS ═══ Rebuilds filteredRows AND compareFilteredRows from the exact same filter state, so the comparison never drifts from whatever the user is currently looking at. */
     function applyFilters() {
         const state = getActiveFilterState();
         filteredRows = sortRows(computeFilteredRows(originalRows, dupMeta, state));
@@ -1080,9 +988,7 @@ document.addEventListener("DOMContentLoaded", () => {
         updatePagination();
     }
 
-    /* ════════════════════════════════════════════════════════
-       COLUMN PILLS
-    ════════════════════════════════════════════════════════ */
+    /* ═══ COLUMN PILLS ═══ */
     function buildPills() {
         colPills.innerHTML = allColumns.map(col => `
             <span class="col-pill ${visibleCols.has(col) ? "active" : ""}" data-col="${esc(col)}">
@@ -1099,13 +1005,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    /* ════════════════════════════════════════════════════════
-       APPLY VISIBILITY
-    ════════════════════════════════════════════════════════ */
-    /* Up to WIDE_COL_LIMIT visible columns the table is squeezed to fit the card
-       (no horizontal scroll). Beyond that (e.g. the "Full" preset) squeezing makes
-       columns unreadable, so switch to natural widths + horizontal scroll with the
-       first column pinned. */
+    /* ═══ APPLY VISIBILITY ═══ */
+    /* Up to WIDE_COL_LIMIT visible columns the table is squeezed to fit the card (no horizontal scroll). Beyond that (e.g. the "Full" preset) squeezing makes columns unreadable, so switch to natural widths + horizontal scroll with the first column pinned. */
     const WIDE_COL_LIMIT = 11;
     function updateTableMode() {
         const wide = getVisibleCols().length > WIDE_COL_LIMIT;
@@ -1126,9 +1027,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    /* ════════════════════════════════════════════════════════
-       RENDER HEAD  (all columns sortable - click cycles asc/desc)
-    ════════════════════════════════════════════════════════ */
+    /* ═══ RENDER HEAD (all columns sortable - click cycles asc/desc) ═══ */
     function renderHead() {
         updateTableMode();
         tableHead.innerHTML = "<tr>" +
@@ -1152,9 +1051,7 @@ document.addEventListener("DOMContentLoaded", () => {
         renderBody();
     }
 
-    /* Generic sort: numeric compare when both sides parse as numbers,
-       otherwise a case-insensitive string compare (works fine for the
-       ISO-like submit_time format too). */
+    /* Generic sort: numeric compare when both sides parse as numbers, otherwise a case-insensitive string compare (works fine for the ISO-like submit_time format too). */
     function sortRows(rows) {
         if (!sortState.col) return rows;
         const col = sortState.col, dir = sortState.dir;
@@ -1168,12 +1065,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    /* ════════════════════════════════════════════════════════
-       RENDER BODY
-    ════════════════════════════════════════════════════════ */
-    /* +92 rows are shown inline with every other lead (so teammates can find
-       their own test/SEO submissions), in their natural server order, but
-       only highlighted - they never enter filteredRows, so no KPI counts them. */
+    /* ═══ RENDER BODY ═══ */
+    /* +92 rows are shown inline with every other lead (so teammates can find their own test/SEO submissions), in their natural server order, but only highlighted - they never enter filteredRows, so no KPI counts them. */
     function buildDisplayRows() {
         const pkShown = new Set(computeFilteredRows(pk92Rows, {}, getActiveFilterState()));
         const counted = new Set(filteredRows);
@@ -1226,11 +1119,7 @@ document.addEventListener("DOMContentLoaded", () => {
         renderMobileCards();
     }
 
-    /* ════════════════════════════════════════════════════════
-       MOBILE CARD-PER-ROW VIEW (<768px)
-       Same filteredRows/dupMeta as the table - CSS decides which
-       of the two is visible at the current viewport width.
-    ════════════════════════════════════════════════════════ */
+    /* ═══ MOBILE CARD-PER-ROW VIEW (<768px) ═══ Same filteredRows/dupMeta as the table - CSS decides which of the two is visible at the current viewport width. */
 
     function renderMobileCards() {
         const mobileCards = document.getElementById("mobileCards");
@@ -1271,10 +1160,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (row) openLeadModal(row);
     });
 
-    /* ════════════════════════════════════════════════════════
-       LEAD DETAIL MODAL
-       Click a lead's name → show ALL fields for that lead.
-    ════════════════════════════════════════════════════════ */
+    /* ═══ LEAD DETAIL MODAL ═══ Click a lead's name → show ALL fields for that lead. */
     const leadModal = document.getElementById("leadModal");
     const leadModalBody = document.getElementById("leadModalBody");
     const leadModalSub = document.getElementById("leadModalSub");
@@ -1364,9 +1250,7 @@ document.addEventListener("DOMContentLoaded", () => {
         leadModal.classList.remove("visible");
     }
 
-    /* ════════════════════════════════════════════════════════
-       EXPORT
-    ════════════════════════════════════════════════════════ */
+    /* ═══ EXPORT ═══ */
     function getVisibleCols() { return allColumns.filter(c => visibleCols.has(c)); }
 
     function rawValue(col, row) {
@@ -1441,9 +1325,7 @@ document.addEventListener("DOMContentLoaded", () => {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    /* ════════════════════════════════════════════════════════
-       HELPERS
-    ════════════════════════════════════════════════════════ */
+    /* ═══ HELPERS ═══ */
     function formatCol(col) {
         return col.replace(/[_-]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
     }
@@ -1461,9 +1343,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return esc(String(value));
     }
 
-    /* Table-only presentation (the modal keeps full values via formatValue):
-       URLs drop the scheme + host so the useful
-       part - the page path - is what shows before the ellipsis. */
+    /* Table-only presentation (the modal keeps full values via formatValue): URLs drop the scheme + host so the useful part - the page path - is what shows before the ellipsis. */
     function formatCell(col, value) {
         if (col === "your-name" && (value == null || String(value).trim() === "")) return `<span class="nm nm-empty">View</span>`;
         if (value === null || value === undefined || value === "") return formatValue(col, value);
