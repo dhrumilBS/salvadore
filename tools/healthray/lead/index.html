@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-    <link rel="stylesheet" href="css/report.css?v=12">
+    <link rel="stylesheet" href="css/report.css?v=14">
     <script>
         (function () {
             try {
@@ -192,6 +192,7 @@
                 </div>
                 <div class="stat-value" id="statShowing">-</div>
                 <div class="stat-delta" id="statShowingDelta" role="button" tabindex="0" title="Click for comparison details"></div>
+                <div class="stat-hint" id="statShowingHint"></div>
                 <div class="stat-delta-detail" id="statShowingDeltaDetail"></div>
             </div>
             <div class="stat-card big-bed clickable" id="cardBigBed" title="Click to filter leads with 101 - 300 beds or 300+ / a group - high-value, needs extra care">
@@ -267,7 +268,6 @@
                             <strong>UTM Campaign</strong>
                             <span class="breakdown-unique"></span>
                         </div>
-                        <span class="breakdown-total">-</span>
                     </div>
                     <div class="breakdown-list"></div>
                 </div>
@@ -286,7 +286,6 @@
                             <strong>UTM Source</strong>
                             <span class="breakdown-unique"></span>
                         </div>
-                        <span class="breakdown-total">-</span>
                     </div>
                     <div class="breakdown-list"></div>
                 </div>
@@ -306,7 +305,6 @@
                             <strong>Date Wise</strong>
                             <span class="breakdown-unique"></span>
                         </div>
-                        <span class="breakdown-total">-</span>
                     </div>
                     <div class="breakdown-list"></div>
                 </div>
@@ -325,7 +323,6 @@
                             <strong>Page Name</strong>
                             <span class="breakdown-unique"></span>
                         </div>
-                        <span class="breakdown-total">-</span>
                     </div>
                     <div class="breakdown-list"></div>
                 </div>
@@ -344,7 +341,6 @@
                             <strong title="Ads = rows with a utm_campaign value · Organic = rows without one">Organic / Ads</strong>
                             <span class="breakdown-unique"></span>
                         </div>
-                        <span class="breakdown-total">-</span>
                     </div>
                     <div class="breakdown-list"></div>
                 </div>
@@ -362,7 +358,6 @@
                             <strong title="Demo Request = contact form with name / phone · Email Signup = email-only form">Lead Type</strong>
                             <span class="breakdown-unique"></span>
                         </div>
-                        <span class="breakdown-total">-</span>
                     </div>
                     <div class="breakdown-list"></div>
                 </div>
@@ -377,14 +372,22 @@
                 Fetching data…
             </div>
 
-            <!-- Toolbar: title + range · duplicates · columns -->
+            <!-- Toolbar: title + count + range on the left · Duplicates / Columns grouped on the right -->
             <div class="table-card-hdr">
                 <div class="table-hdr-left">
+                    <span class="table-title-ico" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
+                    </span>
                     <div class="table-title">
-                        <span id="tableHdrLabel">Submissions</span>
+                        <div class="table-title-row">
+                            <span id="tableHdrLabel">Submissions</span>
+                            <span class="table-count" id="tableHdrCount" title="Leads in the table (after filters)">0</span>
+                        </div>
                         <span id="tableHdrMeta"></span>
                     </div>
+                </div>
 
+                <div class="table-tools">
                     <!-- Duplicates - compact dropdown (multi-select, OR combined) -->
                     <div class="dropdown dup-dropdown">
                         <button type="button" class="dup-dd-toggle dropdown-toggle" id="dupDdToggle" title="Duplicate email / phone / same submit time">
@@ -415,7 +418,6 @@
                             </button>
                         </div>
                     </div>
-                </div>
 
                 <button type="button" class="tool-btn col-selector-hdr" id="colSelectorHdr" aria-controls="colPanel">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -429,6 +431,7 @@
                         <path d="M6 9l6 6 6-6" />
                     </svg>
                 </button>
+                </div>
             </div>
 
             <!-- Column visibility panel (toggled by the Columns button) -->
@@ -523,7 +526,7 @@
         <span id="toastMsg"></span>
     </div>
 
-    <script src="js/report.js?v=11"></script>
+    <script src="js/report.js?v=13"></script>
 </body>
 
 </html>

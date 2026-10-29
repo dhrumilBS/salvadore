@@ -134,6 +134,12 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("from").value = fmt(fromDate);
     document.getElementById("to").value = fmt(today);
     function fmt(d) { return d.toISOString().split("T")[0]; }
+    /* "2026-10-27" → "27 Oct 2026" for display; anything unparseable is shown as-is */
+    function prettyDate(v) {
+        const m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return v || "";
+        return `${+m[3]} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m[2] - 1]} ${m[1]}`;
+    }
 
     /* ═══ DOM REFS ═══ */
     const loaderWrap = document.getElementById("loaderWrap");
@@ -695,6 +701,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     /* ═══ ACTIVE FILTER STATE + UNIFIED FILTERING ═══ One function, shared by the current period AND the comparison period, so both are always filtered identically. */
+    function hasActiveFilters(state) {
+        return !!(state.keyword || (state.dupFilters && state.dupFilters.size) || state.source || state.campaign || state.date || state.page || state.adtype || state.leadtype || state.intl || state.bigBed);
+    }
+
     function getActiveFilterState() {
         return {
             keyword: tableSearch.value.toLowerCase().trim(),
@@ -761,12 +771,17 @@ document.addEventListener("DOMContentLoaded", () => {
     function refreshStats() {
         const fromVal = document.getElementById("from").value;
         const toVal = document.getElementById("to").value;
-        document.getElementById("tableHdrMeta").textContent = `${fromVal} to ${toVal}`;
+        document.getElementById("tableHdrMeta").textContent = fromVal === toVal ? prettyDate(fromVal) : `${prettyDate(fromVal)} → ${prettyDate(toVal)}`;
 
         const state = getActiveFilterState();
 
         document.getElementById("statTotal").textContent = originalRows.length;
-        document.getElementById("statShowing").textContent = filteredRows.length;
+        /* "Showing" only differs from Real Leads once a filter/search is active - say "All" instead of repeating the same number */
+        const showingAll = filteredRows.length === originalRows.length && !hasActiveFilters(state);
+        document.getElementById("statShowing").textContent = showingAll ? "All" : filteredRows.length;
+        document.getElementById("statShowingHint").textContent = showingAll ? "No filters applied" : `of ${originalRows.length} real leads`;
+        document.getElementById("statShowing").closest(".stat-card").classList.toggle("is-all", showingAll);
+        document.getElementById("tableHdrCount").textContent = filteredRows.length;
 
         /* Dup counts scoped by every OTHER active filter (source/campaign/date/ page/adtype/search) but not by the dup toggles themselves - e.g. Source=Ads narrows "Dup. Email" down to Ads-only duplicates. */
         const nonDupState = { ...state, dupFilters: new Set() };
@@ -844,12 +859,9 @@ document.addEventListener("DOMContentLoaded", () => {
     function refreshBreakdownCard(cardId, dimension, filterKey, activeVal) {
         const card = document.getElementById(cardId);
         const list = card.querySelector(".breakdown-list");
-        const total = card.querySelector(".breakdown-total");
         const uniq = card.querySelector(".breakdown-unique");
 
         const items = buildBreakdown(filteredRows, dimension);
-        const sumCount = filteredRows.length;
-        total.textContent = sumCount;
         uniq.textContent = `${items.length} unique`;
 
         let prevMap = null;
