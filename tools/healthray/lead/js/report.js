@@ -1188,7 +1188,16 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("leadModalClose").addEventListener("click", closeLeadModal);
     leadModal.addEventListener("click", e => { if (e.target === leadModal) closeLeadModal(); });
     document.addEventListener("keydown", e => {
-        if (e.key === "Escape" && leadModal.classList.contains("visible")) closeLeadModal();
+        if (!leadModal.classList.contains("visible")) return;
+        if (e.key === "Escape") closeLeadModal();
+        else if (e.key === "ArrowLeft") stepLead(-1);
+        else if (e.key === "ArrowRight") stepLead(1);
+    });
+    document.getElementById("leadModalPrev").addEventListener("click", () => stepLead(-1));
+    document.getElementById("leadModalNext").addEventListener("click", () => stepLead(1));
+    document.getElementById("leadModalEmptyToggle").addEventListener("click", () => {
+        showEmptyFields = !showEmptyFields;
+        if (currentLeadRow) openLeadModal(currentLeadRow);
     });
 
     const leadModalCopy = document.getElementById("leadModalCopy");
@@ -1243,17 +1252,113 @@ document.addEventListener("DOMContentLoaded", () => {
         return ok;
     }
 
+    /* Fields are grouped by what they are about; checked in this order so "page-name" lands in Source, not Contact */
+    const LEAD_GROUPS = [["contact", "Contact"], ["org", "Organisation"], ["source", "Source & Campaign"], ["meta", "Submission"]];
+    function fieldGroup(col) {
+        if (/^utm_|url|page|handl|gclid|matchtype|ref$/i.test(col)) return "source";
+        if (/business|bed|speciality|lab|website|company|use-case|employees|minutes|message|text|lead-type/i.test(col)) return "org";
+        if (/name|number|phone|email|city|state|country/i.test(col)) return "contact";
+        return "meta";
+    }
+    let showEmptyFields = false;
+
+    function isEmptyValue(v) { return v == null || v === "" || (Array.isArray(v) && v.length === 0); }
+
+    /* Modal-only value rendering: email / phone / URLs become links, the rest uses the table formatter */
+    function leadValueHtml(col, row) {
+        const v = row[col];
+        if (isEmptyValue(v)) return formatValue(col, v);
+        const str = Array.isArray(v) ? v.join(", ") : String(v);
+        if (col.includes("email")) return `<a href="mailto:${esc(str)}">${esc(str)}</a>`;
+        if (col === site().phoneCol) return `<a href="tel:${esc(str.replace(/[^\d+]/g, ""))}">${esc(str)}</a>`;
+        if (col === site().bedCol && bedTier(row)) return `<span class="bed-pill ${bedTier(row)}">${esc(str)}</span>`;
+        if (/^https?:\/\//i.test(str)) {
+            /* show host + path only - the query string is just tracking noise (its UTM values are listed separately); full URL stays in href/title */
+            const m = str.match(/^https?:\/\/(?:www\.)?([^/?#]+)([^?#]*)([?#].*)?$/i);
+            const label = m ? m[1] + (m[2] || "/") + (m[3] ? " …" : "") : str;
+            return `<a href="${esc(str)}" target="_blank" rel="noopener" title="${esc(str)}">${esc(label)}</a>`;
+        }
+        return formatValue(col, v);
+    }
+
+    function leadInitials(row) {
+        const src = String(row["your-name"] || row["your-email"] || "?").trim();
+        const words = src.replace(/^(dr|mr|mrs|ms)\.?\s+/i, "").split(/[\s@._-]+/).filter(Boolean);
+        return ((words[0] || "?")[0] + (words.length > 1 ? words[1][0] : "")).toUpperCase();
+    }
+
+    /* One-click contact actions - WhatsApp needs a country code, so a bare 10-digit number is treated as +91 */
+    function leadActionsHtml(row) {
+        const phone = String(getPhone(row) || "").trim();
+        const digits = phone.replace(/\D/g, "");
+        const email = String(row["your-email"] || "").trim();
+        const acts = [];
+        if (digits.length >= 8) {
+            acts.push(`<a class="m-act call" href="tel:${esc(phone.replace(/[^\d+]/g, ""))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012.1 4.2 2 2 0 014.1 2h3a2 2 0 012 1.7c.1.9.4 1.8.7 2.7a2 2 0 01-.5 2.1L8 9.8a16 16 0 006 6l1.3-1.3a2 2 0 012.1-.4c.9.3 1.8.6 2.7.7a2 2 0 011.7 2z"/></svg>Call</a>`);
+            acts.push(`<a class="m-act wa" href="https://wa.me/${digits.length === 10 ? "91" + digits : digits}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 01-12.4 7.4L3 21l2.1-5.4A8.5 8.5 0 1121 11.5z"/></svg>WhatsApp</a>`);
+        }
+        if (email) acts.push(`<a class="m-act mail" href="mailto:${esc(email)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 6l-10 7L2 6"/></svg>Email</a>`);
+        return acts.join("");
+    }
+
+    function leadTagsHtml(row) {
+        const isPk = isPk92Number(getPhone(row));
+        const dup = dupMeta[originalRows.indexOf(row)] || {};
+        const tier = isPk ? null : bedTier(row);
+        return [
+            tier ? bigBedBadge(tier, row) : "",
+            isPk ? `<span class="dup-tag pk92">PK / Test</span>` : "",
+            dup.email ? `<span class="dup-tag email">Dup email</span>` : "",
+            dup.phone ? `<span class="dup-tag phone">Dup phone</span>` : "",
+            dup.time ? `<span class="dup-tag time">Same time</span>` : "",
+            isPk ? "" : `<span class="m-tag">${getAdType(row)}</span>`,
+        ].join("");
+    }
+
+    function stepLead(dir) {
+        const i = displayRows.indexOf(currentLeadRow);
+        const next = displayRows[i + dir];
+        if (i !== -1 && next) openLeadModal(next);
+    }
+
     function openLeadModal(row) {
         currentLeadRow = row;
-        const name = row["your-name"];
-        const email = row["your-email"];
-        leadModalSub.textContent = [name, email].filter(Boolean).join("  ·  ") || "-";
+        const tier = isPk92Number(getPhone(row)) ? null : bedTier(row);
 
-        leadModalBody.innerHTML = allColumns.map(col => `
-            <div class="lead-field">
-                <div class="lead-field-label">${formatCol(col)}</div>
-                <div class="lead-field-value">${formatValue(col, row[col])}</div>
-            </div>`).join("");
+        const avatar = document.getElementById("leadModalAvatar");
+        avatar.textContent = leadInitials(row);
+        avatar.className = "modal-hdr-icon" + (tier ? ` bigbed ${tier}` : "");
+        document.getElementById("leadModalTitle").textContent = row["your-name"] || row["your-email"] || "Lead";
+        leadModalSub.textContent = [row["your-email"], row["your-city"]].filter(Boolean).join("  ·  ") || "-";
+        document.getElementById("leadModalTags").innerHTML = leadTagsHtml(row);
+        document.getElementById("leadModalActions").innerHTML = leadActionsHtml(row);
+
+        /* Prev / next walk the rows exactly as the table currently shows them (filters + sort) */
+        const pos = displayRows.indexOf(row);
+        document.getElementById("leadModalPos").textContent = pos === -1 ? "" : `${pos + 1} of ${displayRows.length}`;
+        document.getElementById("leadModalPrev").disabled = pos <= 0;
+        document.getElementById("leadModalNext").disabled = pos === -1 || pos >= displayRows.length - 1;
+
+        const emptyCount = allColumns.filter(c => isEmptyValue(row[c])).length;
+        leadModalBody.innerHTML = LEAD_GROUPS.map(([key, title]) => {
+            let cols = allColumns.filter(c => fieldGroup(c) === key);
+            if (key === "meta") cols = [...cols.filter(c => c === "submit_time"), ...cols.filter(c => c !== "submit_time")];
+            const shown = cols.filter(c => showEmptyFields || !isEmptyValue(row[c]));
+            if (!shown.length) return "";
+            return `<section class="lead-sec">
+                <h4>${title}</h4>
+                ${shown.map(col => `
+                <div class="lead-field${isEmptyValue(row[col]) ? " is-empty" : ""}">
+                    <div class="lead-field-label">${formatCol(col)}</div>
+                    <div class="lead-field-value">${leadValueHtml(col, row)}</div>
+                </div>`).join("")}
+            </section>`;
+        }).join("");
+        leadModalBody.scrollTop = 0;
+
+        const toggle = document.getElementById("leadModalEmptyToggle");
+        toggle.hidden = emptyCount === 0;
+        toggle.textContent = showEmptyFields ? "Hide empty fields" : `Show ${emptyCount} empty field${emptyCount === 1 ? "" : "s"}`;
 
         leadModal.classList.add("visible");
     }
