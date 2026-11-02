@@ -218,6 +218,10 @@ button { font-family: inherit; }
 .db-switch-btn:hover { color: var(--text); }
 .db-switch-btn.active { background: var(--surface); color: var(--primary); box-shadow: 0 1px 3px rgba(16,24,40,.12), 0 0 0 1px var(--border); }
 .topbar-spacer { margin-left: auto; }
+.refresh-btn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; cursor: pointer; white-space: nowrap; transition: all .15s; }
+.refresh-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-lt); }
+.refresh-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.refresh-btn.spinning svg { animation: spin .8s linear infinite; }
 .icon-btn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; flex-shrink: 0; }
 .icon-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-lt); }
 .icon-btn svg { width: 16px; height: 16px; }
@@ -432,7 +436,7 @@ body { overflow-x: clip; }
 .breakdown-arrow { color: var(--muted); transition: transform .2s; flex-shrink: 0; }
 
 /* Breakdown list */
-.breakdown-list { height: 228px; overflow-y: auto; padding: 4px; scrollbar-width: thin; }
+.breakdown-list { height: 172px; overflow-y: auto; padding: 4px; scrollbar-width: thin; }
 .breakdown-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; cursor: pointer; transition: background .1s; }
 .breakdown-item:hover { background: var(--surface-alt); }
 .breakdown-item.active { background: color-mix(in srgb, var(--bc) 13%, var(--surface)); box-shadow: inset 3px 0 0 var(--bc); }
@@ -509,10 +513,12 @@ body { overflow-x: clip; }
 /* Column visibility panel (opened from the toolbar "Columns" button) */
 .col-panel { display: none; padding: 12px 20px 14px; background: var(--surface-alt); border-bottom: 1px solid var(--border); }
 .col-panel.visible { display: block; animation: menu-in .12s ease-out; }
-.col-selector-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-.col-panel-label { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); margin-right: 4px; }
-.col-selector-actions button { height: 26px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); font-size: var(--fs-xs); font-weight: 600; cursor: pointer; color: var(--text-2); transition: all .15s; }
-.col-selector-actions button:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-lt); }
+/* Column view presets - segmented switch in the middle of the table header */
+.col-selector-actions { display: flex; align-items: center; gap: 2px; padding: 3px; margin: 0 auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-alt); }
+.col-panel-label { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); padding: 0 8px 0 6px; }
+.col-selector-actions button { height: 28px; padding: 0 12px; border-radius: 7px; border: 0; background: transparent; font-size: var(--fs-xs); font-weight: 600; cursor: pointer; color: var(--text-2); transition: all .15s; }
+.col-selector-actions button:hover { color: var(--primary); background: var(--primary-lt); }
+.col-selector-actions button.active { color: #fff; background: var(--primary); box-shadow: var(--shadow-sm); }
 .col-pills { display: none; flex-wrap: wrap; gap: 6px; }
 .col-pills.visible { display: flex; }
 .col-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 20px; border: 1px solid var(--border); font-size: var(--fs-sm); font-weight: 500; cursor: pointer; transition: all .15s; background: var(--surface); color: var(--muted); user-select: none; }
@@ -570,18 +576,19 @@ table.pk92-table tbody td { padding: 8px 16px; border-top: 1px solid color-mix(i
 
 /* Fixed layout: the table always fits the card width - no horizontal scroll. Long values truncate with an ellipsis (full value in the cell's title tooltip). */
 table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-base); table-layout: fixed; }
-thead th { position: sticky; top: 0; z-index: 5; background: var(--surface-alt); border-bottom: 1px solid var(--border); padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; line-height: 1.35; color: var(--muted); white-space: normal; overflow-wrap: anywhere; vertical-align: bottom; }
+thead th { position: sticky; top: 0; z-index: 5; background: var(--surface-alt); border-bottom: 1px solid var(--border); padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; line-height: 1.35; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
 thead th:first-child, tbody td:first-child { padding-left: 20px; }
 thead th:last-child, tbody td:last-child { padding-right: 20px; }
 
 /* Column share of the width - narrow, predictable columns get a fixed slice, everything else (name, email, URL, campaign, extra columns) splits the rest. */
-th[data-col="your-number"]   { width: 9.5%; }
-th[data-col="your-city"]     { width: 7.5%; }
-th[data-col="utm_source"]    { width: 7.5%; }
-th[data-col="utm_medium"]    { width: 6%; }
+th[data-col="your-number"]   { width: 10%; }
+th[data-col="bed_size"]      { width: 12%; }
+th[data-col="your-city"]     { width: 8%; }
+th[data-col="utm_campaign"]  { width: 13%; }
+th[data-col="utm_source"]    { width: 9%; }
+th[data-col="utm_medium"]    { width: 8%; }
 th[data-col="utm_placement"] { width: 9%; }
-th[data-col="submit_time"]   { width: 11.5%; }
-th[data-col="your-name"]     { width: 16%; }
+th[data-col="submit_time"]   { width: 11%; }
 
 /* Wide mode (many columns, e.g. "Full" preset): natural column widths and horizontal scroll, with the name column pinned on the left. */
 .table-wrap.wide { overflow-x: auto; }
@@ -599,7 +606,7 @@ thead th.sort-asc .sort-ind, thead th.sort-desc .sort-ind { opacity: 1; color: v
 tbody tr { background: var(--surface); transition: background .12s; }
 tbody tr:nth-child(even) { background: color-mix(in srgb, var(--surface-alt) 70%, var(--surface)); }
 tbody tr:hover { background: color-mix(in srgb, var(--primary) 6%, var(--surface)); }
-tbody td { padding: 12px 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; border-bottom: 1px solid var(--border); }
+tbody td { padding: 9px 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; border-bottom: 1px solid var(--border); }
 tbody tr:last-child td { border-bottom: none; }
 
 /* Duplicate highlights */
@@ -662,16 +669,23 @@ tr.big-bed td.lead-name-link .nm { color: var(--bigbed-text); font-weight: 700; 
 /* Special cell types */
 td.cell-email { color: var(--text-2); font-size: var(--fs-sm); }
 td.cell-time  { color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.cell-empty { color: var(--muted); opacity: .45; }
+.soft-tag { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface-alt); color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase; vertical-align: middle; }
+td .st-abs { display: block; color: var(--text); font-weight: 500; white-space: nowrap; }
+td .st-rel { display: block; margin-top: 1px; font-size: 11px; color: var(--muted); white-space: nowrap; }
 td.cell-url   { color: var(--muted); font-size: var(--fs-sm); }
 td.cell-url .url-path { color: var(--primary); font-weight: 500; }
 td.cell-muted { color: var(--muted); font-size: var(--fs-sm); }
-td[data-col="your-number"] { font-variant-numeric: tabular-nums; font-size: var(--fs-sm); white-space: normal; line-height: 1.35; color: var(--text); }
+td[data-col="your-number"] { font-variant-numeric: tabular-nums; font-size: var(--fs-sm); white-space: nowrap; line-height: 1.35; color: var(--text); }
 .badge { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; padding: 2px 8px; border-radius: 6px; font-size: var(--fs-xs); font-weight: 600; background: var(--primary-lt); color: var(--primary); }
 
 /* Name: the primary action on every row - bold, opens the lead detail modal */
 td.lead-name-link { cursor: pointer; color: var(--text); font-weight: 600; }
 td.lead-name-link .nm { color: var(--text); }
 td.lead-name-link:hover .nm { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+/* "›" fades in on row hover - signals the name opens the lead detail */
+td.lead-name-link .nm::after { content: "›"; display: inline-block; margin-left: 6px; color: var(--primary); font-weight: 700; opacity: 0; transform: translateX(-3px); transition: opacity .15s, transform .15s; }
+tbody tr:hover td.lead-name-link .nm::after { opacity: 1; transform: none; }
 td.lead-name-link .nm-empty { color: var(--muted); font-weight: 500; font-size: 12px; }
 
 /* ═══ FOOTER (row count + colour legend) ═══ */
@@ -808,6 +822,8 @@ td.lead-name-link .nm-empty { color: var(--muted); font-weight: 500; font-size: 
     .page { padding: 0 14px 20px; }
     .topbar { padding: 0 14px; gap: 8px; }
     .brand-text span, .topbar-badge { display: none; }
+    .refresh-btn span { display: none; }
+    .refresh-btn { padding: 0 10px; }
     .topbar h1 { font-size: var(--fs-md); }
     .db-switch-btn { padding: 5px 10px; font-size: var(--fs-xs); }
     .mobile-filters-toggle { display: inline-flex; }
@@ -833,6 +849,7 @@ td.lead-name-link .nm-empty { color: var(--muted); font-weight: 500; font-size: 
     .breakdown-list { height: auto; max-height: 228px; }
 
     .table-card-hdr { padding: 12px 14px; }
+    .col-selector-actions { display: none; }   /* mobile cards use their own field list, presets don't apply */
     .legend { display: none; }
     thead, .table-wrap table { display: none; }
     .mobile-cards { grid-template-columns: minmax(0, 1fr); }

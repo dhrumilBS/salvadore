@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-    <link rel="stylesheet" href="css/report.css?v=15">
+    <link rel="stylesheet" href="css/report.css?v=22">
     <script>
         (function () {
             try {
@@ -44,6 +44,12 @@
             <button type="button" class="db-switch-btn" data-db="botphonic" role="tab" aria-selected="false">Botphonic</button>
         </div>
         <div class="topbar-spacer"></div>
+        <button type="button" class="refresh-btn" id="refreshBtn" title="Reload leads for the selected dates">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12a9 9 0 11-2.64-6.36M21 4v5h-5" />
+            </svg>
+            <span id="lastUpdated">Refresh</span>
+        </button>
         <button type="button" class="icon-btn mobile-filters-toggle" id="mobileFiltersToggle" title="Filters" aria-label="Toggle filters">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <path d="M3 4h18M7 9h10M11 14h2" />
@@ -91,6 +97,7 @@
                                 </button>
                                 <div class="dropdown-menu">
                                     <button type="button" class="preset-btn" data-days="1">Today</button>
+                                    <button type="button" class="preset-btn" data-days="1" data-offset="1">Yesterday</button>
                                     <button type="button" class="preset-btn" data-days="7">Last 7 Days</button>
                                     <button type="button" class="preset-btn" data-days="14">Last 2 Weeks</button>
                                     <button type="button" class="preset-btn" data-days="30">Last 1 Month</button>
@@ -387,6 +394,14 @@
                     </div>
                 </div>
 
+                <!-- Column view presets - one-click switch, active one highlighted -->
+                <div class="col-selector-actions" id="colSelectorActions" role="group" aria-label="Column view">
+                    <span class="col-panel-label">View</span>
+                    <button id="btnCompact" type="button">Compact</button>
+                    <button id="btnReset" type="button">Standard</button>
+                    <button id="btnShowAll" type="button">Full</button>
+                    <button id="btnHideAll" type="button">Hide All</button>
+                </div>
                 <div class="table-tools">
                     <!-- Duplicates - compact dropdown (multi-select, OR combined) -->
                     <div class="dropdown dup-dropdown">
@@ -436,13 +451,6 @@
 
             <!-- Column visibility panel (toggled by the Columns button) -->
             <div class="col-panel" id="colPanel">
-                <div class="col-selector-actions" id="colSelectorActions">
-                    <span class="col-panel-label">Presets</span>
-                    <button id="btnCompact" type="button">Compact</button>
-                    <button id="btnReset" type="button">Standard</button>
-                    <button id="btnShowAll" type="button">Full</button>
-                    <button id="btnHideAll" type="button">Hide All</button>
-                </div>
                 <div class="col-pills" id="colPills"></div>
             </div>
 
@@ -539,7 +547,7 @@
         <span id="toastMsg"></span>
     </div>
 
-    <script src="js/report.js?v=16"></script>
+    <script src="js/report.js?v=25"></script>
 </body>
 
 </html>

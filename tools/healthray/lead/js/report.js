@@ -51,11 +51,12 @@ document.addEventListener("DOMContentLoaded", () => {
             isAds: row => hasUtmCampaign(row),
             normalize: null,
             dropCols: [],
-            columnOrder: null,      // keep the API's first-seen order
-            defaultShow: null,      // use the API's defaultShow
+            columnOrder: ["your-name", "your-number", "your-email", "bed_size", "utm_campaign", "utm_source", "utm_medium", "submit_time"],
+            defaultShow: ["your-name", "your-number", "your-email", "bed_size", "utm_campaign", "utm_source", "utm_medium", "submit_time"],
             compactCols: ["your-name", "your-email", "your-number", "submit_time"],
+            colLabels: { bed_size: "Bed Size / Billing Software" },   // the same field also collects the billing-software answer
             mobileFields: ["your-email", "your-number", "bed_size", "utm_source", "utm_medium", "utm_campaign", "your-city", "your-country", "submit_time"],
-            copyFields: ["Your Name", "Your Number", "Your Email", "Your City", "Your Business", "Bed Size", "Speciality", "Page Name", "Submit Time", "User Ip"],
+            copyFields: ["Your Name", "Your Number", "Your Email", "Your City", "Your Business", "Bed Size / Billing Software", "Speciality", "Page Name", "Submit Time", "User Ip"],
             pk92Cols: [["Name", "your-name"], ["Email", "your-email"], ["Phone", "your-number"], ["City", "your-city"], ["Submit Time", "submit_time"]],
             pk92ExportCols: ["your-name", "your-email", "your-number", "your-city", "your-country", "submit_time"],
             leadType: false,
@@ -283,8 +284,10 @@ document.addEventListener("DOMContentLoaded", () => {
     presetBtns.forEach(btn => {
         btn.addEventListener("click", () => {
             const days = parseInt(btn.dataset.days, 10);
+            const offset = parseInt(btn.dataset.offset || "0", 10);   // days back the range ends - "Yesterday" = 1
             const toD = new Date();
-            const fromD = new Date();
+            toD.setDate(toD.getDate() - offset);
+            const fromD = new Date(toD);
             fromD.setDate(toD.getDate() - (days - 1));
             document.getElementById("from").value = fmt(fromD);
             document.getElementById("to").value = fmt(toD);
@@ -380,8 +383,17 @@ document.addEventListener("DOMContentLoaded", () => {
         statusBadge.textContent = label;
     }
 
+    /* "Updated x min ago" next to the refresh button - so nobody acts on a stale tab without knowing it */
+    let lastLoadedAt = null;
+    const lastUpdatedEl = document.getElementById("lastUpdated");
+    function updateLastUpdated() {
+        if (lastLoadedAt) lastUpdatedEl.textContent = `Updated ${relativeTime(lastLoadedAt)}`;
+    }
+    document.getElementById("refreshBtn").addEventListener("click", loadData);
+
     /* FETCH */
     async function loadData() {
+        document.getElementById("refreshBtn").classList.add("spinning");
         showLoader(true);
         setStatus("loading", "Loading…");
         try {
@@ -398,6 +410,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
             if (data.status !== "success") throw new Error(data.error || "API returned an error");
             renderAll(data);
+            lastLoadedAt = Date.now();
+            updateLastUpdated();
             loadComparison();
             if (data.truncated) {
                 showToast(`Showing first ${data.limit.toLocaleString()} rows - narrow the date range to see all`, "error");
@@ -412,6 +426,7 @@ document.addEventListener("DOMContentLoaded", () => {
             setStatus("error", "Error");
         } finally {
             showLoader(false);
+            document.getElementById("refreshBtn").classList.remove("spinning");
         }
     }
 
@@ -670,6 +685,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (visibleCols.size === 0) visibleCols = new Set(defaultShowCols);
 
         buildPills();
+        updateActivePreset();
         renderHead();
         filteredRows = sortRows([...originalRows]);
         renderBody();
@@ -1026,8 +1042,26 @@ document.addEventListener("DOMContentLoaded", () => {
         mainTable.closest(".table-wrap").classList.toggle("wide", wide);
     }
 
+    /* Highlight the preset whose column set matches what's on screen - none when pills were toggled by hand */
+    function updateActivePreset() {
+        const compactCols = site().compactCols.filter(c => allColumns.includes(c));
+        const presets = {
+            btnCompact: compactCols.length ? compactCols : defaultShowCols,
+            btnReset: defaultShowCols,
+            btnShowAll: allColumns,
+            btnHideAll: [],
+        };
+        let matched = false;
+        Object.entries(presets).forEach(([id, cols]) => {
+            const isMatch = !matched && cols.length === visibleCols.size && cols.every(c => visibleCols.has(c));
+            if (isMatch) matched = true;
+            document.getElementById(id).classList.toggle("active", isMatch);
+        });
+    }
+
     function applyVisibility() {
         updateTableMode();
+        updateActivePreset();
         colPills.querySelectorAll(".col-pill").forEach(pill => {
             pill.classList.toggle("active", visibleCols.has(pill.dataset.col));
         });
@@ -1115,7 +1149,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (isPhoneCol && dup.phone) { cellDupCls = "dup-cell-phone"; dupTag = `<span class="dup-tag phone">dup</span>`; }
                 if (isTimeCol && dup.time) { cellDupCls = "dup-cell-time"; dupTag = `<span class="dup-tag time">same</span>`; }
                 if (isBedCol && bigBed) { cellDupCls = "bigbed-cell"; cellHtml = `<span class="bed-pill ${bigBed}">${esc(rawValue(col, row))}</span>`; }
-                /* Bed Size is hidden by default, so flag the lead on the name too */
+                /* The bed-size field also collects billing-software answers ("Marg") - tag those so they aren't read as a size */
+                if (isBedCol && !bigBed) {
+                    const v = String(rawValue(col, row) || "").trim();
+                    if (v && !/bed|clinic|opd|group/i.test(v)) cellHtml = `${esc(v)}<span class="soft-tag">Software</span>`;
+                }
+                /* Flag the lead on the name too, so it still stands out when the Bed Size column is hidden */
                 /* name + badge share one flex row: a long name ellipsises, the badge never gets clipped */
                 if (isName && bigBed) cellHtml = `<span class="nm-wrap">${formatCell(col, row[col])}${bigBedBadge(bigBed, row)}</span>`;
                 if (isPhoneCol && isPk) { cellDupCls = "dup-cell-pk92"; dupTag = `<span class="dup-tag pk92" title="Pakistan / Test - not counted in totals or analytics">PK/Test</span>`; }
@@ -1447,13 +1486,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* ═══ HELPERS ═══ */
     function formatCol(col) {
+        const label = site().colLabels?.[col];
+        if (label) return label;
         return col.replace(/[_-]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
     }
 
     function formatValue(col, value) {
 
         if (value === null || value === undefined || value === "")
-            return '<span style="color:var(--muted)">-</span>';
+            return '<span class="cell-empty">-</span>';
         if (col.startsWith("utm_")) {
             const resolved = extractUtmVal(value, col);
             return `<span class="badge">${esc(resolved || value)}</span>`;
@@ -1468,12 +1509,56 @@ document.addEventListener("DOMContentLoaded", () => {
         if (col === "your-name" && (value == null || String(value).trim() === "")) return `<span class="nm nm-empty">View</span>`;
         if (value === null || value === undefined || value === "") return formatValue(col, value);
         if (col === "your-name") return `<span class="nm">${esc(String(value).trim())}</span>`;
+        if (col === "submit_time") {
+            const html = formatSubmitTime(value);
+            if (html) return html;
+        }
+        /* Indian numbers arrive both as "+917907789041" and "+91 9365981730" - show them one way */
+        if (col === site().phoneCol) {
+            const d = String(value).replace(/\D/g, "");
+            if (d.length === 12 && d.startsWith("91")) return esc(`+91 ${d.slice(2)}`);
+        }
         if (tdClass(col) === "cell-url" && !Array.isArray(value)) {
             const m = String(value).match(/^https?:\/\/(?:www\.)?([^/?#]+)(.*)$/i);
             if (m) return `<span class="url-path">${esc(m[2] || "/")}</span>`;
         }
         return formatValue(col, value);
     }
+
+    /* Submit Time - exact time to the second, with the day said plainly ("Today" / "Yesterday" / "31 Oct") and how long ago it was underneath. submit_time is the site's local (IST) wall-clock time, read as-is - no timezone shifting. */
+    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    function parseSubmitTime(value) {
+        const m = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+        if (!m) return null;
+        return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+    }
+    function formatSubmitTime(value) {
+        const d = parseSubmitTime(value);
+        if (!d) return null;
+        const now = new Date();
+        const dayStart = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+        const dayDiff = Math.round((dayStart(now) - dayStart(d)) / 86400000);
+        const pad = n => String(n).padStart(2, "0");
+        const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        const day = dayDiff === 0 ? "Today"
+            : dayDiff === 1 ? "Yesterday"
+            : `${d.getDate()} ${MONTHS[d.getMonth()]}${d.getFullYear() !== now.getFullYear() ? " " + d.getFullYear() : ""}`;
+        return `<span class="st-abs">${day}, ${time}</span><span class="st-rel" data-ts="${d.getTime()}">${relativeTime(d.getTime())}</span>`;
+    }
+    function relativeTime(ts) {
+        const mins = Math.floor((Date.now() - ts) / 60000);
+        if (mins < 1) return "just now";
+        if (mins < 60) return `${mins} min ago`;
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return `${hrs} hr ${mins % 60} min ago`;
+        const days = Math.floor(hrs / 24);
+        return days === 1 ? `1 day ${hrs % 24} hr ago` : `${days} days ago`;
+    }
+    /* Keep "x min ago" honest while the page stays open */
+    setInterval(() => {
+        document.querySelectorAll(".st-rel[data-ts]").forEach(el => { el.textContent = relativeTime(+el.dataset.ts); });
+        updateLastUpdated();
+    }, 30000);
 
     function tdClass(col) {
         if (col.includes("email")) return "cell-email";
