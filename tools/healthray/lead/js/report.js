@@ -16,7 +16,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeCampaignFilter = null;  // exact string | null
     let activeSourceFilter = null;  // exact string | null
     let activeDateFilter = null;  // exact string | null
-    let activePageFilter = null;  // exact string | null
+    let activePageFilter = new Set();  // multi-select - a row matches ANY selected page
     let activeAdtypeFilter = null;  // 'Organic' | 'Ads' | null
     let activeLeadtypeFilter = null;  // 'Demo Request' | 'Email Signup' | null (Botphonic only)
     let activeIntlFilter = false;  // true = show only non +91 (outside India) numbers
@@ -51,12 +51,12 @@ document.addEventListener("DOMContentLoaded", () => {
             isAds: row => hasUtmCampaign(row),
             normalize: null,
             dropCols: [],
-            columnOrder: ["your-name", "your-number", "your-email", "bed_size", "utm_campaign", "utm_source", "utm_medium", "submit_time"],
-            defaultShow: ["your-name", "your-number", "your-email", "bed_size", "utm_campaign", "utm_source", "utm_medium", "submit_time"],
+            columnOrder: ["your-name", "bed_size", "your-number", "your-email", "your-city", "utm_campaign", "utm_source", "utm_medium", "submit_time"],
+            defaultShow: ["your-name", "bed_size", "your-number", "your-email", "your-city", "utm_campaign", "utm_source", "utm_medium", "submit_time"],
             compactCols: ["your-name", "your-email", "your-number", "submit_time"],
             colLabels: { bed_size: "Bed Size / Billing Software" },   // the same field also collects the billing-software answer
             mobileFields: ["your-email", "your-number", "bed_size", "utm_source", "utm_medium", "utm_campaign", "your-city", "your-country", "submit_time"],
-            copyFields: ["Your Name", "Your Number", "Your Email", "Your City", "Your Business", "Bed Size / Billing Software", "Speciality", "Page Name", "Submit Time", "User Ip"],
+            copyFields: ["Your Name", "Your Number", "Your Email", "Your City", "Your Business", "Bed Size / Billing Software", "Speciality", "Page Name", "Utm Campaign", "Utm Source", "Utm Medium", "Submit Time", "User Ip"],
             pk92Cols: [["Name", "your-name"], ["Email", "your-email"], ["Phone", "your-number"], ["City", "your-city"], ["Submit Time", "submit_time"]],
             pk92ExportCols: ["your-name", "your-email", "your-number", "your-city", "your-country", "submit_time"],
             leadType: false,
@@ -136,6 +136,17 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("to").value = fmt(today);
     function fmt(d) { return d.toISOString().split("T")[0]; }
     /* "2026-10-27" → "27 Oct 2026" for display; anything unparseable is shown as-is */
+    /* "Today · 2 Nov" / "Yesterday · 1 Nov" / "Sat · 31 Oct" for the Date Wise card */
+    function dayLabel(v) {
+        const m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return v || "";
+        const d = new Date(+m[1], m[2] - 1, +m[3]);
+        const t = new Date(); t.setHours(0, 0, 0, 0);
+        const diff = Math.round((t - d) / 86400000);
+        const name = diff === 0 ? "Today" : diff === 1 ? "Yesterday" : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
+        return `${name} · ${+m[3]} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m[2] - 1]}${d.getFullYear() !== t.getFullYear() ? " " + m[1] : ""}`;
+    }
+
     function prettyDate(v) {
         const m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
         if (!m) return v || "";
@@ -155,7 +166,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const filterStrip = document.getElementById("filterStrip");
     const filterChips = document.getElementById("filterChips");
     const presetBtns = document.querySelectorAll(".preset-btn");
-    const presetToggle = document.querySelector(".presets-dropdown .preset-label");
 
     /* ═══ COLUMN SELECTOR ═══ */
     /* "Columns" button in the table toolbar opens the panel (presets + pills) below it */
@@ -204,16 +214,6 @@ document.addEventListener("DOMContentLoaded", () => {
         applyVisibility();
     });
 
-    /* ═══ THEME TOGGLE (light/dark, persisted) ═══ */
-    const THEME_KEY = "reportTheme";
-    document.getElementById("themeToggle").addEventListener("click", () => {
-        const current = document.documentElement.getAttribute("data-theme");
-        const isDark = current === "dark" || (!current && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        const next = isDark ? "light" : "dark";
-        document.documentElement.setAttribute("data-theme", next);
-        try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
-    });
-
     /* ═══ DATA SOURCE SWITCH (Healthray / Botphonic) ═══ */
     const dbSwitch = document.getElementById("dbSwitch");
 
@@ -255,14 +255,10 @@ document.addEventListener("DOMContentLoaded", () => {
         loadData();
     });
 
-    /* ═══ MOBILE FILTERS TOGGLE ═══ */
-    document.getElementById("mobileFiltersToggle").addEventListener("click", () => {
-        document.getElementById("controlsBar").classList.toggle("mobile-open");
-    });
-
     /* ═══ FORM / SEARCH ═══ */
     document.getElementById("filterForm").addEventListener("submit", e => {
         e.preventDefault();
+        closeAllDropdowns();
         loadData();
     });
     document.getElementById("resetBtn").addEventListener("click", () => {
@@ -271,14 +267,26 @@ document.addEventListener("DOMContentLoaded", () => {
         tableSearch.value = "";
         clearAllFilters();
         setActivePreset(null);
+        closeAllDropdowns();
         loadData();
     });
-    document.getElementById("showAllBtn").addEventListener("click", () => {
-        tableSearch.value = "";
-        clearAllFilters();
-        applyFilters();
-    });
     tableSearch.addEventListener("input", applyFilters);
+
+    /* Search shortcut - "/" (when not already typing in a field) or Ctrl/Cmd+K, like Slack. Esc clears and leaves the box. */
+    document.addEventListener("keydown", e => {
+        const typing = e.target.closest("input, textarea, select, [contenteditable]");
+        const isCtrlK = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k";
+        if (isCtrlK || (e.key === "/" && !typing)) {
+            e.preventDefault();
+            tableSearch.focus();
+            tableSearch.select();
+        }
+    });
+    tableSearch.addEventListener("keydown", e => {
+        if (e.key !== "Escape") return;
+        if (tableSearch.value) { tableSearch.value = ""; applyFilters(); }
+        tableSearch.blur();
+    });
 
     /* ═══ DATE RANGE PRESETS ═══ */
     presetBtns.forEach(btn => {
@@ -292,6 +300,7 @@ document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("from").value = fmt(fromD);
             document.getElementById("to").value = fmt(toD);
             setActivePreset(btn);
+            closeAllDropdowns();
             loadData();
         });
     });
@@ -301,9 +310,13 @@ document.addEventListener("DOMContentLoaded", () => {
     );
     function setActivePreset(activeBtn) {
         presetBtns.forEach(b => b.classList.toggle("active", b === activeBtn));
-        if (presetToggle) {
-            presetToggle.textContent = activeBtn ? activeBtn.textContent : "Quick range";
-        }
+    }
+    /* Date button label - "Today · 2 Nov 2026" for a preset, just the range for custom dates. Set from refreshStats so it follows the LOADED data, not dates still being typed. */
+    function updateDateToggle() {
+        const from = document.getElementById("from").value, to = document.getElementById("to").value;
+        const active = [...presetBtns].find(b => b.classList.contains("active"));
+        document.getElementById("dateTogglePreset").textContent = active ? active.textContent : "";
+        document.getElementById("dateToggleRange").textContent = from === to ? prettyDate(from) : `${prettyDate(from)} – ${prettyDate(to)}`;
     }
 
     /* ═══ DUP FILTER CARDS ═══ */
@@ -325,9 +338,6 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ═══ COMPARISON DELTA - click to expand full details ═══ (primary metric stays a plain percentage; date range + previous-period count live in this secondary panel) */
     document.getElementById("statTotalDelta").addEventListener("click", () => {
         document.getElementById("statTotalDeltaDetail").classList.toggle("open");
-    });
-    document.getElementById("statShowingDelta").addEventListener("click", () => {
-        document.getElementById("statShowingDeltaDetail").classList.toggle("open");
     });
 
     /* ═══ DROPDOWN COMPONENT ═══ */
@@ -380,14 +390,14 @@ document.addEventListener("DOMContentLoaded", () => {
     /* Status pill - data-state drives the coloured dot (live / loading / truncated / error) */
     function setStatus(state, label) {
         statusBadge.dataset.state = state;
-        statusBadge.textContent = label;
+        document.getElementById("statusText").textContent = label;
     }
 
     /* "Updated x min ago" next to the refresh button - so nobody acts on a stale tab without knowing it */
     let lastLoadedAt = null;
     const lastUpdatedEl = document.getElementById("lastUpdated");
     function updateLastUpdated() {
-        if (lastLoadedAt) lastUpdatedEl.textContent = `Updated ${relativeTime(lastLoadedAt)}`;
+        if (lastLoadedAt) lastUpdatedEl.textContent = ` · ${relativeTime(lastLoadedAt)}`;
     }
     document.getElementById("refreshBtn").addEventListener("click", loadData);
 
@@ -481,7 +491,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function setDeltaLoading() {
-        [["statTotalDelta", "statTotalDeltaDetail"], ["statShowingDelta", "statShowingDeltaDetail"]].forEach(([dId, detId]) => {
+        [["statTotalDelta", "statTotalDeltaDetail"]].forEach(([dId, detId]) => {
             const el = document.getElementById(dId);
             const det = document.getElementById(detId);
             el.textContent = "…";
@@ -664,6 +674,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (dimension === "date") {
             // Sort newest first
             entries.sort((a, b) => (b.value > a.value ? 1 : b.value < a.value ? -1 : 0));
+        } else if (dimension === "page") {
+            // A → Z so a page is easy to find when ticking several; "(unknown)" goes last
+            entries.sort((a, b) => (a.value === "(unknown)") - (b.value === "(unknown)") || a.value.localeCompare(b.value, undefined, { sensitivity: "base", numeric: true }));
         } else {
             entries.sort((a, b) => b.count - a.count);
         }
@@ -728,7 +741,7 @@ document.addEventListener("DOMContentLoaded", () => {
             source: activeSourceFilter,
             campaign: activeCampaignFilter,
             date: activeDateFilter,
-            page: activePageFilter,
+            page: activePageFilter.size ? new Set(activePageFilter) : null,
             adtype: activeAdtypeFilter,
             leadtype: activeLeadtypeFilter,
             intl: activeIntlFilter,
@@ -766,7 +779,7 @@ document.addEventListener("DOMContentLoaded", () => {
             out = out.filter(row => getRowDate(row) === state.date);
         }
         if (state.page) {
-            out = out.filter(row => getPageName(row) === state.page);
+            out = out.filter(row => state.page.has(getPageName(row)));
         }
         if (state.adtype) {
             out = out.filter(row => getAdType(row) === state.adtype);
@@ -787,16 +800,13 @@ document.addEventListener("DOMContentLoaded", () => {
     function refreshStats() {
         const fromVal = document.getElementById("from").value;
         const toVal = document.getElementById("to").value;
+        updateDateToggle();
         document.getElementById("tableHdrMeta").textContent = fromVal === toVal ? prettyDate(fromVal) : `${prettyDate(fromVal)} → ${prettyDate(toVal)}`;
 
         const state = getActiveFilterState();
 
         document.getElementById("statTotal").textContent = originalRows.length;
-        /* "Showing" only differs from Real Leads once a filter/search is active - say "All" instead of repeating the same number */
-        const showingAll = filteredRows.length === originalRows.length && !hasActiveFilters(state);
-        document.getElementById("statShowing").textContent = showingAll ? "All" : filteredRows.length;
-        document.getElementById("statShowingHint").textContent = showingAll ? "No filters applied" : `of ${originalRows.length} real leads`;
-        document.getElementById("statShowing").closest(".stat-card").classList.toggle("is-all", showingAll);
+        refreshTodayCard();
         document.getElementById("tableHdrCount").textContent = filteredRows.length;
 
         /* Dup counts scoped by every OTHER active filter (source/campaign/date/ page/adtype/search) but not by the dup toggles themselves - e.g. Source=Ads narrows "Dup. Email" down to Ads-only duplicates. */
@@ -835,11 +845,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 originalRows.length, compareRows.length, lastPrevRange,
                 document.getElementById("statTotalDeltaDetail")
             );
-            setDeltaText(
-                document.getElementById("statShowingDelta"),
-                filteredRows.length, compareFilteredRows ? compareFilteredRows.length : 0, lastPrevRange,
-                document.getElementById("statShowingDeltaDetail")
-            );
 
             const scopedPrevRows = computeFilteredRows(compareRows, compareDupMeta, nonDupState);
             const prevDupEmailCount = scopedPrevRows.filter(row => compareDupMeta[compareRows.indexOf(row)]?.email).length;
@@ -856,7 +861,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const prevBigBedCount = computeFilteredRows(compareRows, compareDupMeta, nonBigBedState).filter(isBigBedLead).length;
             setDeltaText(document.getElementById("statBigBedDelta"), bigBedCount, prevBigBedCount, lastPrevRange);
         } else {
-            ["statTotalDelta", "statShowingDelta", "statDupEmailDelta", "statDupPhoneDelta", "statDupTimeDelta", "statOutsideIndiaDelta", "statBigBedDelta"].forEach(id => {
+            ["statTotalDelta", "statDupEmailDelta", "statDupPhoneDelta", "statDupTimeDelta", "statOutsideIndiaDelta", "statBigBedDelta"].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) { el.textContent = ""; el.className = "stat-delta"; el.removeAttribute("title"); }
             });
@@ -866,35 +871,87 @@ document.addEventListener("DOMContentLoaded", () => {
         refreshBreakdownCard("bc-campaign", "utm_campaign", "campaign", activeCampaignFilter);
         refreshBreakdownCard("bc-source", "utm_source", "source", activeSourceFilter);
         refreshBreakdownCard("bc-date", "date", "date", activeDateFilter);
-        refreshBreakdownCard("bc-page", "page", "page", activePageFilter);
+        refreshBreakdownCard("bc-page", "page", "page", activePageFilter, true);
         refreshBreakdownCard("bc-adtype", "adtype", "adtype", activeAdtypeFilter);
         if (site().leadType) refreshBreakdownCard("bc-leadtype", "leadtype", "leadtype", activeLeadtypeFilter);
     }
 
+    /* ═══ TODAY CARD ═══ Real leads submitted today vs yesterday up to the same time of day - "are we on pace?". Reads the loaded range plus the comparison period, so it also works on the "Today" quick range (yesterday is then the comparison period). */
+    function refreshTodayCard() {
+        const valEl = document.getElementById("statToday");
+        const deltaEl = document.getElementById("statTodayDelta");
+        const hintEl = document.getElementById("statTodayHint");
+        const now = new Date();
+        const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const todayStr = ymd(now);
+        const y = new Date(now); y.setDate(now.getDate() - 1);
+        const yStr = ymd(y);
+        const from = document.getElementById("from").value, to = document.getElementById("to").value;
+
+        deltaEl.textContent = "";
+        deltaEl.className = "stat-delta no-suffix";
+        if (todayStr < from || todayStr > to) {
+            valEl.textContent = "-";
+            hintEl.textContent = "Today is outside the selected dates";
+            return;
+        }
+        const pool = compareRows ? originalRows.concat(compareRows) : originalRows;
+        const todayCount = pool.filter(r => getRowDate(r) === todayStr).length;
+        valEl.textContent = todayCount;
+
+        /* Yesterday is only known if it's in the loaded range or the comparison period */
+        const haveYesterday = yStr >= from || (compareRows && lastPrevRange && yStr >= lastPrevRange.from);
+        if (!haveYesterday) { hintEl.textContent = "Leads since midnight"; return; }
+        const cutoff = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+        const yCount = pool.filter(r => {
+            if (getRowDate(r) !== yStr) return false;
+            const d = parseSubmitTime(r["submit_time"]);
+            return d && d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() <= cutoff;
+        }).length;
+        const diff = todayCount - yCount;
+        deltaEl.textContent = diff > 0 ? `▲ +${diff}` : diff < 0 ? `▼ ${diff}` : "▶ 0";
+        deltaEl.classList.add(diff > 0 ? "up" : diff < 0 ? "down" : "flat");
+        hintEl.textContent = `${yCount} by this time yesterday`;
+    }
+
     /* ═══ REFRESH BREAKDOWN CARD ═══ Re-renders list items from current filteredRows, with a vs-previous-period delta per item built from compareFilteredRows (already scoped by every other active filter). */
-    function refreshBreakdownCard(cardId, dimension, filterKey, activeVal) {
+    /* multi = multi-select card (activeVal is a Set). Its counts ignore its OWN filter (every other filter still applies), otherwise picking one page would hide all the others and you could never pick a second. */
+    function refreshBreakdownCard(cardId, dimension, filterKey, activeVal, multi = false) {
         const card = document.getElementById(cardId);
         const list = card.querySelector(".breakdown-list");
         const uniq = card.querySelector(".breakdown-unique");
 
-        const items = buildBreakdown(filteredRows, dimension);
-        uniq.textContent = `${items.length} unique`;
-
-        let prevMap = null;
-        if (compareFilteredRows) {
-            prevMap = {};
-            buildBreakdown(compareFilteredRows, dimension).forEach(({ value, count }) => { prevMap[value] = count; });
+        let curRows = filteredRows, prevRows = compareFilteredRows;
+        if (multi) {
+            const scope = { ...getActiveFilterState(), [filterKey]: null };
+            curRows = computeFilteredRows(originalRows, dupMeta, scope);
+            prevRows = compareRows ? computeFilteredRows(compareRows, compareDupMeta, scope) : null;
         }
 
+        const items = buildBreakdown(curRows, dimension);
+        uniq.textContent = multi && activeVal.size ? `${activeVal.size} selected · ${items.length} unique` : `${items.length} unique`;
+
+        let prevMap = null;
+        if (prevRows) {
+            prevMap = {};
+            buildBreakdown(prevRows, dimension).forEach(({ value, count }) => { prevMap[value] = count; });
+        }
+
+        const isDate = dimension === "date";
+        const maxCount = Math.max(1, ...items.map(i => i.count));
         list.innerHTML = items.map(({ value, count }) => {
             const isNone = value === "(none)" || value === "(unknown)";
-            const isAct = value === activeVal;
-            const deltaHtml = buildDeltaBadge(prevMap, value, count);
+            const isAct = multi ? activeVal.has(value) : value === activeVal;
+            /* Dates never repeat between periods, so a per-day delta is always "new" - show a volume bar instead */
+            const deltaHtml = isDate
+                ? `<span class="bi-bar" aria-hidden="true"><i style="width:${Math.round(count / maxCount * 100)}%"></i></span>`
+                : buildDeltaBadge(prevMap, value, count);
+            const label = isNone ? `<em>${value}</em>` : isDate ? esc(dayLabel(value)) : esc(value);
 
             return `<div class="breakdown-item${isAct ? " active" : ""}"
                          data-filter-key="${filterKey}"
                          data-value="${esc(value)}">
-                        <span class="bi-label">${isNone ? `<em>${value}</em>` : esc(value)}</span>
+                        <span class="bi-label">${label}</span>
                         ${deltaHtml}
                         <span class="bi-count">${count}</span>
                     </div>`;
@@ -915,7 +972,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (filterKey === "campaign") activeCampaignFilter = activeCampaignFilter === val ? null : val;
         if (filterKey === "source") activeSourceFilter = activeSourceFilter === val ? null : val;
         if (filterKey === "date") activeDateFilter = activeDateFilter === val ? null : val;
-        if (filterKey === "page") activePageFilter = activePageFilter === val ? null : val;
+        if (filterKey === "page") { if (activePageFilter.has(val)) activePageFilter.delete(val); else activePageFilter.add(val); }
         if (filterKey === "adtype") activeAdtypeFilter = activeAdtypeFilter === val ? null : val;
         if (filterKey === "leadtype") activeLeadtypeFilter = activeLeadtypeFilter === val ? null : val;
 
@@ -935,7 +992,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (activeCampaignFilter) chips.push({ label: `Campaign: ${activeCampaignFilter}`, onRemove: () => { activeCampaignFilter = null; updateFilterStrip(); applyFilters(); } });
         if (activeSourceFilter) chips.push({ label: `Source: ${activeSourceFilter}`, onRemove: () => { activeSourceFilter = null; updateFilterStrip(); applyFilters(); } });
         if (activeDateFilter) chips.push({ label: `Date: ${activeDateFilter}`, onRemove: () => { activeDateFilter = null; updateFilterStrip(); applyFilters(); } });
-        if (activePageFilter) chips.push({ label: `Page: ${activePageFilter}`, onRemove: () => { activePageFilter = null; updateFilterStrip(); applyFilters(); } });
+        activePageFilter.forEach(p => chips.push({ label: `Page: ${p}`, onRemove: () => { activePageFilter.delete(p); updateFilterStrip(); applyFilters(); } }));
         if (activeAdtypeFilter) chips.push({ label: `Type: ${activeAdtypeFilter}`, onRemove: () => { activeAdtypeFilter = null; updateFilterStrip(); applyFilters(); } });
         if (activeLeadtypeFilter) chips.push({ label: `Lead: ${activeLeadtypeFilter}`, onRemove: () => { activeLeadtypeFilter = null; updateFilterStrip(); applyFilters(); } });
         if (activeIntlFilter) chips.push({ label: "Outside India", onRemove: () => toggleIntlFilter() });
@@ -989,7 +1046,7 @@ document.addEventListener("DOMContentLoaded", () => {
         activeCampaignFilter = null;
         activeSourceFilter = null;
         activeDateFilter = null;
-        activePageFilter = null;
+        activePageFilter.clear();
         activeAdtypeFilter = null;
         activeLeadtypeFilter = null;
         activeIntlFilter = false;
@@ -1039,6 +1096,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function updateTableMode() {
         const wide = getVisibleCols().length > WIDE_COL_LIMIT;
         mainTable.classList.toggle("wide", wide);
+        mainTable.classList.toggle("bed-shown", !!site().bedCol && visibleCols.has(site().bedCol));
         mainTable.closest(".table-wrap").classList.toggle("wide", wide);
     }
 
@@ -1150,11 +1208,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (isTimeCol && dup.time) { cellDupCls = "dup-cell-time"; dupTag = `<span class="dup-tag time">same</span>`; }
                 if (isBedCol && bigBed) { cellDupCls = "bigbed-cell"; cellHtml = `<span class="bed-pill ${bigBed}">${esc(rawValue(col, row))}</span>`; }
                 /* The bed-size field also collects billing-software answers ("Marg") - tag those so they aren't read as a size */
-                if (isBedCol && !bigBed) {
-                    const v = String(rawValue(col, row) || "").trim();
-                    if (v && !/bed|clinic|opd|group/i.test(v)) cellHtml = `${esc(v)}<span class="soft-tag">Software</span>`;
-                }
-                /* Flag the lead on the name too, so it still stands out when the Bed Size column is hidden */
+                if (isBedCol && !bigBed && isSoftwareAnswer(rawValue(col, row))) cellHtml = `${esc(rawValue(col, row))}<span class="soft-tag">Software</span>`;
+                /* Flag the lead on the name too - CSS shows this badge only while the Bed Size column is hidden (it'd repeat the pill otherwise) */
                 /* name + badge share one flex row: a long name ellipsises, the badge never gets clipped */
                 if (isName && bigBed) cellHtml = `<span class="nm-wrap">${formatCell(col, row[col])}${bigBedBadge(bigBed, row)}</span>`;
                 if (isPhoneCol && isPk) { cellDupCls = "dup-cell-pk92"; dupTag = `<span class="dup-tag pk92" title="Pakistan / Test - not counted in totals or analytics">PK/Test</span>`; }
@@ -1264,7 +1319,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const lines = site().copyFields
             .map(label => allColumns.find(c => formatCol(c).toLowerCase() === label.toLowerCase()))
             .filter(Boolean)
-            .map(col => [formatCol(col), rawValue(col, row)])
+            .map(col => [formatCol(col), col === site().phoneCol ? formatPhone(rawValue(col, row)) : rawValue(col, row)])
             .filter(([, v]) => v !== "")
             .map(([k, v]) => `${k}: ${v}`);
         return ["Lead Details", "------------", ...lines].join("\n");
@@ -1312,8 +1367,10 @@ document.addEventListener("DOMContentLoaded", () => {
         if (isEmptyValue(v)) return formatValue(col, v);
         const str = Array.isArray(v) ? v.join(", ") : String(v);
         if (col.includes("email")) return `<a href="${gmailCompose(str)}" target="_blank" rel="noopener" title="Write in Gmail">${esc(str)}</a>`;
-        if (col === site().phoneCol) return `<a href="tel:${esc(str.replace(/[^\d+]/g, ""))}">${esc(str)}</a>`;
+        if (col === site().phoneCol) return `<a href="tel:${esc(str.replace(/[^\d+]/g, ""))}">${esc(formatPhone(str))}</a>`;
         if (col === site().bedCol && bedTier(row)) return `<span class="bed-pill ${bedTier(row)}">${esc(str)}</span>`;
+        if (col === site().bedCol && isSoftwareAnswer(str)) return `${esc(str)}<span class="soft-tag">Software</span>`;
+        if (col === "submit_time") return formatSubmitTime(str) || esc(str);
         if (/^https?:\/\//i.test(str)) {
             /* show host + path only - the query string is just tracking noise (its UTM values are listed separately); full URL stays in href/title */
             const m = str.match(/^https?:\/\/(?:www\.)?([^/?#]+)([^?#]*)([?#].*)?$/i);
@@ -1371,7 +1428,9 @@ document.addEventListener("DOMContentLoaded", () => {
         avatar.textContent = leadInitials(row);
         avatar.className = "modal-hdr-icon" + (tier ? ` bigbed ${tier}` : "");
         document.getElementById("leadModalTitle").textContent = row["your-name"] || row["your-email"] || "Lead";
-        leadModalSub.textContent = [row["your-email"], row["your-city"]].filter(Boolean).join("  ·  ") || "-";
+        /* Subtitle: city + when it came in (email already has its own row and action button) */
+        const when = submitTimeParts(row["submit_time"]);
+        leadModalSub.textContent = [row["your-city"], when && `${when.abs} (${when.rel})`].filter(Boolean).join("  ·  ") || row["your-email"] || "-";
         document.getElementById("leadModalTags").innerHTML = leadTagsHtml(row);
         document.getElementById("leadModalActions").innerHTML = leadActionsHtml(row);
 
@@ -1497,7 +1556,10 @@ document.addEventListener("DOMContentLoaded", () => {
             return '<span class="cell-empty">-</span>';
         if (col.startsWith("utm_")) {
             const resolved = extractUtmVal(value, col);
-            return `<span class="badge">${esc(resolved || value)}</span>`;
+            /* Only the campaign gets a badge - source/medium as plain text so the row has one focal point */
+            return col === "utm_campaign"
+                ? `<span class="badge">${esc(resolved || value)}</span>`
+                : `<span class="utm-plain">${esc(resolved || value)}</span>`;
         }
         if (Array.isArray(value)) return esc(value.join(", "));
 
@@ -1513,11 +1575,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const html = formatSubmitTime(value);
             if (html) return html;
         }
-        /* Indian numbers arrive both as "+917907789041" and "+91 9365981730" - show them one way */
-        if (col === site().phoneCol) {
-            const d = String(value).replace(/\D/g, "");
-            if (d.length === 12 && d.startsWith("91")) return esc(`+91 ${d.slice(2)}`);
-        }
+        if (col === site().phoneCol) return esc(formatPhone(value));
         if (tdClass(col) === "cell-url" && !Array.isArray(value)) {
             const m = String(value).match(/^https?:\/\/(?:www\.)?([^/?#]+)(.*)$/i);
             if (m) return `<span class="url-path">${esc(m[2] || "/")}</span>`;
@@ -1532,7 +1590,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!m) return null;
         return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
     }
-    function formatSubmitTime(value) {
+    function submitTimeParts(value) {
         const d = parseSubmitTime(value);
         if (!d) return null;
         const now = new Date();
@@ -1543,7 +1601,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const day = dayDiff === 0 ? "Today"
             : dayDiff === 1 ? "Yesterday"
             : `${d.getDate()} ${MONTHS[d.getMonth()]}${d.getFullYear() !== now.getFullYear() ? " " + d.getFullYear() : ""}`;
-        return `<span class="st-abs">${day}, ${time}</span><span class="st-rel" data-ts="${d.getTime()}">${relativeTime(d.getTime())}</span>`;
+        return { abs: `${day}, ${time}`, rel: relativeTime(d.getTime()), ts: d.getTime() };
+    }
+    function formatSubmitTime(value) {
+        const p = submitTimeParts(value);
+        return p ? `<span class="st-abs">${p.abs}</span><span class="st-rel" data-ts="${p.ts}">${p.rel}</span>` : null;
     }
     function relativeTime(ts) {
         const mins = Math.floor((Date.now() - ts) / 60000);
@@ -1559,6 +1621,19 @@ document.addEventListener("DOMContentLoaded", () => {
         document.querySelectorAll(".st-rel[data-ts]").forEach(el => { el.textContent = relativeTime(+el.dataset.ts); });
         updateLastUpdated();
     }, 30000);
+
+    /* Indian numbers arrive both as "+917907789041" and "+91 9365981730" - show them one way everywhere */
+    function formatPhone(value) {
+        const str = String(value ?? "").trim();
+        const d = str.replace(/\D/g, "");
+        return d.length === 12 && d.startsWith("91") ? `+91 ${d.slice(2)}` : str;
+    }
+
+    /* Bed-size field also collects billing-software answers ("Marg") - true for those */
+    function isSoftwareAnswer(v) {
+        v = String(v || "").trim();
+        return !!v && !/bed|clinic|opd|group/i.test(v);
+    }
 
     function tdClass(col) {
         if (col.includes("email")) return "cell-email";
