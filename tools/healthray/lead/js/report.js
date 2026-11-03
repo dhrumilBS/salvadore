@@ -477,7 +477,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const rawRows = await fetchRows(prevRange.from, prevRange.to);
             if (myRequestId !== compareRequestId) return; // a newer request superseded this one
             /* +92 test data is excluded from the previous period too, same as the current one */
-            compareRows = normalizeRows(rawRows).filter(r => !isPk92Number(getPhone(r)));
+            compareRows = normalizeRows(rawRows).filter(r => !isTestLead(r));
             compareDupMeta = analyseDuplicates(compareRows);
         } catch (err) {
             console.error("Comparison fetch failed", err);
@@ -549,6 +549,12 @@ document.addEventListener("DOMContentLoaded", () => {
         if (v == null || v === "") return false;
         const cleaned = String(v).trim().replace(/[\s\-().]/g, "");
         return /^(\+92|0092)/.test(cleaned);
+    }
+    /* Pakistan / Test = +92 number, an internal @bigscal.com email, or "test" as a word in the name */
+    function isTestLead(row) {
+        if (isPk92Number(getPhone(row))) return true;
+        if (/@bigscal\.com\s*$/i.test(String(row["your-email"] ?? ""))) return true;
+        return /\btest\b/i.test(String(row["your-name"] ?? ""));
     }
 
     /* "Outside India" filter - numbers NOT beginning with +91 / 0091. Unlike +92, these rows are NOT excluded from analytics - this is just a lens on the existing dataset, same as the Source/Campaign filters. */
@@ -689,8 +695,8 @@ document.addEventListener("DOMContentLoaded", () => {
         allColumns = siteColumns(data.allColumns || [], allRows);
 
         /* Split off +92 (Pakistan/test) rows FIRST - everything downstream (dedup, breakdowns, KPIs, comparisons) only ever sees originalRows. */
-        pk92Rows = allRows.filter(r => isPk92Number(getPhone(r)));
-        originalRows = allRows.filter(r => !isPk92Number(getPhone(r)));
+        pk92Rows = allRows.filter(r => isTestLead(r));
+        originalRows = allRows.filter(r => !isTestLead(r));
 
         defaultShowCols = site().defaultShow ? site().defaultShow.filter(c => allColumns.includes(c)) : (data.defaultShow || allColumns);
         dupMeta = analyseDuplicates(originalRows);
@@ -1189,7 +1195,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         tableBody.innerHTML = displayRows.map(row => {
             const rowIdx = allRows.indexOf(row);
-            const isPk = isPk92Number(getPhone(row));
+            const isPk = isTestLead(row);
             const dup = dupMeta[originalRows.indexOf(row)] || {};
             const bigBed = isPk ? null : bedTier(row);
             const rowCls = isPk ? "dup-pk92" : bigBed ? `big-bed ${bigBed}` : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
@@ -1233,7 +1239,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         mobileCards.innerHTML = displayRows.map(row => {
             const rowIdx = allRows.indexOf(row);
-            const isPk = isPk92Number(getPhone(row));
+            const isPk = isTestLead(row);
             const dup = dupMeta[originalRows.indexOf(row)] || {};
             const bigBed = isPk ? null : bedTier(row);
             const rowCls = isPk ? "dup-pk92" : bigBed ? `big-bed ${bigBed}` : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
@@ -1401,7 +1407,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function leadTagsHtml(row) {
-        const isPk = isPk92Number(getPhone(row));
+        const isPk = isTestLead(row);
         const dup = dupMeta[originalRows.indexOf(row)] || {};
         const tier = isPk ? null : bedTier(row);
         return [
@@ -1422,7 +1428,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function openLeadModal(row) {
         currentLeadRow = row;
-        const tier = isPk92Number(getPhone(row)) ? null : bedTier(row);
+        const tier = isTestLead(row) ? null : bedTier(row);
 
         const avatar = document.getElementById("leadModalAvatar");
         avatar.textContent = leadInitials(row);

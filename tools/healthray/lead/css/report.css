@@ -346,6 +346,9 @@ body { overflow-x: clip; }
 .breakdown-item:hover { background: var(--surface-alt); }
 .breakdown-item.active { background: color-mix(in srgb, var(--bc) 13%, var(--surface)); box-shadow: inset 3px 0 0 var(--bc); }
 .breakdown-item.active .bi-label { font-weight: 600; }
+/* Consecutive selected rows read as one box - only the outer corners stay rounded */
+.breakdown-item.active:has(+ .breakdown-item.active) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.breakdown-item.active + .breakdown-item.active { border-top-left-radius: 0; border-top-right-radius: 0; }
 
 .bi-label { flex: 1; font-size: var(--fs-base); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bi-label em { font-style: normal; font-size: var(--fs-xs); color: var(--muted); }
