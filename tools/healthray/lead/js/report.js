@@ -54,9 +54,9 @@ document.addEventListener("DOMContentLoaded", () => {
             columnOrder: ["your-name", "bed_size", "your-number", "your-email", "your-city", "utm_campaign", "utm_source", "utm_medium", "submit_time"],
             defaultShow: ["your-name", "bed_size", "your-number", "your-email", "your-city", "utm_campaign", "utm_source", "utm_medium", "submit_time"],
             compactCols: ["your-name", "your-email", "your-number", "submit_time"],
-            colLabels: { bed_size: "Bed Size / Billing Software" },   // the same field also collects the billing-software answer
+            colLabels: { bed_size: "Bed Size / Hospitals / Software" },   // the same field also collects the hospitals / software answer
             mobileFields: ["your-email", "your-number", "bed_size", "utm_source", "utm_medium", "utm_campaign", "your-city", "your-country", "submit_time"],
-            copyFields: ["Your Name", "Your Number", "Your Email", "Your City", "Your Business", "Bed Size / Billing Software", "Speciality", "Page Name", "Utm Campaign", "Utm Source", "Utm Medium", "Submit Time", "User Ip"],
+            copyFields: ["Your Name", "Your Number", "Your Email", "Your City", "Your Business", "Bed Size / Hospitals / Software", "Speciality", "Page Name", "Utm Campaign", "Utm Source", "Utm Medium", "Submit Time", "User Ip"],
             pk92Cols: [["Name", "your-name"], ["Email", "your-email"], ["Phone", "your-number"], ["City", "your-city"], ["Submit Time", "submit_time"]],
             pk92ExportCols: ["your-name", "your-email", "your-number", "your-city", "your-country", "submit_time"],
             leadType: false,
