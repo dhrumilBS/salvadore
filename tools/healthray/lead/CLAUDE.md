@@ -54,7 +54,7 @@ This is a ground-up visual refresh, not just a patch on top of the current layou
 **Colors / Branding**
 - Define a single cohesive palette instead of each card having its own arbitrary accent color (blue, purple, green, orange, pink). Suggest: one primary brand color for key actions/links, a neutral gray scale for structure, and no more than 2–3 accent colors reserved specifically for status/category meaning (e.g. duplicates = warning/amber, healthy metrics = green, informational = primary blue).
 - Add a real brand identity pass: logo mark, consistent icon style (currently mixed icon styles across cards), and a defined type scale (font sizes/weights for headers vs. labels vs. data).
-- Support both light and dark mode if feasible, since this looks like an internal ops tool likely used for long stretches.
+- Light theme only. Dark mode was tried (Nov 2026) and the team removed it on purpose - do not add it back.
 **Mobile Responsiveness**
 - Current layout (5-across breakdown widgets, wide table) will not survive a mobile viewport. Needs defined breakpoints:
   - Desktop (≥1200px): current multi-column grid.
