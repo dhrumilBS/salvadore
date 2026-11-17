@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let displayRows = [];      // what the table/cards show: filteredRows + matching +92 rows (highlighted, never counted)
     let dupMeta = {};
     let visibleCols = new Set();
+    const DUP_TYPES = ["email", "phone", "time"];   // the three duplicate checks, in display order
 
     /* Active filters - all stack together */
     let activeDupFilters = new Set();  // subset of 'email' | 'phone' | 'time' - OR combined
@@ -129,12 +130,17 @@ document.addEventListener("DOMContentLoaded", () => {
     let sortState = { col: null, dir: 1 };  // dir: 1 = asc, -1 = desc
 
     /* ═══ DATE DEFAULTS ═══ */
-    const today = new Date();
-    const fromDate = new Date();
-    fromDate.setDate(today.getDate() - 2);
-    document.getElementById("from").value = fmt(fromDate);
-    document.getElementById("to").value = fmt(today);
-    function fmt(d) { return d.toISOString().split("T")[0]; }
+    /* Default range = last 3 days. Recomputed on Reset, so a tab left open overnight doesn't reuse yesterday's "today". */
+    function setDefaultRange() {
+        const today = new Date();
+        const fromDate = new Date();
+        fromDate.setDate(today.getDate() - 2);
+        document.getElementById("from").value = fmt(fromDate);
+        document.getElementById("to").value = fmt(today);
+    }
+    setDefaultRange();
+    /* Local calendar date (IST on the team's PCs). toISOString() is UTC and shifted ranges back a day. */
+    function fmt(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
     /* "2026-10-27" → "27 Oct 2026" for display; anything unparseable is shown as-is */
     /* "Today · 2 Nov" / "Yesterday · 1 Nov" / "Sat · 31 Oct" for the Date Wise card */
     function dayLabel(v) {
@@ -160,6 +166,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const tableSearch = document.getElementById("tableSearch");
     const emptyState = document.getElementById("emptyState");
     const mainTable = document.getElementById("mainTable");
+    const pageEl = document.querySelector("main.page");
+    const loadErrorEl = document.getElementById("loadError");
+    let loadSeq = 0;           // see loadData()
+    let loadAbort = null;
     const statusBadge = document.getElementById("statusBadge");
     const colPills = document.getElementById("colPills");
     const colSelectorHdr = document.getElementById("colSelectorHdr");
@@ -200,6 +210,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btnHideAll").addEventListener("click", e => {
         e.stopPropagation();
         visibleCols.clear();
+        if (allColumns.includes("your-name")) visibleCols.add("your-name");   // keep a way to open each lead
         applyVisibility();
     });
     document.getElementById("btnReset").addEventListener("click", e => {
@@ -262,15 +273,15 @@ document.addEventListener("DOMContentLoaded", () => {
         loadData();
     });
     document.getElementById("resetBtn").addEventListener("click", () => {
-        document.getElementById("from").value = fmt(fromDate);
-        document.getElementById("to").value = fmt(today);
+        setDefaultRange();
         tableSearch.value = "";
         clearAllFilters();
         setActivePreset(null);
         closeAllDropdowns();
         loadData();
     });
-    tableSearch.addEventListener("input", applyFilters);
+    let searchTimer;
+    tableSearch.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(applyFilters, 150); });
 
     /* Search shortcut - "/" (when not already typing in a field) or Ctrl/Cmd+K, like Slack. Esc clears and leaves the box. */
     document.addEventListener("keydown", e => {
@@ -402,23 +413,32 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("refreshBtn").addEventListener("click", loadData);
 
     /* FETCH */
+    /* Only the newest request may render: rapid preset / refresh / DB clicks used to let an older, slower response land last */
     async function loadData() {
+        const mySeq = ++loadSeq;
+        compareRequestId++;                       // a comparison still in flight belongs to the old range / DB
+        if (loadAbort) loadAbort.abort();
+        loadAbort = new AbortController();
         document.getElementById("refreshBtn").classList.add("spinning");
         showLoader(true);
+        showLoadError(null);
+        pageEl.classList.add("is-loading");      // previous range's numbers stay visible but dimmed
         setStatus("loading", "Loading…");
         try {
             const res = await fetch("./../api/get_report.php", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                signal: loadAbort.signal,
                 body: JSON.stringify({
                     db: activeDb,
                     from: document.getElementById("from").value,
                     to: document.getElementById("to").value,
                 })
             });
-            if (!res.ok) throw new Error(`Server error - HTTP ${res.status}`);
-            const data = await res.json();
+            const data = await readJson(res);
+            if (mySeq !== loadSeq) return;
             if (data.status !== "success") throw new Error(data.error || "API returned an error");
+            pageEl.classList.remove("is-loading", "is-stale");
             renderAll(data);
             lastLoadedAt = Date.now();
             updateLastUpdated();
@@ -431,14 +451,41 @@ document.addEventListener("DOMContentLoaded", () => {
                 setStatus("live", "Live");
             }
         } catch (err) {
+            if (mySeq !== loadSeq) return;        // superseded (incl. aborted) - the newer request owns the UI
             console.error(err);
+            /* The cards still hold the previous range - keep them dimmed and locked so nobody reads them as the new dates */
+            pageEl.classList.remove("is-loading");
+            pageEl.classList.add("is-stale");
+            showLoadError(err.message);
             showToast(err.message, "error");
             setStatus("error", "Error");
         } finally {
-            showLoader(false);
-            document.getElementById("refreshBtn").classList.remove("spinning");
+            if (mySeq === loadSeq) {
+                showLoader(false);
+                document.getElementById("refreshBtn").classList.remove("spinning");
+            }
         }
     }
+
+    /* Parse a get_report.php response. A PHP warning / plain-text die() / proxy error page used to surface as "Unexpected token '<'". */
+    async function readJson(res) {
+        const text = await res.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            throw new Error(res.ok ? "The server sent an unreadable response - try again" : `Server error (HTTP ${res.status}) - try again in a moment`);
+        }
+    }
+
+    function showLoadError(msg) {
+        loadErrorEl.hidden = !msg;
+        if (msg) {
+            document.getElementById("loadErrorMsg").textContent = msg;
+            mainTable.style.visibility = "hidden";
+            emptyState.classList.remove("visible");
+        }
+    }
+    document.getElementById("loadErrorRetry").addEventListener("click", loadData);
 
     /* ═══ PERIOD-OVER-PERIOD COMPARISON ═══ Fetches the immediately preceding period of equal length (e.g. this week vs last week). Every active filter (search, dup flags, source, campaign, date, page, adtype) is re-applied to the previous period identically, so every metric - totals, dup counts, breakdown items - compares like-for-like. */
     function getPreviousRange(fromStr, toStr) {
@@ -458,8 +505,11 @@ document.addEventListener("DOMContentLoaded", () => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ db: activeDb, from, to })
         });
+        return readJsonRows(res);
+    }
+    async function readJsonRows(res) {
         if (!res.ok) throw new Error(`Server error - HTTP ${res.status}`);
-        const data = await res.json();
+        const data = await readJson(res);
         if (data.status !== "success") throw new Error(data.error || "API returned an error");
         return data.rows || [];
     }
@@ -559,9 +609,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* "Outside India" filter - numbers NOT beginning with +91 / 0091. Unlike +92, these rows are NOT excluded from analytics - this is just a lens on the existing dataset, same as the Source/Campaign filters. */
     function isNonIndiaNumber(v) {
-        if (v == null || v === "") return false;
-        const cleaned = String(v).trim().replace(/[\s\-().]/g, "");
-        return !/^(\+91|0091)/.test(cleaned);
+        const k = phoneKey(v);
+        return k != null && !k.startsWith("91");
     }
 
     /* 100+ beds - "101 – 300 beds" ("lg") or "300+ or a group" ("xl"). Read off the numbers in the label or the word "group", so a reworded option such as "101-300" or "Hospital group" still matches. Healthray only. */
@@ -587,30 +636,89 @@ document.addEventListener("DOMContentLoaded", () => {
         return `<span class="bigbed-badge ${tier}" title="High-value lead · ${esc(rawValue(site().bedCol, row))}"><span class="bb-ico" aria-hidden="true">${t.icon}</span>${t.label}</span>`;
     }
 
-    /* DUPLICATE ANALYSIS - rows passed in never include +92 rows, so no exclusion logic is needed here. */
+    /* DUPLICATE ANALYSIS - rows passed in never include +92 rows, so no exclusion logic is needed here. Besides the email / phone / time flags, each flagged row keeps its group (meta.groups[type]): every row sharing that value, oldest first, the row itself included. The groups drive the "(3)" counts, the "also …" times and the duplicates list in the lead modal. */
+    function dupKey(type, row) {
+        if (type === "email") return norm(row["your-email"]);
+        if (type === "phone") return phoneKey(getPhone(row));
+        return norm(row["submit_time"]);
+    }
     function analyseDuplicates(rows) {
+        const byType = {};
+        DUP_TYPES.forEach(type => {
+            const map = new Map();
+            rows.forEach(r => {
+                const k = dupKey(type, r);
+                if (!k) return;
+                if (!map.has(k)) map.set(k, []);
+                map.get(k).push(r);
+            });
+            map.forEach(list => { if (list.length > 1) list.sort(bySubmitTime); });
+            byType[type] = map;
+        });
         const meta = {};
-        rows.forEach((_, i) => (meta[i] = { email: false, phone: false, time: false }));
-        const emailMap = buildFreqMap(rows, r => norm(r["your-email"]));
-        const timeMap = buildFreqMap(rows, r => norm(r["submit_time"]));
-        const phoneMap = buildFreqMap(rows, r => phoneKey(getPhone(r)));
         rows.forEach((row, i) => {
-            const e = norm(row["your-email"]);
-            const p = phoneKey(getPhone(row));
-            const t = norm(row["submit_time"]);
-            if (e && emailMap[e] > 1) meta[i].email = true;
-            if (p && phoneMap[p] > 1) meta[i].phone = true;
-            if (t && timeMap[t] > 1) meta[i].time = true;
+            const m = { email: false, phone: false, time: false, groups: {} };
+            DUP_TYPES.forEach(type => {
+                const k = dupKey(type, row);
+                const list = k ? byType[type].get(k) : null;
+                if (list && list.length > 1) { m[type] = true; m.groups[type] = list; }
+            });
+            meta[i] = m;
         });
         return meta;
     }
-    function buildFreqMap(rows, fn) {
-        const m = {};
-        rows.forEach(r => { const k = fn(r); if (k) m[k] = (m[k] || 0) + 1; });
-        return m;
+    /* Oldest first; rows without a readable submit time go last */
+    function bySubmitTime(a, b) {
+        const da = parseSubmitTime(a["submit_time"]), db = parseSubmitTime(b["submit_time"]);
+        const x = da ? da.getTime() : Infinity, y = db ? db.getTime() : Infinity;
+        return x === y ? 0 : x < y ? -1 : 1;
     }
+    /* This row's group for one check (oldest first, the row itself included) - [] when it isn't a duplicate of that kind */
+    function dupGroup(row, type) {
+        const m = dupMeta[originalRows.indexOf(row)];
+        return (m && m.groups[type]) || [];
+    }
+    /* Every row sharing the email, phone OR exact submit time with this one, oldest first, the row itself included - [] for a lead without duplicates */
+    function dupFamily(row) {
+        const m = dupMeta[originalRows.indexOf(row)];
+        if (!m) return [];
+        const set = new Set();
+        DUP_TYPES.forEach(t => (m.groups[t] || []).forEach(r => set.add(r)));
+        return set.size > 1 ? [...set].sort(bySubmitTime) : [];
+    }
+
+    const DUP_WHAT = { email: "email", phone: "phone number", time: "submit time" };
+    const DUP_MATCH_LABEL = { email: "Same email", phone: "Same phone", time: "Same time" };
+    /* "DUP (3) ›" - a button that opens the lead with its duplicates list. (3) = submissions sharing this email / phone / time in the selected dates, this one included; the tooltip lists them all. */
+    function dupTagHtml(row, type, group) {
+        const lines = group.map((r, i) => {
+            const label = type === "time" ? (r["your-name"] || r["your-email"] || "(no name)") : whenFull(r);
+            return `${i + 1}. ${label}${r === row ? "  (this lead)" : ""}`;
+        });
+        const tip = `Same ${DUP_WHAT[type]} - ${group.length} submissions in the selected dates:\n${lines.join("\n")}\nClick to open and compare them`;
+        return `<button type="button" class="dup-tag ${type}" data-dup-row="${allRows.indexOf(row)}" title="${esc(tip)}">${type === "time" ? "same" : "dup"} (${group.length})<span class="dup-go" aria-hidden="true">›</span></button>`;
+    }
+    /* "also 12 Nov 09:10 · Yesterday 18:04" - when the other submissions with this email / phone came in */
+    function dupAlsoHtml(row, group) {
+        const others = group.filter(r => r !== row);
+        if (!others.length) return "";
+        return `<span class="dup-also" title="${esc("Also submitted: " + others.map(whenFull).join(", "))}">also ${esc(others.map(whenShort).join(" · "))}</span>`;
+    }
+    function whenShort(row) { const p = submitTimeParts(row["submit_time"]); return p ? p.short : (row["submit_time"] || "unknown time"); }
+    function whenFull(row) { const p = submitTimeParts(row["submit_time"]); return p ? p.abs : (row["submit_time"] || "unknown time"); }
     /* Digits only, so "+44 7828 735346" and "+447828735346" count as the same number */
-    function phoneKey(v) { const d = String(v ?? "").replace(/\D/g, ""); return d.length >= 6 ? d : null; }
+    /* Also canonicalises Indian numbers, so "+91 98765 43210", "098765 43210" and "9876543210" count as one number (a bare 10-digit number is treated as +91, like the WhatsApp action) */
+    function phoneKey(v) {
+        const raw = String(v ?? "").trim();
+        let d = raw.replace(/\D/g, "");
+        if (d.length < 6) return null;
+        if (!raw.startsWith("+")) {
+            if (d.startsWith("00")) d = d.slice(2);                                // 0091… / 0044…
+            else if (d.length === 11 && d[0] === "0") d = "91" + d.slice(1);       // 098765 43210
+            else if (d.length === 10) d = "91" + d;                                // 9876543210
+        }
+        return d;
+    }
     function norm(v) { return (v == null || v === "") ? null : String(v).trim().toLowerCase(); }
 
     /* BREAKDOWN HELPERS extractUtmVal - resolve UTM param from raw column value getRowDate - extract YYYY-MM-DD from a row's time fields */
@@ -811,7 +919,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const state = getActiveFilterState();
 
-        document.getElementById("statTotal").textContent = originalRows.length;
+        document.getElementById("statTotal").textContent = filteredRows.length;
         refreshTodayCard();
         document.getElementById("tableHdrCount").textContent = filteredRows.length;
 
@@ -848,7 +956,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (compareRows != null) {
             setDeltaText(
                 document.getElementById("statTotalDelta"),
-                originalRows.length, compareRows.length, lastPrevRange,
+                filteredRows.length, (compareFilteredRows || compareRows).length, lastPrevRange,
                 document.getElementById("statTotalDeltaDetail")
             );
 
@@ -1083,7 +1191,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function buildPills() {
         colPills.innerHTML = allColumns.map(col => `
             <span class="col-pill ${visibleCols.has(col) ? "active" : ""}" data-col="${esc(col)}">
-                ${formatCol(col)}
+                ${esc(formatCol(col))}
             </span>`).join("");
 
         colPills.querySelectorAll(".col-pill").forEach(pill => {
@@ -1145,7 +1253,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const isSortCol = sortState.col === col;
                 const dirCls = isSortCol ? (sortState.dir === 1 ? " sort-asc" : " sort-desc") : "";
                 const ind = isSortCol ? (sortState.dir === 1 ? "▲" : "▼") : "⇅";
-                return `<th data-col="${esc(col)}" class="sortable${dirCls}" style="${visibleCols.has(col) ? "" : "display:none"}">${formatCol(col)}<span class="sort-ind">${ind}</span></th>`;
+                return `<th data-col="${esc(col)}" class="sortable${dirCls}" style="${visibleCols.has(col) ? "" : "display:none"}">${esc(formatCol(col))}<span class="sort-ind">${ind}</span></th>`;
             }).join("") + "</tr>";
 
         tableHead.querySelectorAll("th[data-col]").forEach(th => {
@@ -1209,9 +1317,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 const isBedCol = col === site().bedCol;
 
                 let cellDupCls = "", dupTag = "", cellHtml = null;
-                if (isEmailCol && dup.email) { cellDupCls = "dup-cell-email"; dupTag = `<span class="dup-tag email">dup</span>`; }
-                if (isPhoneCol && dup.phone) { cellDupCls = "dup-cell-phone"; dupTag = `<span class="dup-tag phone">dup</span>`; }
-                if (isTimeCol && dup.time) { cellDupCls = "dup-cell-time"; dupTag = `<span class="dup-tag time">same</span>`; }
+                /* Duplicate email / phone: the value on the first line, the "DUP (3)" button + when the other submissions came in on the second */
+                const dupType = isEmailCol && dup.email ? "email" : isPhoneCol && dup.phone ? "phone" : null;
+                if (dupType) {
+                    const group = dup.groups[dupType];
+                    cellDupCls = `dup-cell-${dupType}`;
+                    cellHtml = `<span class="dup-val">${formatCell(col, row[col])}</span><span class="dup-meta">${dupTagHtml(row, dupType, group)}${dupAlsoHtml(row, group)}</span>`;
+                }
+                if (isTimeCol && dup.time) { cellDupCls = "dup-cell-time"; dupTag = dupTagHtml(row, "time", dup.groups.time); }
                 if (isBedCol && bigBed) { cellDupCls = "bigbed-cell"; cellHtml = `<span class="bed-pill ${bigBed}">${esc(rawValue(col, row))}</span>`; }
                 /* The bed-size field also collects billing-software answers ("Marg") - tag those so they aren't read as a size */
                 if (isBedCol && !bigBed && isSoftwareAnswer(rawValue(col, row))) cellHtml = `${esc(rawValue(col, row))}<span class="soft-tag">Software</span>`;
@@ -1246,13 +1359,13 @@ document.addEventListener("DOMContentLoaded", () => {
             const tags = [
                 isPk ? `<span class="dup-tag pk92">PK/Test</span>` : "",
                 bigBed ? bigBedBadge(bigBed, row) : "",
-                dup.email ? `<span class="dup-tag email">dup</span>` : "",
-                dup.phone ? `<span class="dup-tag phone">dup</span>` : "",
-                dup.time ? `<span class="dup-tag time">same</span>` : "",
+                ...DUP_TYPES.map(t => dup[t] ? dupTagHtml(row, t, dup.groups[t]) : ""),
             ].join("");
-            const rowsHtml = site().mobileFields.filter(c => allColumns.includes(c)).map(c =>
-                `<div class="m-card-row"><span class="k">${formatCol(c)}</span><span class="v">${formatValue(c, row[c])}</span></div>`
-            ).join("");
+            const rowsHtml = site().mobileFields.filter(c => allColumns.includes(c)).map(c => {
+                const dupType = c === "your-email" ? "email" : c === site().phoneCol ? "phone" : null;
+                const also = dupType && dup[dupType] ? dupAlsoHtml(row, dup.groups[dupType]) : "";
+                return `<div class="m-card-row"><span class="k">${esc(formatCol(c))}</span><span class="v">${formatValue(c, row[c])}${also}</span></div>`;
+            }).join("");
 
             return `<div class="m-card ${rowCls}">
                 <div class="m-card-hdr">
@@ -1265,6 +1378,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     document.getElementById("mobileCards").addEventListener("click", e => {
+        if (openFromDupTag(e)) return;
         const el = e.target.closest(".m-card-name");
         if (!el) return;
         const idx = Number(el.dataset.row);
@@ -1274,10 +1388,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* ═══ LEAD DETAIL MODAL ═══ Click a lead's name → show ALL fields for that lead. */
     const leadModal = document.getElementById("leadModal");
+    const leadModalBox = leadModal.querySelector(".modal");
     const leadModalBody = document.getElementById("leadModalBody");
     const leadModalSub = document.getElementById("leadModalSub");
 
+    /* "DUP (3)" buttons in the table and the cards → that lead's details, with its duplicates list highlighted */
+    function openFromDupTag(e) {
+        const btn = e.target.closest("[data-dup-row]");
+        if (!btn) return false;
+        const row = allRows[Number(btn.dataset.dupRow)];
+        if (row) openLeadModal(row, { flashDups: true });
+        return true;
+    }
+
     tableBody.addEventListener("click", function (e) {
+        if (openFromDupTag(e)) return;
         const cell = e.target.closest('td[data-col="your-name"]');
         if (!cell) return;
         const idx = Number(cell.dataset.row);
@@ -1413,9 +1538,9 @@ document.addEventListener("DOMContentLoaded", () => {
         return [
             tier ? bigBedBadge(tier, row) : "",
             isPk ? `<span class="dup-tag pk92">PK / Test</span>` : "",
-            dup.email ? `<span class="dup-tag email">Dup email</span>` : "",
-            dup.phone ? `<span class="dup-tag phone">Dup phone</span>` : "",
-            dup.time ? `<span class="dup-tag time">Same time</span>` : "",
+            dup.email ? `<span class="dup-tag email">Dup email (${dup.groups.email.length})</span>` : "",
+            dup.phone ? `<span class="dup-tag phone">Dup phone (${dup.groups.phone.length})</span>` : "",
+            dup.time ? `<span class="dup-tag time">Same time (${dup.groups.time.length})</span>` : "",
             isPk ? "" : `<span class="m-tag">${getAdType(row)}</span>`,
         ].join("");
     }
@@ -1426,7 +1551,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (i !== -1 && next) openLeadModal(next);
     }
 
-    function openLeadModal(row) {
+    /* opts.view "compare" = the lead's duplicates side by side instead of its fields. opts.flashDups = opened from a "DUP (3)" button, so the duplicates list gets a brief highlight. */
+    function openLeadModal(row, opts = {}) {
         currentLeadRow = row;
         const tier = isTestLead(row) ? null : bedTier(row);
 
@@ -1442,12 +1568,36 @@ document.addEventListener("DOMContentLoaded", () => {
 
         /* Prev / next walk the rows exactly as the table currently shows them (filters + sort) */
         const pos = displayRows.indexOf(row);
-        document.getElementById("leadModalPos").textContent = pos === -1 ? "" : `${pos + 1} of ${displayRows.length}`;
+        const posEl = document.getElementById("leadModalPos");
+        /* A duplicate opened from the list can be one the current filters hide - it has no place in the table order */
+        posEl.textContent = pos === -1 ? "Filtered out" : `${pos + 1} of ${displayRows.length}`;
+        posEl.title = pos === -1 ? "Hidden by the current filters, so ← → are off for this lead" : "";
         document.getElementById("leadModalPrev").disabled = pos <= 0;
         document.getElementById("leadModalNext").disabled = pos === -1 || pos >= displayRows.length - 1;
 
+        const family = dupFamily(row);
+        const compare = opts.view === "compare" && family.length > 1;
+        leadModalBox.classList.toggle("is-compare", compare);
+        /* a column per submission; the table scrolls sideways beyond that */
+        leadModalBox.style.maxWidth = compare ? `${Math.min(1180, 200 + family.length * 280)}px` : "";
+        leadModalBody.classList.toggle("is-compare", compare);
+
         const emptyCount = allColumns.filter(c => isEmptyValue(row[c])).length;
-        leadModalBody.innerHTML = LEAD_GROUPS.map(([key, title]) => {
+        leadModalBody.innerHTML = compare
+            ? dupCompareHtml(row, family)
+            : (family.length ? dupSectionHtml(row, family, opts.flashDups) : "") + leadFieldsHtml(row);
+        leadModalBody.scrollTop = 0;
+
+        const toggle = document.getElementById("leadModalEmptyToggle");
+        toggle.hidden = compare || emptyCount === 0;
+        toggle.textContent = showEmptyFields ? "Hide empty fields" : `Show ${emptyCount} empty field${emptyCount === 1 ? "" : "s"}`;
+
+        leadModal.classList.add("visible");
+    }
+
+    /* The lead's fields in groups: Contact / Organisation / Source & Campaign / Submission */
+    function leadFieldsHtml(row) {
+        return LEAD_GROUPS.map(([key, title]) => {
             let cols = allColumns.filter(c => fieldGroup(c) === key);
             if (key === "meta") cols = [...cols.filter(c => c === "submit_time"), ...cols.filter(c => c !== "submit_time")];
             const shown = cols.filter(c => showEmptyFields || !isEmptyValue(row[c]));
@@ -1456,23 +1606,108 @@ document.addEventListener("DOMContentLoaded", () => {
                 <h4>${title}</h4>
                 ${shown.map(col => `
                 <div class="lead-field${isEmptyValue(row[col]) ? " is-empty" : ""}">
-                    <div class="lead-field-label">${formatCol(col)}</div>
+                    <div class="lead-field-label">${esc(formatCol(col))}</div>
                     <div class="lead-field-value">${leadValueHtml(col, row)}</div>
                 </div>`).join("")}
             </section>`;
         }).join("");
-        leadModalBody.scrollTop = 0;
-
-        const toggle = document.getElementById("leadModalEmptyToggle");
-        toggle.hidden = emptyCount === 0;
-        toggle.textContent = showEmptyFields ? "Hide empty fields" : `Show ${emptyCount} empty field${emptyCount === 1 ? "" : "s"}`;
-
-        leadModal.classList.add("visible");
     }
 
     function closeLeadModal() {
         leadModal.classList.remove("visible");
     }
+
+    /* ═══ DUPLICATES IN THE LEAD MODAL ═══ Every submission sharing this lead's email, phone or exact submit time in the selected dates, oldest first: when it came in, what matches, a button to open each one and a side-by-side comparison of all of them. */
+    function dupSectionHtml(row, family, flash) {
+        const items = family.map((r, i) => {
+            const isCur = r === row;
+            const p = submitTimeParts(r["submit_time"]);
+            const page = getPageName(r);
+            const matches = isCur ? "" : DUP_TYPES.filter(t => dupGroup(row, t).includes(r))
+                .map(t => `<span class="dup-match ${t}">${DUP_MATCH_LABEL[t]}</span>`).join("");
+            return `<li class="dup-item${isCur ? " is-current" : ""}">
+                <span class="dup-ord">${i + 1}</span>
+                <div class="dup-main">
+                    <div class="dup-when"><strong>${esc(p ? p.abs : r["submit_time"] || "Unknown time")}</strong>${p ? `<span>${esc(p.rel)}</span>` : ""}</div>
+                    <div class="dup-sub">${esc(r["your-name"] || r["your-email"] || "(no name)")}${page === "(unknown)" ? "" : ` · ${esc(page)}`}</div>
+                </div>
+                <div class="dup-matches">${matches}</div>
+                ${isCur ? `<span class="dup-viewing">Viewing</span>` : `<button type="button" class="dup-open" data-open-row="${allRows.indexOf(r)}">Open</button>`}
+            </li>`;
+        }).join("");
+        return `<section class="dup-sec${flash ? " flash" : ""}" id="leadDupSec">
+            <div class="dup-sec-hdr">
+                <h4>Duplicates (${family.length})</h4>
+                <span class="dup-sec-note">Same email, phone or submit time in the selected dates</span>
+                <button type="button" class="dup-compare-btn" data-dup-act="compare">Compare side by side</button>
+            </div>
+            <ol class="dup-list">${items}</ol>
+        </section>`;
+    }
+
+    /* Side by side: a column per submission (oldest first), a row per field. Rows where the submissions disagree are flagged; cells that differ from the lead you opened are tinted. */
+    let dupDiffOnly = false;
+    function dupCompareHtml(row, family) {
+        let diffCount = 0;
+        const body = LEAD_GROUPS.map(([key, title]) => {
+            let cols = allColumns.filter(c => fieldGroup(c) === key);
+            if (key === "meta") cols = [...cols.filter(c => c === "submit_time"), ...cols.filter(c => c !== "submit_time")];
+            const rowsHtml = cols.map(col => {
+                if (family.every(r => isEmptyValue(r[col]))) return "";
+                const keys = family.map(r => compareKey(col, r));
+                const differs = new Set(keys).size > 1;
+                if (differs) diffCount++;
+                if (dupDiffOnly && !differs) return "";
+                const curKey = compareKey(col, row);
+                const cells = family.map((r, i) => {
+                    const cls = [r === row ? "is-current" : "", differs && keys[i] !== curKey ? "differs" : ""].filter(Boolean).join(" ");
+                    return `<td${cls ? ` class="${cls}"` : ""}>${leadValueHtml(col, r)}</td>`;
+                }).join("");
+                return `<tr${differs ? ` class="is-diff"` : ""}><th scope="row">${esc(formatCol(col))}</th>${cells}</tr>`;
+            }).join("");
+            return rowsHtml ? `<tr class="cmp-grp"><th colspan="${family.length + 1}"><span>${title}</span></th></tr>${rowsHtml}` : "";
+        }).join("");
+        const head = family.map((r, i) => {
+            const isCur = r === row;
+            const p = submitTimeParts(r["submit_time"]);
+            return `<th${isCur ? ` class="is-current"` : ""}><div class="cmp-col">
+                <span class="dup-ord">${i + 1}</span>
+                <span class="cmp-when">${esc(p ? p.short : r["submit_time"] || "Unknown time")}</span>
+                ${isCur ? `<span class="dup-viewing">Viewing</span>` : `<button type="button" class="dup-open" data-open-row="${allRows.indexOf(r)}">Open</button>`}
+            </div></th>`;
+        }).join("");
+        return `<div class="cmp-bar">
+                <button type="button" class="cmp-back" data-dup-act="back">‹ Back to details</button>
+                <span class="cmp-summary">${family.length} submissions · <b>${diffCount} field${diffCount === 1 ? " differs" : "s differ"}</b></span>
+                <label class="cmp-diff-only"><input type="checkbox" data-dup-act="diff-only"${dupDiffOnly ? " checked" : ""}> Only differences</label>
+            </div>
+            <div class="cmp-scroll"><table class="cmp-table">
+                <thead><tr><th>Field</th>${head}</tr></thead>
+                <tbody>${body || `<tr><td colspan="${family.length + 1}" class="cmp-none">No differences - every field matches.</td></tr>`}</tbody>
+            </table></div>`;
+    }
+    /* "Same value" for the comparison: case and spacing ignored, phone numbers by digits (+91 / 0 prefixes folded, like the dup check) */
+    function compareKey(col, row) {
+        const v = rawValue(col, row).trim().toLowerCase();
+        return col === site().phoneCol ? (phoneKey(v) ?? v) : v;
+    }
+
+    /* Duplicates list / compare view: open another submission, switch views, "Only differences" */
+    leadModalBody.addEventListener("click", e => {
+        const open = e.target.closest("[data-open-row]");
+        if (open) {
+            const r = allRows[Number(open.dataset.openRow)];
+            if (r) openLeadModal(r);
+            return;
+        }
+        const act = e.target.closest("button[data-dup-act]");
+        if (act && currentLeadRow) openLeadModal(currentLeadRow, act.dataset.dupAct === "compare" ? { view: "compare" } : {});
+    });
+    leadModalBody.addEventListener("change", e => {
+        if (!e.target.matches('input[data-dup-act="diff-only"]') || !currentLeadRow) return;
+        dupDiffOnly = e.target.checked;
+        openLeadModal(currentLeadRow, { view: "compare" });
+    });
 
     /* ═══ EXPORT ═══ */
     function getVisibleCols() { return allColumns.filter(c => visibleCols.has(c)); }
@@ -1607,7 +1842,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const day = dayDiff === 0 ? "Today"
             : dayDiff === 1 ? "Yesterday"
             : `${d.getDate()} ${MONTHS[d.getMonth()]}${d.getFullYear() !== now.getFullYear() ? " " + d.getFullYear() : ""}`;
-        return { abs: `${day}, ${time}`, rel: relativeTime(d.getTime()), ts: d.getTime() };
+        return { abs: `${day}, ${time}`, short: `${day} ${time.slice(0, 5)}`, rel: relativeTime(d.getTime()), ts: d.getTime() };
     }
     function formatSubmitTime(value) {
         const p = submitTimeParts(value);

@@ -477,6 +477,20 @@ table.pk92-table tbody td { padding: 8px 16px; border-top: 1px solid color-mix(i
 .spinner { width: 26px; height: 26px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ═══ LOADING / STALE ═══ While a new range loads, the previous range's cards are dimmed; after a failed load they stay dimmed and locked until a load succeeds */
+.page .stat-bar, .page .insights, .page .pk92-panel { transition: opacity .2s; }
+.page.is-loading .stat-bar, .page.is-loading .insights,
+.page.is-stale .stat-bar, .page.is-stale .insights { opacity: .45; pointer-events: none; }
+.page.is-loading .stat-value { animation: pulse-dot 1.2s ease-in-out infinite; }
+
+/* ═══ LOAD ERROR ═══ */
+.load-error { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 56px 20px; gap: 8px; text-align: center; color: var(--muted); }
+.load-error[hidden] { display: none; }
+.load-error svg { width: 44px; height: 44px; color: var(--danger); margin-bottom: 4px; }
+.load-error p { font-size: var(--fs-lg); font-weight: 600; color: var(--text); }
+.load-error span { font-size: var(--fs-base); max-width: 460px; }
+.load-error .btn { margin-top: 8px; }
+
 /* ═══ EMPTY STATE ═══ */
 .empty-state { display: none; flex-direction: column; align-items: center; justify-content: center; padding: 64px 20px; color: var(--muted); gap: 8px; }
 .empty-state.visible { display: flex; }
@@ -485,9 +499,11 @@ table.pk92-table tbody td { padding: 8px 16px; border-top: 1px solid color-mix(i
 .empty-state span { font-size: var(--fs-base); }
 
 /* ═══ TABLE ═══ */
-/* Scrolls as usual - the scrollbar itself is hidden to keep the table clean */
-.table-wrap { overflow-x: hidden; overflow-y: auto; max-height: 72vh; scrollbar-width: none; }
-.table-wrap::-webkit-scrollbar { display: none; }
+/* Thin, visible scrollbar - a hidden one gave no hint that a wide table scrolls sideways */
+.table-wrap { overflow-x: hidden; overflow-y: auto; max-height: 72vh; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+.table-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+.table-wrap::-webkit-scrollbar-track { background: transparent; }
+.table-wrap::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
 
 /* Fixed layout: the table always fits the card width - no horizontal scroll. Long values truncate with an ellipsis (full value in the cell's title tooltip). */
 table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-base); table-layout: fixed; }
@@ -549,6 +565,16 @@ td.dup-cell-pk92  { background: var(--dup-pk92-cell)  !important; color: var(--d
 .dup-tag.phone { background: var(--dup-phone-border); color: #fff; }
 .dup-tag.time  { background: var(--dup-time-border);  color: #fff; }
 .dup-tag.pk92  { background: var(--dup-pk92-border);  color: #fff; }
+/* Duplicate email / phone: the value keeps the first line to itself (a phone number never gets squeezed); the "DUP (3) ›" button and when the other submissions came in share the second */
+.dup-val { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dup-meta { display: flex; align-items: center; gap: 5px; min-width: 0; margin-top: 2px; }
+.dup-meta .dup-tag { margin-left: 0; flex-shrink: 0; }
+.dup-meta .dup-also { min-width: 0; }
+.dup-also { display: block; font-size: 11px; font-weight: 500; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The tag is a button - it opens the lead with its duplicates list */
+button.dup-tag { border: 0; cursor: pointer; gap: 3px; line-height: 1.5; transition: filter .15s, box-shadow .15s; }
+button.dup-tag:hover { filter: brightness(.9); box-shadow: 0 1px 4px rgba(16,24,40,.25); }
+.dup-go { font-size: 11px; line-height: 1; }
 
 /* 100+ beds - priority leads: tinted row, thick tier-coloured edge, bold violet name and a gradient badge, so they jump out while scanning the table */
 tr.big-bed td:first-child    { box-shadow: inset 5px 0 0 var(--bigbed-border); }
@@ -645,6 +671,7 @@ td.lead-name-link .nm-empty { color: var(--muted); font-weight: 500; font-size: 
 .m-card-row { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; font-size: var(--fs-base); }
 .m-card-row .k { color: var(--muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .4px; flex-shrink: 0; }
 .m-card-row .v { font-weight: 500; text-align: right; word-break: break-word; }
+.m-card .dup-also { margin-top: 2px; white-space: normal; opacity: 1; color: var(--muted); }
 
 /* ═══ TOAST ═══ */
 .toast { position: fixed; bottom: 24px; right: 24px; background: var(--gray-800); color: #fff; padding: 12px 18px; border-radius: 12px; font-size: var(--fs-base); font-weight: 500; display: flex; align-items: center; gap: 10px; opacity: 0; transform: translateY(12px); transition: all .25s; pointer-events: none; z-index: 999; max-width: 380px; box-shadow: var(--shadow-lg); }
@@ -711,6 +738,65 @@ td.lead-name-link .nm-empty { color: var(--muted); font-weight: 500; font-size: 
 .lead-field-value .st-rel { margin-left: 8px; font-size: var(--fs-sm); font-weight: 500; color: var(--muted); }
 .lead-field-value .st-rel::before { content: "· "; }
 
+/* ═══ DUPLICATES (lead modal) ═══ Every submission sharing this lead's email / phone / submit time - open any of them, or compare them side by side */
+.dup-sec { margin-top: 12px; padding: 10px 12px 4px; border: 1px solid color-mix(in srgb, var(--dup-email-border) 40%, var(--border)); border-radius: 12px; background: var(--dup-email-bg); }
+.dup-sec.flash { animation: dup-flash 1.6s ease-out; }
+@keyframes dup-flash { 0%, 30% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--dup-email-border) 45%, transparent); } 100% { box-shadow: 0 0 0 4px transparent; } }
+.dup-sec-hdr { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 1px solid color-mix(in srgb, var(--dup-email-border) 30%, transparent); }
+.dup-sec-hdr h4 { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--dup-email-text); }
+.dup-sec-note { font-size: var(--fs-xs); color: var(--muted); }
+.dup-compare-btn { margin-left: auto; height: 28px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--dup-email-border); background: var(--surface); color: var(--dup-email-text); font-size: var(--fs-sm); font-weight: 600; cursor: pointer; transition: background .15s, color .15s; }
+.dup-compare-btn:hover { background: var(--dup-email-border); color: #fff; }
+.dup-list { list-style: none; }
+.dup-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px dashed color-mix(in srgb, var(--dup-email-border) 30%, transparent); }
+.dup-item:last-child { border-bottom: none; }
+.dup-ord { width: 22px; height: 22px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-xs); font-weight: 800; color: var(--dup-email-text); background: var(--surface); border: 1px solid color-mix(in srgb, var(--dup-email-border) 45%, transparent); }
+.dup-item.is-current .dup-ord, th.is-current .dup-ord { background: var(--dup-email-border); border-color: var(--dup-email-border); color: #fff; }
+.dup-main { flex: 1; min-width: 0; }
+.dup-when { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: var(--fs-base); color: var(--text); }
+.dup-when strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+.dup-when span { font-size: var(--fs-xs); color: var(--muted); }
+.dup-sub { margin-top: 1px; font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dup-matches { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.dup-match { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; text-transform: uppercase; letter-spacing: .3px; color: #fff; white-space: nowrap; }
+.dup-match.email { background: var(--dup-email-border); }
+.dup-match.phone { background: var(--dup-phone-border); }
+.dup-match.time  { background: var(--dup-time-border); }
+.dup-open { flex: none; height: 28px; padding: 0 14px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border)); background: var(--surface); color: var(--primary); font-size: var(--fs-sm); font-weight: 600; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.dup-open:hover { background: var(--primary); border-color: var(--primary); color: #fff; }
+.dup-viewing { flex: none; padding: 0 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+
+/* Compare: a column per submission, a row per field. Rows where the submissions disagree get an amber edge; cells that differ from the lead you opened are tinted. Header row and field names stay put while the table scrolls. */
+.modal-body.is-compare { display: flex; flex-direction: column; overflow: hidden; padding-top: 12px; }
+.cmp-bar { flex: none; display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; padding-bottom: 10px; }
+.cmp-back { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.cmp-back:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-lt); }
+.cmp-summary { font-size: var(--fs-sm); color: var(--muted); }
+.cmp-summary b { color: var(--dup-email-text); font-weight: 700; }
+.cmp-diff-only { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); cursor: pointer; user-select: none; }
+.cmp-diff-only input { width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; }
+.cmp-scroll { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+/* overrides for the main lead table's bare thead/tbody styles */
+table.cmp-table { table-layout: auto; width: max-content; min-width: 100%; font-size: var(--fs-sm); }
+table.cmp-table thead { display: table-header-group; }   /* phones hide the lead table's thead - this one holds the Open buttons */
+table.cmp-table th, table.cmp-table td { padding: 8px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+table.cmp-table thead th { position: sticky; top: 0; z-index: 2; min-width: 220px; vertical-align: middle; background: var(--surface-alt); color: var(--text); font-size: var(--fs-sm); text-transform: none; letter-spacing: 0; }
+table.cmp-table thead th:first-child { left: 0; z-index: 3; min-width: 150px; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; }
+table.cmp-table thead th.is-current { background: color-mix(in srgb, var(--primary) 8%, var(--surface-alt)); }
+.cmp-col { display: flex; align-items: center; gap: 8px; }
+.cmp-when { flex: 1; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.cmp-table tbody tr { background: var(--surface); }
+table.cmp-table tbody th { position: sticky; left: 0; z-index: 1; background: var(--surface); color: var(--muted); font-weight: 500; white-space: nowrap; }
+table.cmp-table tbody td { min-width: 220px; max-width: 320px; white-space: normal; overflow: visible; word-break: break-word; color: var(--text); line-height: 1.45; }
+table.cmp-table td.is-current { background: color-mix(in srgb, var(--primary) 4%, var(--surface)); }
+table.cmp-table tr.is-diff th { color: var(--dup-email-text); font-weight: 700; box-shadow: inset 3px 0 0 var(--dup-email-border); }
+table.cmp-table td.differs { background: var(--dup-email-cell); }
+table.cmp-table tr.cmp-grp th { position: static; padding: 10px 12px 4px; background: var(--surface-alt); color: var(--primary); font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .6px; box-shadow: none; }
+table.cmp-table tr.cmp-grp th span { position: sticky; left: 12px; }
+table.cmp-table a { color: var(--primary); text-decoration: none; font-weight: 600; }
+table.cmp-table a:hover { text-decoration: underline; }
+table.cmp-table td.cmp-none { color: var(--muted); text-align: center; padding: 24px 12px; }
+
 /* Footer: empty-field toggle + keyboard hint */
 .modal-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 18px; border-top: 1px solid var(--border); background: var(--surface-alt); }
 .modal-empty-toggle { background: none; border: none; cursor: pointer; color: var(--primary); font-size: var(--fs-sm); font-weight: 600; padding: 4px 8px; margin-left: -8px; border-radius: 6px; }
@@ -723,6 +809,10 @@ td.lead-name-link .nm-empty { color: var(--muted); font-weight: 500; font-size: 
     .modal-nav { order: 5; width: 100%; justify-content: center; }
     .modal-foot-hint { display: none; }
     .lead-field { grid-template-columns: 1fr; gap: 2px; }
+    /* duplicates list: match chips drop under the time / name */
+    .dup-item { flex-wrap: wrap; }
+    .dup-matches { order: 4; width: 100%; justify-content: flex-start; padding-left: 32px; }
+    .cmp-diff-only { margin-left: 0; }
 }
 
 /* ═══ RESPONSIVE BREAKPOINTS ═══ Desktop: >=1200px (default grid above) Tablet: 768-1199px Mobile: <768px */

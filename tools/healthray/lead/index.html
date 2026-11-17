@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-    <link rel="stylesheet" href="css/report.css?v=33">
+    <link rel="stylesheet" href="css/report.css?v=35">
     <script src="../../../usage/track.js" defer></script>
 </head>
 
@@ -427,6 +427,15 @@
                     <p>No leads match</p>
                     <span>Try a wider date range or clear the filters</span>
                 </div>
+                <div class="load-error" id="loadError" role="alert" hidden>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 7.5v5.5M12 16.5h.01" />
+                    </svg>
+                    <p>Couldn't load leads</p>
+                    <span id="loadErrorMsg"></span>
+                    <button type="button" class="btn btn-primary" id="loadErrorRetry">Retry</button>
+                </div>
                 <table id="mainTable">
                     <thead id="tableHead"></thead>
                     <tbody id="tableBody"></tbody>
@@ -498,7 +507,7 @@
         <span id="toastMsg"></span>
     </div>
 
-    <script src="js/report.js?v=37"></script>
+    <script src="js/report.js?v=39"></script>
 </body>
 
 </html>
