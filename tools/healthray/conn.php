@@ -50,8 +50,27 @@ function db_connect($key = null)
     // the wire protocol for them; a local server gains nothing from it.
     $isLocal = in_array($cfg['host'], ['127.0.0.1', 'localhost', '::1'], true);
     $conn = mysqli_init();
-    if (!@$conn->real_connect($cfg['host'], $cfg['user'], $cfg['pass'], $cfg['name'], $cfg['port'], null, $isLocal ? 0 : MYSQLI_CLIENT_COMPRESS)) {
-        die("Connection failed ({$key}): " . mysqli_connect_error());
+    // PHP 8.1+ mysqli throws instead of returning false - catch it, or a failed connection
+    // becomes a fatal error whose stack trace prints the host and user name.
+    try {
+        $ok = @$conn->real_connect($cfg['host'], $cfg['user'], $cfg['pass'], $cfg['name'], $cfg['port'], null, $isLocal ? 0 : MYSQLI_CLIENT_COMPRESS);
+        $err = $ok ? '' : mysqli_connect_error();
+    } catch (mysqli_sql_exception $e) {
+        $ok = false;
+        $err = $e->getMessage();
+    }
+    if (!$ok) {
+        // JSON endpoints set $DB_JSON_ERRORS = true before requiring this file, so the browser gets a
+        // readable error instead of plain text. Details go to the PHP error log.
+        if (!empty($GLOBALS['DB_JSON_ERRORS'])) {
+            error_log("Connection failed ({$key}): " . $err);
+            http_response_code(503);
+            header('Content-Type: application/json; charset=utf-8');
+            $msg = 'Database unreachable - try again in a moment';
+            echo json_encode(['status' => 'error', 'error' => $msg, 'success' => false, 'msg' => $msg]);
+            exit;
+        }
+        die("Connection failed ({$key}): " . $err);
     }
     return $conn;
 }

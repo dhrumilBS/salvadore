@@ -12,6 +12,10 @@
  */
 $requestedDb = $_GET['db'] ?? $_POST['db'] ?? $_COOKIE['md_db'] ?? 'landing';
 $ACTIVE_DB   = is_string($requestedDb) ? $requestedDb : 'landing';
+// Warnings/notices printed into a response break the JSON the page expects - log them instead,
+// and have conn.php answer a failed connection with JSON (no DB host in the message).
+ini_set('display_errors', '0');
+$DB_JSON_ERRORS = true;
 require __DIR__ . '/../../conn.php';
 require __DIR__ . '/lib/constants.php';
 require __DIR__ . '/lib/query.php';

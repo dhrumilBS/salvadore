@@ -1,0 +1,12 @@
+# Lead data and live-site write tools - this PC and the office LAN only (see /salvadore/.htaccess).
+# Add a range here (e.g. a VPN subnet) if someone needs it from elsewhere.
+Require ip 127.0.0.1 ::1 192.168.0.0/16
+
+# Browsers revalidate the page itself on every load, so a ?v= bump on a CSS/JS
+# tag reaches everyone straight away (a heuristically cached index.html kept
+# pointing at the old file versions).
+<IfModule mod_headers.c>
+    <FilesMatch "\.html?$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>

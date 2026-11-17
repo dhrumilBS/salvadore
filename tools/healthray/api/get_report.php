@@ -1,5 +1,8 @@
 <?php
 header('Content-Type: application/json');
+/* A PHP warning printed into the response breaks the JSON - log it instead */
+ini_set('display_errors', '0');
+$DB_JSON_ERRORS = true;
 
 /* ── Read & validate JSON body ── */
 $raw  = file_get_contents("php://input");
@@ -47,7 +50,9 @@ $stmt = $conn->prepare(
 );
 
 if (!$stmt) {
-    echo json_encode(['status' => 'error', 'error' => 'Query prepare failed: ' . $conn->error]);
+    error_log('get_report prepare failed: ' . $conn->error);
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'error' => 'Could not query the leads table - see the PHP error log']);
     exit;
 }
 

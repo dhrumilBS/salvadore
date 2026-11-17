@@ -2,14 +2,17 @@
 # This server is reachable from the internet, and most of these tools have no login.
 
 # Secrets and local data are read from disk by PHP - never serve them to anyone.
-<FilesMatch "(^\.env.*|service-account.*\.json|access-history\.json|\.sql|composer\.(json|lock)|package(-lock)?\.json)$">
+# .md = internal notes (CLAUDE.md / README.md describe business rules and internals).
+<FilesMatch "(^\.env.*|service-account.*\.json|access-history\.json|\.sql|\.md|composer\.(json|lock)|package(-lock)?\.json)$">
     Require all denied
 </FilesMatch>
 
 # Endpoints that list files on disk, fetch any URL and save it to disk, or read
-# company Google Docs (File Browser, Image Downloader, Blog Content Builder):
-# this PC and the office LAN only.
-<FilesMatch "^(list_files|download|read_doc)\.php$">
+# company Google Docs (File Browser, Image Downloader, Blog Content Builder), or
+# return every lead with names/phones/emails (Healthray lead report API):
+# this PC and the office LAN only. lead/ and master-dashboard/ have their own
+# LAN-only .htaccess for the same reason.
+<FilesMatch "^(list_files|download|read_doc|get_report)\.php$">
     Require ip 127.0.0.1 ::1 192.168.0.0/16
 </FilesMatch>
 
@@ -22,6 +25,10 @@ Options -Indexes
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /salvadore/
+
+    # Composer vendor/ folders are loaded by PHP only - never serve their files
+    # (vendor/composer/installed.json lists exact library versions).
+    RewriteRule (^|/)vendor/ - [F,L]
 
     RewriteRule ^healthray-sql/post-content(/.*)?$  tools/healthray/master-dashboard/#fixer [R=308,NE,L]
     # Menu Order, Find & Replace and Focus Keyword became Master Dashboard tabs (October 2026)
