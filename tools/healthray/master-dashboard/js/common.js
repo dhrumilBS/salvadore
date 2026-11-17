@@ -30,9 +30,34 @@ function apiUrl(path, params = {}) {
     return 'api/' + path + (q ? '?' + q : '');
 }
 
+/* Reads that hang past this get a clear error instead of an endless spinner. Writes (POST) are never
+   timed out: the server would still finish the write, and the page would wrongly report it as failed. */
+const API_READ_TIMEOUT_MS = 120000;
+
+/**
+ * Always resolves to the endpoint's JSON. A non-JSON body (PHP fatal/warning page, proxy error) or a
+ * read timeout resolves to {success:false, msg} instead of "Unexpected token '<'", so every caller's
+ * existing `if (!json.success)` path shows a readable message. A caller's own abort still rejects
+ * with AbortError (isAbort) as before.
+ */
 function api(path, { params = {}, method = 'GET', body = undefined, signal = undefined } = {}) {
-    return fetch(apiUrl(path, params), { method, body, signal, headers: { 'X-Master-Dashboard': '1' } })
-        .then(r => r.json());
+    const timeout = method === 'GET' ? AbortSignal.timeout(API_READ_TIMEOUT_MS) : null;
+    const sig = timeout ? (signal ? AbortSignal.any([signal, timeout]) : timeout) : signal;
+    return fetch(apiUrl(path, params), { method, body, signal: sig, headers: { 'X-Master-Dashboard': '1' } })
+        .then(async r => {
+            const text = await r.text();
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                return { success: false, msg: r.ok ? 'The server sent an unreadable response - try again.' : `Server error (HTTP ${r.status}) - try again in a moment.` };
+            }
+        })
+        .catch(err => {
+            if (timeout && timeout.aborted && !(signal && signal.aborted)) {
+                return { success: false, msg: 'The server took too long to answer - try again, or narrow the filters.' };
+            }
+            throw err;
+        });
 }
 
 /** Each call aborts the previous request from the same caller, so only the newest response is ever rendered. */
@@ -169,6 +194,56 @@ function bindConfirmDialog() {
 }
 
 const isConfirmOpen = () => !!confirmResolve;
+
+/*
+ * Keyboard focus for every modal (.fx-modal-overlay, incl. confirmModal). They all open/close by
+ * toggling .open, so one observer covers them: on open, remember what had focus and move focus in
+ * (unless the modal's own code already did); while open, Tab / Shift+Tab cycle inside the top modal
+ * instead of escaping to the page behind; on close, focus returns to where it was.
+ */
+(function bindModalFocus() {
+    const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const openers = new WeakMap();
+    const openModals = () => [...document.querySelectorAll('.fx-modal-overlay.open')];
+    const focusables = m => [...m.querySelectorAll(FOCUSABLE)].filter(el => !el.hidden && el.getClientRects().length);
+    // Observer callbacks run after the opening code, which often has already focused a field inside the
+    // modal - so remember the last focus *outside* any modal rather than reading activeElement on open.
+    let lastOutside = null;
+    document.addEventListener('focusin', e => { if (!e.target.closest('.fx-modal-overlay')) lastOutside = e.target; });
+
+    const obs = new MutationObserver(records => records.forEach(rec => {
+        const m = rec.target;
+        const isOpen = m.classList.contains('open');
+        const wasOpen = (rec.oldValue || '').split(/\s+/).includes('open');
+        if (isOpen === wasOpen) return;
+        if (isOpen) {
+            openers.set(m, m.contains(document.activeElement) ? lastOutside : document.activeElement);
+            setTimeout(() => {   // modals focus their own first field after a short delay - only step in if none did
+                if (m.classList.contains('open') && !m.contains(document.activeElement)) {
+                    const first = focusables(m)[0];
+                    if (first) first.focus();
+                }
+            }, 80);
+        } else {
+            const back = openers.get(m);
+            openers.delete(m);
+            if (back && back.isConnected && !openModals().length && typeof back.focus === 'function') back.focus();
+        }
+    }));
+    document.querySelectorAll('.fx-modal-overlay').forEach(m => obs.observe(m, { attributes: true, attributeFilter: ['class'], attributeOldValue: true }));
+
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Tab') return;
+        const top = openModals().pop();
+        if (!top) return;
+        const els = focusables(top);
+        if (!els.length) { e.preventDefault(); return; }
+        const first = els[0], last = els[els.length - 1];
+        if (!top.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+        else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }, true);
+})();
 
 /** Click handler for an export <a>: when the export will live-check every URL, ask first. */
 async function confirmSlowExport(e, message, needed) {

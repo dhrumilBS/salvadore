@@ -10,3 +10,14 @@
 #canonicalView .cn-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 #canonicalView .cn-issue { min-width: 200px; }
 #canonicalView .cn-reason { margin-top: 4px; font-size: 11.5px; color: var(--text3); word-break: break-word; max-width: 340px; }
+
+/* Phones / half-width windows: the table already scrolls inside .table-wrap - narrow its wide columns
+   and let the toolbar's buttons wrap under the filters instead of squeezing them */
+@media (max-width: 760px) {
+    #canonicalView .cn-post { min-width: 200px; }
+    #canonicalView .cn-issue { min-width: 150px; }
+    #canonicalView .cn-reason { max-width: 260px; }
+    #canonicalView .toolbar select { flex: 1 1 140px; }
+    #canonicalView .toolbar-end { margin-left: 0; width: 100%; flex-wrap: wrap; }
+    #canonicalView .toolbar-end .btn { flex: 1 1 auto; justify-content: center; }
+}

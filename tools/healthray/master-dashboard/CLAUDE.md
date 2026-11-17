@@ -182,6 +182,13 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
   from `tableStateRow()`, and prefs go through `mdStore` - never raw `localStorage` (only `theme`, which
   the inline `<head>` script reads before paint). Rows/page lives in the pager, not the filter panel.
 
+- **Access**: `master-dashboard/.htaccess` limits the whole tool to this PC + the office LAN (`Require ip`) and sends
+  `Cache-Control: no-cache` for the HTML. Every CSS/JS tag in index.html carries `?v=` - bump it on the files you change.
+- **`api()` always resolves to JSON**: a non-JSON body (PHP fatal, 404/500 page) or a GET that takes over
+  `API_READ_TIMEOUT_MS` (120 s) resolves to `{success:false, msg}`; POSTs are never timed out. `bootstrap.php` sets
+  `display_errors=0` and `$DB_JSON_ERRORS` (conn.php then answers a failed connection with JSON, no host in it).
+- **Modals**: any `.fx-modal-overlay` toggled with `.open` gets focus moved in, Tab trapped and focus restored on
+  close (`bindModalFocus()` in common.js) - a new modal just needs that class.
 - **Writes and outbound checks need `require_same_origin()`** (`bootstrap.php`;
   `require_post_method()` calls it). This tool has no login, so it's the only
   thing stopping another website open in the browser from POSTing a form here.
