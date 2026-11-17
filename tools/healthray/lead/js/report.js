@@ -8,7 +8,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let filteredRows = [];
     let allRows = [];          // every API row in server order, +92 included - drives the table display only
     let displayRows = [];      // what the table/cards show: filteredRows + matching +92 rows (highlighted, never counted)
-    let dupMeta = {};
+    let dupMeta = new Map();   // row -> { email, phone, time, groups } (see analyseDuplicates)
     let visibleCols = new Set();
     const DUP_TYPES = ["email", "phone", "time"];   // the three duplicate checks, in display order
 
@@ -28,7 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* Period-over-period comparison state (previous equivalent date range). compareRows / compareDupMeta / compareFilteredRows always mirror originalRows / dupMeta / filteredRows so every metric is compared like-for-like under the SAME active filters. */
     let compareRows = null;            // previous-period rows (+92 excluded), or null if not yet loaded/unavailable
-    let compareDupMeta = {};
+    let compareDupMeta = new Map();
     let compareFilteredRows = null;    // previous-period rows run through the current filter state
     let compareRequestId = 0;          // guards against stale async responses
     let lastPrevRange = null;          // { from, to } of the last loaded comparison period
@@ -160,6 +160,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     /* ═══ DOM REFS ═══ */
+    const RENDER_CHUNK = 150;        // rows / cards added per step - see appendRows()
+    let renderedCount = 0;
+    const cardsMq = matchMedia("(max-width: 1099px)");   // same breakpoint as .mobile-cards in report.css
+    const mobileCardsEl = document.getElementById("mobileCards");
+    const moreBar = document.getElementById("tableMore");
+    const moreBtn = document.getElementById("tableMoreBtn");
     const loaderWrap = document.getElementById("loaderWrap");
     const tableHead = document.getElementById("tableHead");
     const tableBody = document.getElementById("tableBody");
@@ -257,7 +263,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         /* Switching source is a full reload of this dashboard's data - the previous DB's rows/comparison must never linger and get mixed in. */
         compareRows = null;
-        compareDupMeta = {};
+        compareDupMeta = new Map();
         compareFilteredRows = null;
         visibleCols = new Set();
         sortState = { col: null, dir: 1 };
@@ -385,7 +391,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     document.getElementById("exportDupCSV").addEventListener("click", () => {
         closeAllDropdowns();
-        const dupRows = originalRows.filter((_, i) => dupMeta[i]?.email || dupMeta[i]?.phone || dupMeta[i]?.time);
+        const dupRows = originalRows.filter(r => { const m = dupMeta.get(r); return m && (m.email || m.phone || m.time); });
         if (!dupRows.length) { showToast("No duplicate rows found", "error"); return; }
         doExportCSV(dupRows, true);
     });
@@ -533,7 +539,7 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error("Comparison fetch failed", err);
             if (myRequestId !== compareRequestId) return;
             compareRows = null;
-            compareDupMeta = {};
+            compareDupMeta = new Map();
         }
         lastPrevRange = prevRange;
         compareFilteredRows = compareRows ? computeFilteredRows(compareRows, compareDupMeta, getActiveFilterState()) : null;
@@ -625,7 +631,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (max > 100) return "lg";
         return null;
     }
-    function isBigBedLead(row) { return bedTier(row) !== null; }
+    function isBigBedLead(row) { return D(row).bed !== null; }
 
     const BED_TIER = {
         lg: { icon: "★", label: "101–300 Beds" },
@@ -637,6 +643,58 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     /* DUPLICATE ANALYSIS - rows passed in never include +92 rows, so no exclusion logic is needed here. Besides the email / phone / time flags, each flagged row keeps its group (meta.groups[type]): every row sharing that value, oldest first, the row itself included. The groups drive the "(3)" counts, the "also …" times and the duplicates list in the lead modal. */
+    /* ═══ PER-ROW CACHE ═══ The values every filter pass, breakdown and search reads - computed once per row instead of
+       on every click / keystroke (extractUtmVal and getPageName parse a URL each time). Keyed by the row object in a
+       WeakMap: a new load brings new row objects, so nothing can go stale. */
+    const derivedCache = new WeakMap();
+    function D(row) {
+        let d = derivedCache.get(row);
+        if (!d) {
+            d = {
+                source: extractUtmVal(row["utm_source"], "utm_source").trim() || "(none)",
+                campaign: extractUtmVal(row["utm_campaign"], "utm_campaign").trim() || "(none)",
+                date: getRowDate(row),
+                page: getPageName(row),
+                adtype: getAdType(row),
+                intl: isNonIndiaNumber(getPhone(row)),
+                bed: bedTier(row),
+                hay: null,       // search text, built on first search
+            };
+            derivedCache.set(row, d);
+        }
+        return d;
+    }
+    /* Every value of the row, lower-cased, in one string (\u0001 between values, so a search never matches across two fields) */
+    function haystack(row) {
+        const d = D(row);
+        if (d.hay === null) d.hay = Object.values(row).map(v => String(v ?? "").toLowerCase()).join("\u0001");
+        return d.hay;
+    }
+    /* Position in allRows - the id the table / cards / dup buttons use to find a row again */
+    let allRowIndex = new Map();
+    function rowIndex(row) { const i = allRowIndex.get(row); return i === undefined ? -1 : i; }
+
+    /* Unique people in a set of submissions: rows that share an email OR a phone number (phoneKey, so +91 / 0 / bare
+       10-digit forms match) are one person - chains included (A=B by email, B=C by phone → one person). The same submit
+       time alone doesn't make two rows the same person. Union-find, O(n). */
+    function countUniquePeople(rows) {
+        const parent = rows.map((_, i) => i);
+        const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+        const firstSeen = new Map();
+        rows.forEach((r, i) => {
+            const e = norm(r["your-email"]), p = phoneKey(getPhone(r));
+            [e && "e:" + e, p && "p:" + p].forEach(k => {
+                if (!k) return;
+                if (!firstSeen.has(k)) { firstSeen.set(k, i); return; }
+                const a = find(i), b = find(firstSeen.get(k));
+                if (a !== b) parent[a] = b;
+            });
+        });
+        let n = 0;
+        rows.forEach((_, i) => { if (find(i) === i) n++; });
+        return n;
+    }
+
     function dupKey(type, row) {
         if (type === "email") return norm(row["your-email"]);
         if (type === "phone") return phoneKey(getPhone(row));
@@ -655,15 +713,15 @@ document.addEventListener("DOMContentLoaded", () => {
             map.forEach(list => { if (list.length > 1) list.sort(bySubmitTime); });
             byType[type] = map;
         });
-        const meta = {};
-        rows.forEach((row, i) => {
+        const meta = new Map();
+        rows.forEach(row => {
             const m = { email: false, phone: false, time: false, groups: {} };
             DUP_TYPES.forEach(type => {
                 const k = dupKey(type, row);
                 const list = k ? byType[type].get(k) : null;
                 if (list && list.length > 1) { m[type] = true; m.groups[type] = list; }
             });
-            meta[i] = m;
+            meta.set(row, m);
         });
         return meta;
     }
@@ -675,12 +733,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     /* This row's group for one check (oldest first, the row itself included) - [] when it isn't a duplicate of that kind */
     function dupGroup(row, type) {
-        const m = dupMeta[originalRows.indexOf(row)];
+        const m = dupMeta.get(row);
         return (m && m.groups[type]) || [];
     }
     /* Every row sharing the email, phone OR exact submit time with this one, oldest first, the row itself included - [] for a lead without duplicates */
     function dupFamily(row) {
-        const m = dupMeta[originalRows.indexOf(row)];
+        const m = dupMeta.get(row);
         if (!m) return [];
         const set = new Set();
         DUP_TYPES.forEach(t => (m.groups[t] || []).forEach(r => set.add(r)));
@@ -696,7 +754,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return `${i + 1}. ${label}${r === row ? "  (this lead)" : ""}`;
         });
         const tip = `Same ${DUP_WHAT[type]} - ${group.length} submissions in the selected dates:\n${lines.join("\n")}\nClick to open and compare them`;
-        return `<button type="button" class="dup-tag ${type}" data-dup-row="${allRows.indexOf(row)}" title="${esc(tip)}">${type === "time" ? "same" : "dup"} (${group.length})<span class="dup-go" aria-hidden="true">›</span></button>`;
+        return `<button type="button" class="dup-tag ${type}" data-dup-row="${rowIndex(row)}" title="${esc(tip)}">${type === "time" ? "same" : "dup"} (${group.length})<span class="dup-go" aria-hidden="true">›</span></button>`;
     }
     /* "also 12 Nov 09:10 · Yesterday 18:04" - when the other submissions with this email / phone came in */
     function dupAlsoHtml(row, group) {
@@ -765,21 +823,15 @@ document.addEventListener("DOMContentLoaded", () => {
     function buildBreakdown(rows, dimension) {
         const map = {};
         rows.forEach(row => {
+            const d = D(row);
             let key;
-            if (dimension === "date") {
-                key = getRowDate(row);
-            } else if (dimension === "page") {
-                key = getPageName(row);
-            } else if (dimension === "adtype") {
-                key = getAdType(row);
-            } else if (dimension === "leadtype") {
-                key = row["lead-type"] || "(unknown)";
-            } else {
-                /* utm_campaign or utm_source */
-                const raw = row[dimension];
-                const val = extractUtmVal(raw, dimension);
-                key = val.trim() || "(none)";
-            }
+            if (dimension === "date") key = d.date;
+            else if (dimension === "page") key = d.page;
+            else if (dimension === "adtype") key = d.adtype;
+            else if (dimension === "leadtype") key = row["lead-type"] || "(unknown)";
+            else if (dimension === "utm_campaign") key = d.campaign;
+            else if (dimension === "utm_source") key = d.source;
+            else key = extractUtmVal(row[dimension], dimension).trim() || "(none)";
             map[key] = (map[key] || 0) + 1;
         });
 
@@ -800,6 +852,7 @@ document.addEventListener("DOMContentLoaded", () => {
     /* RENDER ALL  (called once per loadData) */
     function renderAll(data) {
         allRows = normalizeRows(data.rows || []);
+        allRowIndex = new Map(allRows.map((r, i) => [r, i]));
         allColumns = siteColumns(data.allColumns || [], allRows);
 
         /* Split off +92 (Pakistan/test) rows FIRST - everything downstream (dedup, breakdowns, KPIs, comparisons) only ever sees originalRows. */
@@ -868,15 +921,12 @@ document.addEventListener("DOMContentLoaded", () => {
         let out = [...rows];
 
         if (state.keyword) {
-            out = out.filter(row =>
-                Object.values(row).some(v => String(v ?? "").toLowerCase().includes(state.keyword))
-            );
+            out = out.filter(row => haystack(row).includes(state.keyword));
         }
 
         if (state.dupFilters && state.dupFilters.size > 0) {
             out = out.filter(row => {
-                const idx = rows.indexOf(row);
-                const m = meta[idx];
+                const m = meta.get(row);
                 if (!m) return false;
                 for (const t of state.dupFilters) if (m[t]) return true;
                 return false;
@@ -884,25 +934,25 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (state.source) {
-            out = out.filter(row => (extractUtmVal(row["utm_source"], "utm_source").trim() || "(none)") === state.source);
+            out = out.filter(row => D(row).source === state.source);
         }
         if (state.campaign) {
-            out = out.filter(row => (extractUtmVal(row["utm_campaign"], "utm_campaign").trim() || "(none)") === state.campaign);
+            out = out.filter(row => D(row).campaign === state.campaign);
         }
         if (state.date) {
-            out = out.filter(row => getRowDate(row) === state.date);
+            out = out.filter(row => D(row).date === state.date);
         }
         if (state.page) {
-            out = out.filter(row => state.page.has(getPageName(row)));
+            out = out.filter(row => state.page.has(D(row).page));
         }
         if (state.adtype) {
-            out = out.filter(row => getAdType(row) === state.adtype);
+            out = out.filter(row => D(row).adtype === state.adtype);
         }
         if (state.leadtype) {
             out = out.filter(row => row["lead-type"] === state.leadtype);
         }
         if (state.intl) {
-            out = out.filter(row => isNonIndiaNumber(getPhone(row)));
+            out = out.filter(row => D(row).intl);
         }
         if (state.bigBed) {
             out = out.filter(isBigBedLead);
@@ -920,27 +970,33 @@ document.addEventListener("DOMContentLoaded", () => {
         const state = getActiveFilterState();
 
         document.getElementById("statTotal").textContent = filteredRows.length;
+        const uniqueCount = countUniquePeople(filteredRows);
+        const repeats = filteredRows.length - uniqueCount;
+        document.getElementById("statUniqueVal").textContent = uniqueCount;
+        document.getElementById("statUnique").title = repeats > 0
+            ? `${filteredRows.length} submissions from ${uniqueCount} people - ${repeats} ${repeats === 1 ? "is a repeat" : "are repeats"} (same email or phone in these dates)`
+            : "Every submission is a different person (no shared email or phone in these dates)";
         refreshTodayCard();
         document.getElementById("tableHdrCount").textContent = filteredRows.length;
 
         /* Dup counts scoped by every OTHER active filter (source/campaign/date/ page/adtype/search) but not by the dup toggles themselves - e.g. Source=Ads narrows "Dup. Email" down to Ads-only duplicates. */
         const nonDupState = { ...state, dupFilters: new Set() };
         const scopedRows = computeFilteredRows(originalRows, dupMeta, nonDupState);
-        const dupEmailCount = scopedRows.filter(row => dupMeta[originalRows.indexOf(row)]?.email).length;
-        const dupPhoneCount = scopedRows.filter(row => dupMeta[originalRows.indexOf(row)]?.phone).length;
-        const dupTimeCount = scopedRows.filter(row => dupMeta[originalRows.indexOf(row)]?.time).length;
+        const dupEmailCount = scopedRows.filter(row => dupMeta.get(row)?.email).length;
+        const dupPhoneCount = scopedRows.filter(row => dupMeta.get(row)?.phone).length;
+        const dupTimeCount = scopedRows.filter(row => dupMeta.get(row)?.time).length;
         document.getElementById("statDupEmail").textContent = dupEmailCount;
         document.getElementById("statDupPhone").textContent = dupPhoneCount;
         document.getElementById("statDupTime").textContent = dupTimeCount;
         /* Dropdown button shows rows flagged by ANY of the three */
-        const dupAnyCount = scopedRows.filter(row => { const m = dupMeta[originalRows.indexOf(row)]; return m && (m.email || m.phone || m.time); }).length;
+        const dupAnyCount = scopedRows.filter(row => { const m = dupMeta.get(row); return m && (m.email || m.phone || m.time); }).length;
         document.getElementById("statDupAny").textContent = dupAnyCount;
         document.getElementById("dupDdToggle").classList.toggle("has-dups", dupAnyCount > 0);
 
         /* Outside India count scoped by every OTHER active filter, same pattern as the dup counts above - so e.g. Source=Ads narrows it to Ads-only. */
         const nonIntlState = { ...state, intl: false };
         const scopedForIntl = computeFilteredRows(originalRows, dupMeta, nonIntlState);
-        const intlCount = scopedForIntl.filter(row => isNonIndiaNumber(getPhone(row))).length;
+        const intlCount = scopedForIntl.filter(row => D(row).intl).length;
         document.getElementById("statOutsideIndia").textContent = intlCount;
 
         /* 100+ Beds count - same "every OTHER filter" scoping as Outside India */
@@ -960,22 +1016,27 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.getElementById("statTotalDeltaDetail")
             );
 
+            const uniqueDeltaEl = document.getElementById("statUniqueDelta");
+            setDeltaText(uniqueDeltaEl, uniqueCount, countUniquePeople(compareFilteredRows || compareRows), lastPrevRange);
+            uniqueDeltaEl.classList.add("no-suffix");
+            if (uniqueDeltaEl.title) uniqueDeltaEl.title = uniqueDeltaEl.title.replace(/ leads$/, " unique people");
+
             const scopedPrevRows = computeFilteredRows(compareRows, compareDupMeta, nonDupState);
-            const prevDupEmailCount = scopedPrevRows.filter(row => compareDupMeta[compareRows.indexOf(row)]?.email).length;
-            const prevDupPhoneCount = scopedPrevRows.filter(row => compareDupMeta[compareRows.indexOf(row)]?.phone).length;
-            const prevDupTimeCount = scopedPrevRows.filter(row => compareDupMeta[compareRows.indexOf(row)]?.time).length;
+            const prevDupEmailCount = scopedPrevRows.filter(row => compareDupMeta.get(row)?.email).length;
+            const prevDupPhoneCount = scopedPrevRows.filter(row => compareDupMeta.get(row)?.phone).length;
+            const prevDupTimeCount = scopedPrevRows.filter(row => compareDupMeta.get(row)?.time).length;
             setDeltaText(document.getElementById("statDupEmailDelta"), dupEmailCount, prevDupEmailCount, lastPrevRange);
             setDeltaText(document.getElementById("statDupPhoneDelta"), dupPhoneCount, prevDupPhoneCount, lastPrevRange);
             setDeltaText(document.getElementById("statDupTimeDelta"), dupTimeCount, prevDupTimeCount, lastPrevRange);
 
             const scopedPrevForIntl = computeFilteredRows(compareRows, compareDupMeta, nonIntlState);
-            const prevIntlCount = scopedPrevForIntl.filter(row => isNonIndiaNumber(getPhone(row))).length;
+            const prevIntlCount = scopedPrevForIntl.filter(row => D(row).intl).length;
             setDeltaText(document.getElementById("statOutsideIndiaDelta"), intlCount, prevIntlCount, lastPrevRange);
 
             const prevBigBedCount = computeFilteredRows(compareRows, compareDupMeta, nonBigBedState).filter(isBigBedLead).length;
             setDeltaText(document.getElementById("statBigBedDelta"), bigBedCount, prevBigBedCount, lastPrevRange);
         } else {
-            ["statTotalDelta", "statDupEmailDelta", "statDupPhoneDelta", "statDupTimeDelta", "statOutsideIndiaDelta", "statBigBedDelta"].forEach(id => {
+            ["statTotalDelta", "statUniqueDelta", "statDupEmailDelta", "statDupPhoneDelta", "statDupTimeDelta", "statOutsideIndiaDelta", "statBigBedDelta"].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) { el.textContent = ""; el.className = "stat-delta"; el.removeAttribute("title"); }
             });
@@ -1010,7 +1071,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
         const pool = compareRows ? originalRows.concat(compareRows) : originalRows;
-        const todayCount = pool.filter(r => getRowDate(r) === todayStr).length;
+        const todayCount = pool.filter(r => D(r).date === todayStr).length;
         valEl.textContent = todayCount;
 
         /* Yesterday is only known if it's in the loaded range or the comparison period */
@@ -1018,7 +1079,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!haveYesterday) { hintEl.textContent = "Leads since midnight"; return; }
         const cutoff = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
         const yCount = pool.filter(r => {
-            if (getRowDate(r) !== yStr) return false;
+            if (D(r).date !== yStr) return false;
             const d = parseSubmitTime(r["submit_time"]);
             return d && d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() <= cutoff;
         }).length;
@@ -1270,6 +1331,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     /* Generic sort: numeric compare when both sides parse as numbers, otherwise a case-insensitive string compare (works fine for the ISO-like submit_time format too). */
+    const collator = new Intl.Collator(undefined, { sensitivity: "base" });
     function sortRows(rows) {
         if (!sortState.col) return rows;
         const col = sortState.col, dir = sortState.dir;
@@ -1278,7 +1340,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const bv = b[col] == null ? "" : b[col];
             const an = Number(av), bn = Number(bv);
             const bothNumeric = av !== "" && bv !== "" && !isNaN(an) && !isNaN(bn);
-            const cmp = bothNumeric ? (an - bn) : String(av).localeCompare(String(bv), undefined, { sensitivity: "base" });
+            const cmp = bothNumeric ? (an - bn) : collator.compare(String(av), String(bv));
             return cmp * dir;
         });
     }
@@ -1286,96 +1348,122 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ═══ RENDER BODY ═══ */
     /* +92 rows are shown inline with every other lead (so teammates can find their own test/SEO submissions), in their natural server order, but only highlighted - they never enter filteredRows, so no KPI counts them. */
     function buildDisplayRows() {
-        const pkShown = new Set(computeFilteredRows(pk92Rows, {}, getActiveFilterState()));
+        const pkShown = new Set(computeFilteredRows(pk92Rows, new Map(), getActiveFilterState()));
         const counted = new Set(filteredRows);
         displayRows = sortRows(allRows.filter(r => counted.has(r) || pkShown.has(r)));
     }
 
     function renderBody() {
         buildDisplayRows();
+        renderedCount = 0;
+        tableBody.innerHTML = "";
+        mobileCardsEl.innerHTML = "";
         if (displayRows.length === 0) {
             mainTable.style.display = "none";
             emptyState.classList.add("visible");
+            moreBar.hidden = true;
             return;
         }
         mainTable.style.display = "";
         emptyState.classList.remove("visible");
+        appendRows();
+    }
 
-        tableBody.innerHTML = displayRows.map(row => {
-            const rowIdx = allRows.indexOf(row);
-            const isPk = isTestLead(row);
-            const dup = dupMeta[originalRows.indexOf(row)] || {};
-            const bigBed = isPk ? null : bedTier(row);
-            const rowCls = isPk ? "dup-pk92" : bigBed ? `big-bed ${bigBed}` : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
+    /* ═══ PROGRESSIVE RENDERING ═══ Building every row at once froze the page for seconds on long ranges (3 months ≈ 4,900
+       rows x 20 columns). Rows go in RENDER_CHUNK at a time: the next chunk is added when the table (desktop) or the page
+       (cards) is scrolled near the end, or from the "Show more" bar. Only the layout on screen is built - the table on
+       desktop, the cards below 1100px - and switching layout rebuilds. Filters, counts, exports and the lead modal's
+       ← → all work on displayRows, never on what's in the DOM. */
+    function appendRows() {
+        if (renderedCount >= displayRows.length) return;
+        const next = displayRows.slice(renderedCount, renderedCount + RENDER_CHUNK);
+        if (cardsMq.matches) mobileCardsEl.insertAdjacentHTML("beforeend", next.map(cardHtml).join(""));
+        else tableBody.insertAdjacentHTML("beforeend", next.map(rowHtml).join(""));
+        renderedCount += next.length;
+        const left = displayRows.length - renderedCount;
+        moreBar.hidden = left <= 0;
+        if (left > 0) moreBtn.textContent = `Show ${Math.min(RENDER_CHUNK, left)} more · ${left.toLocaleString()} left`;
+    }
 
-            const cells = allColumns.map(col => {
-                const hidden = !visibleCols.has(col);
-                const isName = col === "your-name";
-                const isEmailCol = col === "your-email";
-                const isPhoneCol = col === site().phoneCol;
-                const isTimeCol = col === "submit_time";
-                const isBedCol = col === site().bedCol;
+    function rowHtml(row) {
+        const rowIdx = rowIndex(row);
+        const isPk = isTestLead(row);
+        const dup = dupMeta.get(row) || {};
+        const bigBed = isPk ? null : bedTier(row);
+        const rowCls = isPk ? "dup-pk92" : bigBed ? `big-bed ${bigBed}` : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
 
-                let cellDupCls = "", dupTag = "", cellHtml = null;
-                /* Duplicate email / phone: the value on the first line, the "DUP (3)" button + when the other submissions came in on the second */
-                const dupType = isEmailCol && dup.email ? "email" : isPhoneCol && dup.phone ? "phone" : null;
-                if (dupType) {
-                    const group = dup.groups[dupType];
-                    cellDupCls = `dup-cell-${dupType}`;
-                    cellHtml = `<span class="dup-val">${formatCell(col, row[col])}</span><span class="dup-meta">${dupTagHtml(row, dupType, group)}${dupAlsoHtml(row, group)}</span>`;
-                }
-                if (isTimeCol && dup.time) { cellDupCls = "dup-cell-time"; dupTag = dupTagHtml(row, "time", dup.groups.time); }
-                if (isBedCol && bigBed) { cellDupCls = "bigbed-cell"; cellHtml = `<span class="bed-pill ${bigBed}">${esc(rawValue(col, row))}</span>`; }
-                /* The bed-size field also collects billing-software answers ("Marg") - tag those so they aren't read as a size */
-                if (isBedCol && !bigBed && isSoftwareAnswer(rawValue(col, row))) cellHtml = `${esc(rawValue(col, row))}<span class="soft-tag">Software</span>`;
-                /* Flag the lead on the name too - CSS shows this badge only while the Bed Size column is hidden (it'd repeat the pill otherwise) */
-                /* name + badge share one flex row: a long name ellipsises, the badge never gets clipped */
-                if (isName && bigBed) cellHtml = `<span class="nm-wrap">${formatCell(col, row[col])}${bigBedBadge(bigBed, row)}</span>`;
-                if (isPhoneCol && isPk) { cellDupCls = "dup-cell-pk92"; dupTag = `<span class="dup-tag pk92" title="Pakistan / Test - not counted in totals or analytics">PK/Test</span>`; }
+        const cells = allColumns.map(col => {
+            const hidden = !visibleCols.has(col);
+            const isName = col === "your-name";
+            const isEmailCol = col === "your-email";
+            const isPhoneCol = col === site().phoneCol;
+            const isTimeCol = col === "submit_time";
+            const isBedCol = col === site().bedCol;
 
-                const cls = [tdClass(col), cellDupCls, isName ? "lead-name-link" : ""].filter(Boolean).join(" ");
-                const rowAttr = isName ? ` data-row="${rowIdx}"` : "";
-                return `<td data-col="${esc(col)}"${rowAttr} class="${cls}" title="${esc(rawValue(col, row))}" style="${hidden ? "display:none" : ""}">${cellHtml ?? formatCell(col, row[col])}${dupTag}</td>`;
-            }).join("");
+            let cellDupCls = "", dupTag = "", cellHtml = null;
+            /* Duplicate email / phone: the value on the first line, the "DUP (3)" button + when the other submissions came in on the second */
+            const dupType = isEmailCol && dup.email ? "email" : isPhoneCol && dup.phone ? "phone" : null;
+            if (dupType) {
+                const group = dup.groups[dupType];
+                cellDupCls = `dup-cell-${dupType}`;
+                cellHtml = `<span class="dup-val">${formatCell(col, row[col])}</span><span class="dup-meta">${dupTagHtml(row, dupType, group)}${dupAlsoHtml(row, group)}</span>`;
+            }
+            if (isTimeCol && dup.time) { cellDupCls = "dup-cell-time"; dupTag = dupTagHtml(row, "time", dup.groups.time); }
+            if (isBedCol && bigBed) { cellDupCls = "bigbed-cell"; cellHtml = `<span class="bed-pill ${bigBed}">${esc(rawValue(col, row))}</span>`; }
+            /* The bed-size field also collects billing-software answers ("Marg") - tag those so they aren't read as a size */
+            if (isBedCol && !bigBed && isSoftwareAnswer(rawValue(col, row))) cellHtml = `${esc(rawValue(col, row))}<span class="soft-tag">Software</span>`;
+            /* Flag the lead on the name too - CSS shows this badge only while the Bed Size column is hidden (it'd repeat the pill otherwise) */
+            /* name + badge share one flex row: a long name ellipsises, the badge never gets clipped */
+            if (isName && bigBed) cellHtml = `<span class="nm-wrap">${formatCell(col, row[col])}${bigBedBadge(bigBed, row)}</span>`;
+            if (isPhoneCol && isPk) { cellDupCls = "dup-cell-pk92"; dupTag = `<span class="dup-tag pk92" title="Pakistan / Test - not counted in totals or analytics">PK/Test</span>`; }
 
-            return `<tr class="${rowCls}">${cells}</tr>`;
+            const cls = [tdClass(col), cellDupCls, isName ? "lead-name-link" : ""].filter(Boolean).join(" ");
+            const rowAttr = isName ? ` data-row="${rowIdx}"` : "";
+            return `<td data-col="${esc(col)}"${rowAttr} class="${cls}" title="${esc(rawValue(col, row))}" style="${hidden ? "display:none" : ""}">${cellHtml ?? formatCell(col, row[col])}${dupTag}</td>`;
         }).join("");
 
-        renderMobileCards();
+        return `<tr class="${rowCls}">${cells}</tr>`;
     }
 
     /* ═══ MOBILE CARD-PER-ROW VIEW (<768px) ═══ Same filteredRows/dupMeta as the table - CSS decides which of the two is visible at the current viewport width. */
 
-    function renderMobileCards() {
-        const mobileCards = document.getElementById("mobileCards");
-        if (displayRows.length === 0) { mobileCards.innerHTML = ""; return; }
-
-        mobileCards.innerHTML = displayRows.map(row => {
-            const rowIdx = allRows.indexOf(row);
-            const isPk = isTestLead(row);
-            const dup = dupMeta[originalRows.indexOf(row)] || {};
-            const bigBed = isPk ? null : bedTier(row);
-            const rowCls = isPk ? "dup-pk92" : bigBed ? `big-bed ${bigBed}` : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
-            const tags = [
-                isPk ? `<span class="dup-tag pk92">PK/Test</span>` : "",
-                bigBed ? bigBedBadge(bigBed, row) : "",
-                ...DUP_TYPES.map(t => dup[t] ? dupTagHtml(row, t, dup.groups[t]) : ""),
-            ].join("");
-            const rowsHtml = site().mobileFields.filter(c => allColumns.includes(c)).map(c => {
-                const dupType = c === "your-email" ? "email" : c === site().phoneCol ? "phone" : null;
-                const also = dupType && dup[dupType] ? dupAlsoHtml(row, dup.groups[dupType]) : "";
-                return `<div class="m-card-row"><span class="k">${esc(formatCol(c))}</span><span class="v">${formatValue(c, row[c])}${also}</span></div>`;
-            }).join("");
-
-            return `<div class="m-card ${rowCls}">
-                <div class="m-card-hdr">
-                    <span class="m-card-name" data-row="${rowIdx}">${esc(row["your-name"] || row["your-email"] || "(no name)")}</span>
-                    <div class="m-card-tags">${tags}</div>
-                </div>
-                ${rowsHtml}
-            </div>`;
+    function cardHtml(row) {
+        const rowIdx = rowIndex(row);
+        const isPk = isTestLead(row);
+        const dup = dupMeta.get(row) || {};
+        const bigBed = isPk ? null : bedTier(row);
+        const rowCls = isPk ? "dup-pk92" : bigBed ? `big-bed ${bigBed}` : dup.email ? "dup-email" : dup.phone ? "dup-phone" : dup.time ? "dup-time" : "";
+        const tags = [
+            isPk ? `<span class="dup-tag pk92">PK/Test</span>` : "",
+            bigBed ? bigBedBadge(bigBed, row) : "",
+            ...DUP_TYPES.map(t => dup[t] ? dupTagHtml(row, t, dup.groups[t]) : ""),
+        ].join("");
+        const rowsHtml = site().mobileFields.filter(c => allColumns.includes(c)).map(c => {
+            const dupType = c === "your-email" ? "email" : c === site().phoneCol ? "phone" : null;
+            const also = dupType && dup[dupType] ? dupAlsoHtml(row, dup.groups[dupType]) : "";
+            return `<div class="m-card-row"><span class="k">${esc(formatCol(c))}</span><span class="v">${formatValue(c, row[c])}${also}</span></div>`;
         }).join("");
+
+        return `<div class="m-card ${rowCls}">
+            <div class="m-card-hdr">
+                <span class="m-card-name" data-row="${rowIdx}">${esc(row["your-name"] || row["your-email"] || "(no name)")}</span>
+                <div class="m-card-tags">${tags}</div>
+            </div>
+            ${rowsHtml}
+        </div>`;
     }
+
+    moreBtn.addEventListener("click", appendRows);
+    /* Desktop: the table scrolls inside .table-wrap - add the next chunk before its end is reached */
+    const tableWrapEl = mainTable.closest(".table-wrap");
+    tableWrapEl.addEventListener("scroll", () => {
+        if (!cardsMq.matches && tableWrapEl.scrollTop + tableWrapEl.clientHeight > tableWrapEl.scrollHeight - 600) appendRows();
+    }, { passive: true });
+    /* Cards: the page itself scrolls - add the next chunk when the "Show more" bar comes near the screen */
+    new IntersectionObserver(entries => {
+        if (cardsMq.matches && entries.some(en => en.isIntersecting)) appendRows();
+    }, { rootMargin: "600px 0px" }).observe(moreBar);
+    cardsMq.addEventListener("change", () => { if (allRows.length) renderBody(); });
 
     document.getElementById("mobileCards").addEventListener("click", e => {
         if (openFromDupTag(e)) return;
@@ -1533,7 +1621,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function leadTagsHtml(row) {
         const isPk = isTestLead(row);
-        const dup = dupMeta[originalRows.indexOf(row)] || {};
+        const dup = dupMeta.get(row) || {};
         const tier = isPk ? null : bedTier(row);
         return [
             tier ? bigBedBadge(tier, row) : "",
@@ -1632,7 +1720,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <div class="dup-sub">${esc(r["your-name"] || r["your-email"] || "(no name)")}${page === "(unknown)" ? "" : ` · ${esc(page)}`}</div>
                 </div>
                 <div class="dup-matches">${matches}</div>
-                ${isCur ? `<span class="dup-viewing">Viewing</span>` : `<button type="button" class="dup-open" data-open-row="${allRows.indexOf(r)}">Open</button>`}
+                ${isCur ? `<span class="dup-viewing">Viewing</span>` : `<button type="button" class="dup-open" data-open-row="${rowIndex(r)}">Open</button>`}
             </li>`;
         }).join("");
         return `<section class="dup-sec${flash ? " flash" : ""}" id="leadDupSec">
@@ -1645,25 +1733,32 @@ document.addEventListener("DOMContentLoaded", () => {
         </section>`;
     }
 
-    /* Side by side: a column per submission (oldest first), a row per field. Rows where the submissions disagree are flagged; cells that differ from the lead you opened are tinted. */
-    let dupDiffOnly = false;
+    /* Side by side: a column per submission (oldest first), a row per field. Standard "highlight differences" reading:
+       opens on Differences (fields where the submissions disagree), All fields shows the rest. Inside a column, a value
+       that equals the lead you're viewing is greyed, so the dark text is exactly what differs - no tinted cells, which
+       made nearly the whole table yellow. The bar says what links them ("Matched on email + phone"). */
+    let dupDiffOnly = true;
+    const MATCH_NAME = { email: "email", phone: "phone", time: "submit time" };
     function dupCompareHtml(row, family) {
-        let diffCount = 0;
+        let diffCount = 0, fieldCount = 0;
+        const matchedOn = DUP_TYPES.filter(t => dupGroup(row, t).length > 1).map(t => `<b>${MATCH_NAME[t]}</b>`).join(" + ");
         const body = LEAD_GROUPS.map(([key, title]) => {
             let cols = allColumns.filter(c => fieldGroup(c) === key);
             if (key === "meta") cols = [...cols.filter(c => c === "submit_time"), ...cols.filter(c => c !== "submit_time")];
             const rowsHtml = cols.map(col => {
                 if (family.every(r => isEmptyValue(r[col]))) return "";
+                fieldCount++;
                 const keys = family.map(r => compareKey(col, r));
                 const differs = new Set(keys).size > 1;
                 if (differs) diffCount++;
                 if (dupDiffOnly && !differs) return "";
                 const curKey = compareKey(col, row);
                 const cells = family.map((r, i) => {
-                    const cls = [r === row ? "is-current" : "", differs && keys[i] !== curKey ? "differs" : ""].filter(Boolean).join(" ");
-                    return `<td${cls ? ` class="${cls}"` : ""}>${leadValueHtml(col, r)}</td>`;
+                    const cls = r === row ? "is-current" : keys[i] === curKey ? "same" : "";
+                    const tip = cls === "same" ? ` title="Same as the lead you're viewing"` : "";
+                    return `<td${cls ? ` class="${cls}"` : ""}${tip}>${leadValueHtml(col, r)}</td>`;
                 }).join("");
-                return `<tr${differs ? ` class="is-diff"` : ""}><th scope="row">${esc(formatCol(col))}</th>${cells}</tr>`;
+                return `<tr${differs ? "" : ` class="all-same"`}><th scope="row">${esc(formatCol(col))}</th>${cells}</tr>`;
             }).join("");
             return rowsHtml ? `<tr class="cmp-grp"><th colspan="${family.length + 1}"><span>${title}</span></th></tr>${rowsHtml}` : "";
         }).join("");
@@ -1673,17 +1768,21 @@ document.addEventListener("DOMContentLoaded", () => {
             return `<th${isCur ? ` class="is-current"` : ""}><div class="cmp-col">
                 <span class="dup-ord">${i + 1}</span>
                 <span class="cmp-when">${esc(p ? p.short : r["submit_time"] || "Unknown time")}</span>
-                ${isCur ? `<span class="dup-viewing">Viewing</span>` : `<button type="button" class="dup-open" data-open-row="${allRows.indexOf(r)}">Open</button>`}
+                ${isCur ? `<span class="dup-viewing">Viewing</span>` : `<button type="button" class="dup-open" data-open-row="${rowIndex(r)}">Open</button>`}
             </div></th>`;
         }).join("");
         return `<div class="cmp-bar">
                 <button type="button" class="cmp-back" data-dup-act="back">‹ Back to details</button>
-                <span class="cmp-summary">${family.length} submissions · <b>${diffCount} field${diffCount === 1 ? " differs" : "s differ"}</b></span>
-                <label class="cmp-diff-only"><input type="checkbox" data-dup-act="diff-only"${dupDiffOnly ? " checked" : ""}> Only differences</label>
+                <span class="cmp-summary">${family.length} submissions${matchedOn ? ` · Matched on ${matchedOn}` : ""}</span>
+                <div class="cmp-seg" role="group" aria-label="Fields to show">
+                    <button type="button" data-cmp-mode="diff" aria-pressed="${dupDiffOnly}">Differences <span class="cmp-n">${diffCount}</span></button>
+                    <button type="button" data-cmp-mode="all" aria-pressed="${!dupDiffOnly}">All fields <span class="cmp-n">${fieldCount}</span></button>
+                </div>
             </div>
+            <div class="cmp-legend">Dark text differs from the lead you're viewing · <span class="cmp-legend-same">grey</span> = same value</div>
             <div class="cmp-scroll"><table class="cmp-table">
                 <thead><tr><th>Field</th>${head}</tr></thead>
-                <tbody>${body || `<tr><td colspan="${family.length + 1}" class="cmp-none">No differences - every field matches.</td></tr>`}</tbody>
+                <tbody>${body || `<tr><td colspan="${family.length + 1}" class="cmp-none">No differences - every field matches. <button type="button" class="cmp-link" data-cmp-mode="all">Show all fields</button></td></tr>`}</tbody>
             </table></div>`;
     }
     /* "Same value" for the comparison: case and spacing ignored, phone numbers by digits (+91 / 0 prefixes folded, like the dup check) */
@@ -1700,13 +1799,14 @@ document.addEventListener("DOMContentLoaded", () => {
             if (r) openLeadModal(r);
             return;
         }
+        const mode = e.target.closest("button[data-cmp-mode]");
+        if (mode && currentLeadRow) {
+            dupDiffOnly = mode.dataset.cmpMode === "diff";
+            openLeadModal(currentLeadRow, { view: "compare" });
+            return;
+        }
         const act = e.target.closest("button[data-dup-act]");
         if (act && currentLeadRow) openLeadModal(currentLeadRow, act.dataset.dupAct === "compare" ? { view: "compare" } : {});
-    });
-    leadModalBody.addEventListener("change", e => {
-        if (!e.target.matches('input[data-dup-act="diff-only"]') || !currentLeadRow) return;
-        dupDiffOnly = e.target.checked;
-        openLeadModal(currentLeadRow, { view: "compare" });
     });
 
     /* ═══ EXPORT ═══ */
@@ -1727,8 +1827,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const extraCols = isDupOnly ? ["_dup_email", "_dup_phone", "_dup_time"] : [];
         const header = [...cols, ...extraCols].map(csvEsc).join(",");
         const lines = rows.map(row => {
-            const origIdx = originalRows.indexOf(row);
-            const dup = dupMeta[origIdx] || {};
+            const dup = dupMeta.get(row) || {};
             const cells = cols.map(c => csvEsc(rawValue(c, row)));
             if (isDupOnly) {
                 cells.push(dup.email ? "YES" : "");

@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-    <link rel="stylesheet" href="css/report.css?v=35">
+    <link rel="stylesheet" href="css/report.css?v=37">
     <script src="../../../usage/track.js" defer></script>
 </head>
 
@@ -131,6 +131,10 @@
                 </div>
                 <div class="stat-value accent" id="statTotal">-</div>
                 <div class="stat-delta" id="statTotalDelta" role="button" tabindex="0" title="Click for comparison details"></div>
+                <div class="stat-unique" id="statUnique">
+                    <span><b id="statUniqueVal">-</b> unique people</span>
+                    <span class="stat-delta" id="statUniqueDelta"></span>
+                </div>
                 <div class="stat-delta-detail" id="statTotalDeltaDetail"></div>
             </div>
             <div class="stat-card kpi-today">
@@ -442,6 +446,9 @@
                 </table>
             </div>
             <div class="mobile-cards" id="mobileCards"></div>
+            <div class="table-more" id="tableMore" hidden>
+                <button type="button" class="table-more-btn" id="tableMoreBtn">Show more</button>
+            </div>
             <div class="pagination-bar">
                 <span id="paginationInfo"></span>
                 <span class="legend" aria-label="Row colour legend">
@@ -507,7 +514,7 @@
         <span id="toastMsg"></span>
     </div>
 
-    <script src="js/report.js?v=39"></script>
+    <script src="js/report.js?v=41"></script>
 </body>
 
 </html>

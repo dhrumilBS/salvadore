@@ -225,7 +225,7 @@ body { overflow-x: clip; }
 .stat-card.active-filter { border-color: var(--kpi); box-shadow: 0 0 0 3px color-mix(in srgb, var(--kpi) 22%, transparent), var(--shadow); }
 
 .stat-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-basis: 100%; }
-.stat-hint, .bigbed-split, .stat-delta-detail { flex-basis: 100%; }
+.stat-hint, .bigbed-split, .stat-delta-detail, .stat-unique { flex-basis: 100%; }
 .stat-ico { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; color: var(--kpi); background: color-mix(in srgb, var(--kpi) 12%, var(--surface)); }
 .stat-ico svg { width: 12px; height: 12px; }
 
@@ -267,6 +267,10 @@ body { overflow-x: clip; }
 .stat-value.c-intl  { color: var(--text); }
 .stat-value.c-bigbed { color: var(--bigbed-text); }
 .stat-hint { font-size: var(--fs-xs); color: var(--muted); }
+/* Real Leads card: unique people (same email / phone = one person) + its own vs-prev pill */
+.stat-unique { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: var(--fs-xs); color: var(--muted); cursor: help; }
+.stat-unique b { color: var(--text-2); font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-unique .stat-delta { min-height: 18px; padding: 0 6px; font-size: 10.5px; cursor: help; }
 
 /* Period-over-period delta - a small tinted pill */
 .stat-delta { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-xs); font-weight: 700; min-height: 20px; cursor: pointer; width: fit-content; padding: 1px 8px; border-radius: 20px; font-variant-numeric: tabular-nums; }
@@ -490,6 +494,12 @@ table.pk92-table tbody td { padding: 8px 16px; border-top: 1px solid color-mix(i
 .load-error p { font-size: var(--fs-lg); font-weight: 600; color: var(--text); }
 .load-error span { font-size: var(--fs-base); max-width: 460px; }
 .load-error .btn { margin-top: 8px; }
+
+/* ═══ SHOW MORE ═══ Rows render in chunks (report.js appendRows) - the rest come in on scroll or from this bar */
+.table-more { display: flex; justify-content: center; padding: 10px 16px; border-top: 1px solid var(--border); }
+.table-more[hidden] { display: none; }
+.table-more-btn { height: 34px; padding: 0 16px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--primary); font: 600 var(--fs-sm) var(--font); cursor: pointer; transition: border-color .15s, background .15s; }
+.table-more-btn:hover { border-color: var(--primary); background: var(--primary-lt); }
 
 /* ═══ EMPTY STATE ═══ */
 .empty-state { display: none; flex-direction: column; align-items: center; justify-content: center; padding: 64px 20px; color: var(--muted); gap: 8px; }
@@ -772,9 +782,16 @@ td.lead-name-link .nm-empty { color: var(--muted); font-weight: 500; font-size: 
 .cmp-back { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
 .cmp-back:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-lt); }
 .cmp-summary { font-size: var(--fs-sm); color: var(--muted); }
-.cmp-summary b { color: var(--dup-email-text); font-weight: 700; }
-.cmp-diff-only { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); cursor: pointer; user-select: none; }
-.cmp-diff-only input { width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; }
+.cmp-summary b { color: var(--text); font-weight: 700; }
+.cmp-seg { margin-left: auto; display: inline-flex; padding: 3px; gap: 2px; border-radius: 9px; background: var(--surface-alt); border: 1px solid var(--border); }
+.cmp-seg button { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: none; border-radius: 6px; background: none; color: var(--muted); font: 600 var(--fs-sm) var(--font); cursor: pointer; }
+.cmp-seg button:hover { color: var(--text); }
+.cmp-seg button[aria-pressed="true"] { background: var(--surface); color: var(--primary); box-shadow: var(--shadow-sm), 0 0 0 1px var(--border); }
+.cmp-n { min-width: 18px; padding: 0 5px; border-radius: 10px; background: var(--gray-100); color: var(--text-2); font-size: 10.5px; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums; }
+.cmp-seg button[aria-pressed="true"] .cmp-n { background: var(--primary-lt); color: var(--primary); }
+.cmp-legend { flex: none; margin: -4px 0 8px; font-size: var(--fs-xs); color: var(--muted); }
+.cmp-legend-same { color: var(--gray-400); font-weight: 600; }
+.cmp-link { border: none; background: none; color: var(--primary); font: 600 inherit; cursor: pointer; text-decoration: underline; }
 .cmp-scroll { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
 /* overrides for the main lead table's bare thead/tbody styles */
 table.cmp-table { table-layout: auto; width: max-content; min-width: 100%; font-size: var(--fs-sm); }
@@ -789,8 +806,12 @@ table.cmp-table tbody tr { background: var(--surface); }
 table.cmp-table tbody th { position: sticky; left: 0; z-index: 1; background: var(--surface); color: var(--muted); font-weight: 500; white-space: nowrap; }
 table.cmp-table tbody td { min-width: 220px; max-width: 320px; white-space: normal; overflow: visible; word-break: break-word; color: var(--text); line-height: 1.45; }
 table.cmp-table td.is-current { background: color-mix(in srgb, var(--primary) 4%, var(--surface)); }
-table.cmp-table tr.is-diff th { color: var(--dup-email-text); font-weight: 700; box-shadow: inset 3px 0 0 var(--dup-email-border); }
-table.cmp-table td.differs { background: var(--dup-email-cell); }
+/* Grey = same as the lead being viewed (its column is tinted); dark text = differs. All fields mode greys whole rows that match everywhere. */
+table.cmp-table tbody th { color: var(--text-2); }
+table.cmp-table td.same, table.cmp-table td.same a { color: var(--gray-400); font-weight: 400; }
+table.cmp-table td.same .tag, table.cmp-table td.same [class*="pill"], table.cmp-table td.same [class*="badge"] { opacity: .5; }
+table.cmp-table tr.all-same th, table.cmp-table tr.all-same td, table.cmp-table tr.all-same td a { color: var(--gray-400); font-weight: 400; }
+table.cmp-table tr.all-same td.is-current { background: var(--surface); }
 table.cmp-table tr.cmp-grp th { position: static; padding: 10px 12px 4px; background: var(--surface-alt); color: var(--primary); font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .6px; box-shadow: none; }
 table.cmp-table tr.cmp-grp th span { position: sticky; left: 12px; }
 table.cmp-table a { color: var(--primary); text-decoration: none; font-weight: 600; }
@@ -812,7 +833,7 @@ table.cmp-table td.cmp-none { color: var(--muted); text-align: center; padding: 
     /* duplicates list: match chips drop under the time / name */
     .dup-item { flex-wrap: wrap; }
     .dup-matches { order: 4; width: 100%; justify-content: flex-start; padding-left: 32px; }
-    .cmp-diff-only { margin-left: 0; }
+    .cmp-seg { margin-left: 0; }
 }
 
 /* ═══ RESPONSIVE BREAKPOINTS ═══ Desktop: >=1200px (default grid above) Tablet: 768-1199px Mobile: <768px */
