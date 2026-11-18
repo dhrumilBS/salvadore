@@ -14,7 +14,10 @@
  *
  * Response: {entries, total, counts_by_source, recent_24h, all_total, admin_url}
  * Each entry also gets can_undo (bool).
+ * count_only=1 (the top-bar badge, refreshed after every save): just {recent_24h, all_total} -
+ * no database connection at all, since everything here is read from backups/*.jsonl.
  */
+$MD_LAZY_DB = true;   // only admin_url needs the database - see the end of this file
 require __DIR__ . '/bootstrap.php';
 require __DIR__ . '/lib/find_replace.php';
 require_once __DIR__ . '/lib/activity.php';
@@ -143,8 +146,12 @@ foreach ($res['entries'] as &$e) {
 }
 unset($e);
 
+if (!empty($_GET['count_only'])) {
+    json_out(true, 'ok', ['recent_24h' => $res['recent_24h'] ?? 0, 'all_total' => $res['all_total'] ?? 0]);
+}
+
 $siteUrl = '';
-$r = $conn->query("SELECT option_value FROM wp_options WHERE option_name = 'siteurl' LIMIT 1");
+$r = md_db()->query("SELECT option_value FROM wp_options WHERE option_name = 'siteurl' LIMIT 1");
 if ($r && ($row = $r->fetch_assoc())) {
     $siteUrl = rtrim((string) $row['option_value'], '/');
 }

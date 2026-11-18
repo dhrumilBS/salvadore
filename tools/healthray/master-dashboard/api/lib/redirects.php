@@ -195,6 +195,36 @@ function dw_filter_redirects(array $rows, array $f)
     return $rows;
 }
 
+/**
+ * Every redirect rule with its origin/destination post matches - dw_load_yoast_redirects() +
+ * dw_attach_redirect_matches() - memoised per site under ov_redirect_fingerprint(). The fingerprint
+ * covers everything the matching reads (redirect options, permalink structure, every post's
+ * slug/status/parent/date, the category tree, category assignments, Yoast primary categories), so a
+ * memo can't go stale: any change, here or in WP admin, changes it. One batched query instead of the
+ * option load + ~15 sequential round trips (Botphonic: ~3 s -> ~0.4 s); the Redirects tab's paging,
+ * sorting and searching all reuse it. Filters run on the result (they only read origin/url/type/format).
+ * Write paths (redirect_save.php dry runs, canonical fixes) keep resolving fresh.
+ */
+function dw_redirects_with_matches(mysqli $conn, $dbKey)
+{
+    require_once __DIR__ . '/overview.php';
+    $fingerprint = ov_redirect_fingerprint($conn);
+    $file = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . 'md-redirect-matches-'
+        . preg_replace('/[^a-z0-9_-]+/i', '-', (string) $dbKey) . '.json';
+    if (is_file($file)) {
+        $memo = json_decode((string) @file_get_contents($file), true);
+        if (is_array($memo) && ($memo['fingerprint'] ?? '') === $fingerprint && is_array($memo['rows'] ?? null)) {
+            if (is_string($memo['home'] ?? null)) {
+                dw_home_url($conn, $memo['home']);   // 'home' is in the fingerprint too - saves a round trip
+            }
+            return $memo['rows'];
+        }
+    }
+    $rows = dw_attach_redirect_matches($conn, dw_load_yoast_redirects($conn));
+    @file_put_contents($file, json_encode(['fingerprint' => $fingerprint, 'at' => date('c'), 'home' => dw_home_url($conn), 'rows' => $rows], JSON_INVALID_UTF8_SUBSTITUTE), LOCK_EX);
+    return $rows;
+}
+
 /** Resolve + attach origin_post/dest_post to every row (regex-format rows have no literal path to resolve). */
 function dw_attach_redirect_matches(mysqli $conn, array $rows)
 {

@@ -45,7 +45,7 @@ const nextHistorySignal = latestOnly();
 /* ── badge ── */
 async function refreshHistoryCount() {
     try {
-        const json = await api('activity_list.php', { params: { limit: 1 } });
+        const json = await api('activity_list.php', { params: { limit: 1, count_only: 1 } });   // no DB round trips server-side
         if (json.success) renderHistoryCount(json.recent_24h);
     } catch (err) { /* the badge is cosmetic */ }
 }

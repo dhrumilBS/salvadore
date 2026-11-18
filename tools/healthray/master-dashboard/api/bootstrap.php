@@ -16,6 +16,10 @@ $ACTIVE_DB   = is_string($requestedDb) ? $requestedDb : 'landing';
 // and have conn.php answer a failed connection with JSON (no DB host in the message).
 ini_set('display_errors', '0');
 $DB_JSON_ERRORS = true;
+// An endpoint that can often answer without the database sets $MD_LAZY_DB = true before requiring
+// this file: no connection is opened ($conn = null) until it calls md_db(). Saves the connect
+// (~0.4-1 s to Botphonic) on e.g. the History badge count, which only reads backups/*.jsonl.
+$DB_NO_AUTOCONNECT = !empty($MD_LAZY_DB);
 require __DIR__ . '/../../conn.php';
 require __DIR__ . '/lib/constants.php';
 require __DIR__ . '/lib/query.php';
@@ -28,10 +32,27 @@ require __DIR__ . '/lib/link_editor.php';
 // site. Pin an unknown key to the default instead.
 if (!isset($DATABASES[$ACTIVE_DB])) {
     $ACTIVE_DB = $DEFAULT_DB;
-    $conn = db_connect($ACTIVE_DB);
+    $conn = $DB_NO_AUTOCONNECT ? null : db_connect($ACTIVE_DB);
 }
 
-$conn->set_charset('utf8mb4');
+/** This request's connection to the pinned site - opened on first use when $MD_LAZY_DB is set. */
+function md_db(): mysqli
+{
+    global $conn, $ACTIVE_DB;
+    if (!$conn) {
+        $conn = db_connect($ACTIVE_DB);
+        if ($conn->character_set_name() !== 'utf8mb4') {
+            $conn->set_charset('utf8mb4');
+        }
+    }
+    return $conn;
+}
+
+// Connections already default to utf8mb4 (and a reused persistent link keeps it) - skip the
+// SET NAMES round trip (~0.2 s to Botphonic) unless something else is in effect.
+if ($conn && $conn->character_set_name() !== 'utf8mb4') {
+    $conn->set_charset('utf8mb4');
+}
 
 /** Send a JSON response and stop execution. */
 function json_out($success, $msg, array $extra = [])

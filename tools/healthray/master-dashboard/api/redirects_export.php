@@ -4,9 +4,8 @@ require __DIR__ . '/lib/redirects.php';
 
 $f = dw_parse_redirect_input($_GET);
 
-$rows = dw_load_yoast_redirects($conn);
+$rows = dw_redirects_with_matches($conn, $ACTIVE_DB);   // memoised by fingerprint - see lib/redirects.php
 $rows = dw_filter_redirects($rows, $f);
-$rows = dw_attach_redirect_matches($conn, $rows);
 $rows = dw_apply_redirect_match_filter($rows, $f['match']);
 $rows = dw_sort_redirects($rows, $f['sort'], $f['dir']);
 

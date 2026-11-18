@@ -13,7 +13,7 @@
  */
 require __DIR__ . '/bootstrap.php';
 require __DIR__ . '/lib/redirects.php';
-require __DIR__ . '/lib/overview.php';
+require_once __DIR__ . '/lib/overview.php';
 
 $t0 = microtime(true);
 $part = $_GET['part'] ?? '';

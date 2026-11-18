@@ -187,6 +187,12 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 - **`api()` always resolves to JSON**: a non-JSON body (PHP fatal, 404/500 page) or a GET that takes over
   `API_READ_TIMEOUT_MS` (120 s) resolves to `{success:false, msg}`; POSTs are never timed out. `bootstrap.php` sets
   `display_errors=0` and `$DB_JSON_ERRORS` (conn.php then answers a failed connection with JSON, no host in it).
+- **Speed (Botphonic's DB is ~0.2 s per round trip away)**: `../conn.php` reuses each Apache thread's connection to
+  remote sites (`p:` persistent link, reset on reuse; each request leaves it with `wait_timeout` 300 so idle links
+  close). Redirects list/export read `dw_redirects_with_matches()` - every rule + its post matches, memoised in the
+  temp dir under `ov_redirect_fingerprint()`, so it's never stale; write paths still resolve fresh. Endpoints that can
+  answer from `backups/*.jsonl` set `$MD_LAZY_DB = true` and open the DB via `md_db()` only when needed
+  (`activity_list.php?count_only=1` = the History badge). Count round trips when adding queries.
 - **Modals**: any `.fx-modal-overlay` toggled with `.open` gets focus moved in, Tab trapped and focus restored on
   close (`bindModalFocus()` in common.js) - a new modal just needs that class.
 - **Writes and outbound checks need `require_same_origin()`** (`bootstrap.php`;

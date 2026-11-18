@@ -284,9 +284,13 @@ function dw_fetch_posts_with_content(mysqli $conn, array $f, $limit)
 }
 
 /** Site home URL (wp_options "home"), cached per request. */
-function dw_home_url(mysqli $conn)
+/** $prime: a value the caller already knows to be current (dw_redirects_with_matches() memo) - skips the query. */
+function dw_home_url(mysqli $conn, ?string $prime = null)
 {
     static $home = null;
+    if ($prime !== null) {
+        $home = $prime;
+    }
     if ($home !== null) {
         return $home;
     }

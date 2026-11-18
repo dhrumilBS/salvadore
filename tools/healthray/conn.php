@@ -50,10 +50,23 @@ function db_connect($key = null)
     // the wire protocol for them; a local server gains nothing from it.
     $isLocal = in_array($cfg['host'], ['127.0.0.1', 'localhost', '::1'], true);
     $conn = mysqli_init();
+    // Remote sites reuse this Apache thread's previous connection ("p:" = persistent link). A fresh
+    // connect is ~5 round trips (Botphonic: ~1 s); a reused link is reset with COM_CHANGE_USER
+    // (~0.4 s), which rolls back any open transaction, releases locks and clears session variables,
+    // so nothing carries over from the previous request. Links are per thread (up to ThreadsPerChild
+    // = 25 per site), so each request leaves its link with a 5-minute idle timeout (the reset puts the
+    // server default of 8 h back) - the live server then drops links nobody is using. Set at the end
+    // of the request, not the start, so a long export's quiet gaps between queries can't hit it.
+    $host = $isLocal ? $cfg['host'] : 'p:' . $cfg['host'];
     // PHP 8.1+ mysqli throws instead of returning false - catch it, or a failed connection
     // becomes a fatal error whose stack trace prints the host and user name.
     try {
-        $ok = @$conn->real_connect($cfg['host'], $cfg['user'], $cfg['pass'], $cfg['name'], $cfg['port'], null, $isLocal ? 0 : MYSQLI_CLIENT_COMPRESS);
+        $ok = @$conn->real_connect($host, $cfg['user'], $cfg['pass'], $cfg['name'], $cfg['port'], null, $isLocal ? 0 : MYSQLI_CLIENT_COMPRESS);
+        if ($ok && !$isLocal) {
+            register_shutdown_function(function () use ($conn) {
+                try { $conn->query('SET SESSION wait_timeout = 300'); } catch (Throwable $e) { /* link already closed / gone */ }
+            });
+        }
         $err = $ok ? '' : mysqli_connect_error();
     } catch (mysqli_sql_exception $e) {
         $ok = false;
@@ -99,6 +112,7 @@ function db_resolve_key()
  * Backward-compatible default connection - every page that does
  * `require conn.php` automatically honours the resolved database above.
  * To force a specific DB regardless of request, set $ACTIVE_DB = 'botphonic';
- * before requiring this file.
+ * before requiring this file. An endpoint that may not need the database at all
+ * sets $DB_NO_AUTOCONNECT = true and calls db_connect() itself when it does.
  */
-$conn = db_connect(db_resolve_key());
+$conn = empty($DB_NO_AUTOCONNECT) ? db_connect(db_resolve_key()) : null;
