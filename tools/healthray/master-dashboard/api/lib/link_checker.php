@@ -203,13 +203,16 @@ function dw_resolve_redirect($url, $redirect)
 /** curl errno -> what to call a request that got no HTTP answer (timeout / dns / connect / ssl / error). */
 function dw_curl_error_kind($errno)
 {
+    // Raw libcurl codes, not CURLE_* constants: PHP doesn't define every one (this build has no
+    // CURLE_PEER_FAILED_VERIFICATION), and an undefined constant here is a fatal error that took
+    // down the whole bulk batch - 40 links left "Unchecked" because one of them had no answer.
     switch ((int) $errno) {
-        case CURLE_OPERATION_TIMEDOUT:   return "timeout";
-        case CURLE_COULDNT_RESOLVE_HOST: return "dns";
-        case CURLE_COULDNT_CONNECT:      return "connect";
-        case CURLE_SSL_CONNECT_ERROR:
-        case CURLE_PEER_FAILED_VERIFICATION: return "ssl";
-        default:                         return "error";
+        case 28: return 'timeout';                          // OPERATION_TIMEDOUT
+        case 6:  return 'dns';                              // COULDNT_RESOLVE_HOST
+        case 7:  return 'connect';                          // COULDNT_CONNECT
+        case 35: case 51: case 58: case 59: case 60: case 77: case 83: case 90: case 91:
+            return 'ssl';                                   // SSL_CONNECT_ERROR, PEER_FAILED_VERIFICATION, cert/cipher/CA problems
+        default: return 'error';
     }
 }
 

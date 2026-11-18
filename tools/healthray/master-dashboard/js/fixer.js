@@ -187,9 +187,15 @@ function fxRedirectNote(from, to) {
 function fxStatusBadge(url) {
     if (fxChecking(url)) return '<span class="fx-badge s-pend"><span class="spinner fx-spin"></span> Checking</span>';
     const c = fxResult(url);
-    if (!c) return '<span class="fx-badge s-pend">Unchecked</span>';
+    if (!c) {
+        // A check that failed (server error, network) must not pass for "never checked".
+        const failed = LinkStatus.cache[url]?.error;
+        return failed
+            ? `<span class="fx-badge s-4xx" title="${escapeHtml(failed)} — click Check to retry">Check failed</span>`
+            : '<span class="fx-badge s-pend">Unchecked</span>';
+    }
     const code = c.status_code;
-    if (c.bucket === 'blocked') return '<span class="fx-badge s-4xx" title="This URL isn\'t allowed to be checked (private/internal address)">Blocked</span>';
+    if (c.bucket === 'blocked') return '<span class="fx-badge s-4xx" title="Can\'t be checked: the URL is malformed (e.g. https:/ with one slash) or points to a private address">Blocked</span>';
     if (code === 0) {
         const [label, why] = noResponse(c.error_kind);
         return `<span class="fx-badge s-4xx" title="${escapeHtml(why)}">${label}</span>`;
@@ -481,10 +487,12 @@ async function fxCheckAll({ recheckIfDone = true } = {}) {
     } else {
         const broken = urls.filter(u => fxIsBroken(fxResult(u))).length;
         const redirects = urls.filter(u => fxIsRedirect(fxResult(u))).length;
+        const failed = urls.filter(u => LinkStatus.cache[u]?.error).length;
         const bits = [];
         if (broken) bits.push(pluralize(broken, 'broken link'));
         if (redirects) bits.push(pluralize(redirects, 'redirect'));
-        toast(`Checked ${pluralize(urls.length, 'URL')}${bits.length ? ' — ' + bits.join(', ') : ' — all OK'}`, broken ? 'warn' : 'ok');
+        if (failed) toast(`${pluralize(failed, 'URL')} couldn't be checked (server error) — click Check to retry`, 'err', 6000);
+        else toast(`Checked ${pluralize(urls.length, 'URL')}${bits.length ? ' — ' + bits.join(', ') : ' — all OK'}`, broken ? 'warn' : 'ok');
     }
 
     if (fx.checkAgain) {
