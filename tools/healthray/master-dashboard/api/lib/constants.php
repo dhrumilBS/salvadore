@@ -79,7 +79,10 @@ function dw_writable_statuses()
 function dw_needed_meta_keys()
 {
     return ['_yoast_wpseo_title', '_yoast_wpseo_metadesc', '_yoast_wpseo_primary_category',
-        '_yoast_wpseo_meta-robots-noindex', '_yoast_wpseo_meta-robots-nofollow'];
+        '_yoast_wpseo_meta-robots-noindex', '_yoast_wpseo_meta-robots-nofollow',
+        // Social (Yoast "Social" tab) + featured image, for the OG / X columns and the Social image flag
+        '_yoast_wpseo_opengraph-title', '_yoast_wpseo_opengraph-description', '_yoast_wpseo_opengraph-image',
+        '_yoast_wpseo_twitter-title', '_yoast_wpseo_twitter-description', '_thumbnail_id'];
 }
 
 /**
@@ -125,3 +128,14 @@ function dw_links_row_cap()
  * Keep js/content.js SEO_LENGTH in step.
  */
 const DW_SEO_LENGTH = ['title_max' => 60, 'desc_min' => 70, 'desc_max' => 155];
+
+/**
+ * Content-tab editable Yoast "Social" fields: UI field => postmeta key. Empty = Yoast falls back to the
+ * meta title / description (and, for X, to the OG value). Writes sync wp_yoast_indexable (DW_SEO_META_INDEXABLE_COL).
+ */
+const DW_SOCIAL_META = [
+    'og_title'            => '_yoast_wpseo_opengraph-title',
+    'og_description'      => '_yoast_wpseo_opengraph-description',
+    'twitter_title'       => '_yoast_wpseo_twitter-title',
+    'twitter_description' => '_yoast_wpseo_twitter-description',
+];

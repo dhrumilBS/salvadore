@@ -17,6 +17,11 @@ $allColumns = [
     ['category', 'Category'],
     ['meta_title', 'Meta Title'],
     ['meta_description', 'Meta Description'],
+    ['og_title', 'Facebook / OG Title'],
+    ['og_description', 'Facebook / OG Description'],
+    ['twitter_title', 'X Title'],
+    ['twitter_description', 'X Description'],
+    ['social_image', 'Social Image'],
     ['publish_date', 'Publish Date'],
     ['robots_index', 'Show in Search Results'],
     ['robots_follow', 'Follow Links'],
@@ -40,6 +45,9 @@ function dw_flatten_row(array $row, array $columns)
             $cells[] = ['index' => 'Yes', 'noindex' => 'No'][$row[$key]] ?? 'Default (' . ($row['robots_index_default'] ? 'Yes' : 'No') . ')';
         } elseif ($key === 'robots_follow') {
             $cells[] = $row[$key] === 'nofollow' ? 'No' : 'Yes';
+        } elseif ($key === 'social_image') { // "OG image: <url>" / "Featured image: <url>" / "None"
+            $img = $row[$key] ?? ['source' => 'none', 'url' => ''];
+            $cells[] = $img['source'] === 'none' ? 'None' : (['og' => 'OG image', 'featured' => 'Featured image'][$img['source']] . ': ' . $img['url']);
         } else {
             $cells[] = $row[$key] ?? '';
         }

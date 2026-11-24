@@ -7,7 +7,7 @@ const redirectsState = {
     search: '',
     type: '',        // comma list e.g. "301,410"
     format: '',      // '', 'plain', 'regex'
-    match: '',       // '', 'origin_live', 'dest_missing', 'healthy'
+    match: '',       // '', 'origin_live', 'dest_missing', 'chain', 'dest_noindex', 'healthy'
     sort: 'origin',
     dir: 'ASC',
     page: 1,
@@ -73,6 +73,18 @@ function renderRedirectRow(r) {
                 : r.dest_live
                     ? matchBadge(r.dest_post)
                     : `${matchBadge(r.dest_post)} <span class="warn-flag" title="Destination post isn't published - visitors are sent to a page that doesn't load">⚠️</span>`;
+    // Chain (destination is itself redirected) and noindex destination - see dw_attach_redirect_chains().
+    const chainNote = r.chain_hops > 1
+        ? `<div class="r-chain-note"><span class="badge ls-redirect" title="Visitors pass through ${r.chain_hops} redirects">chain · ${r.chain_hops} hops</span> `
+            + (r.chain_gone ? 'ends in <b>410 Gone</b>' : r.chain_loop ? '<b>loops</b> back on itself' : `ends at ${escapeHtml(r.chain_final.replace(/^https?:\/\/[^/]+/, '') || '/')}`)
+            + '</div>'
+        : '';
+    const noindexNote = r.dest_noindex
+        ? '<div class="r-chain-note"><span class="badge badge-draft" title="The destination is set to noindex - this redirect passes visitors and link equity to a page hidden from search">noindex destination</span></div>'
+        : '';
+    const finalBtn = r.chain_hops > 1 && r.chain_final
+        ? '<button type="button" class="btn small" data-r-act="final" title="Skip the chain: point this rule straight at the URL the chain ends at">Point to final</button>'
+        : '';
 
     const key = redirectKey(r);
     const sel = redirectSelection.has(key);
@@ -83,9 +95,10 @@ function renderRedirectRow(r) {
         <td class="url-col">${destCell}</td>
         <td><span class="badge badge-neutral">${escapeHtml(r.format)}</span></td>
         <td>${originMatch}</td>
-        <td>${destMatch}</td>
+        <td>${destMatch}${chainNote}${noindexNote}</td>
         <td>${LinkStatus.cell(r.origin_url)}</td>
         <td class="r-act-col"><span class="r-row-actions">
+            ${finalBtn}
             <button type="button" class="btn small" data-r-act="edit" title="Edit this rule">Edit</button>
             <button type="button" class="btn small" data-r-act="copy" title="New rule with these values">Duplicate</button>
             <button type="button" class="btn small danger" data-r-act="delete" title="Delete this rule">Delete</button>
@@ -362,6 +375,18 @@ async function bulkRedirectType() {
     if (!res.saved && !res.cancelled) showRedirectFailures(res, ops);
 }
 
+/** Redirect chain A -> B -> C: point A straight at C (same dry run + confirm + save as any edit). */
+async function pointRedirectToFinal(row) {
+    if (!row.chain_final) return;
+    const ops = [{ action: 'edit', from: redirectFrom(row), origin: row.origin, format: row.format, type: row.type, url: row.chain_final }];
+    const res = await runRedirectOps(ops, {
+        title: `Point /${row.origin}/ straight at the end of its chain?`,
+        message: `Visitors currently pass through ${row.chain_hops} redirects. After this they go to ${row.chain_final} in one step.`,
+        okLabel: 'Point to final',
+    });
+    if (!res.saved && !res.cancelled && !res.unchanged) showRedirectFailures(res, ops);
+}
+
 async function bulkRedirectDest() {
     const input = document.getElementById('rBulkDest');
     const url = input.value.trim();
@@ -617,6 +642,7 @@ function bindRedirectEditing() {
         const row = btn && rowOf(btn);
         if (!row) return;
         if (btn.dataset.rAct === 'delete') deleteRedirects([row]);
+        else if (btn.dataset.rAct === 'final') pointRedirectToFinal(row);
         else openRedirectModal(btn.dataset.rAct, row);
     });
 

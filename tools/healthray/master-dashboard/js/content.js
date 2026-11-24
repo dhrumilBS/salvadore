@@ -16,6 +16,13 @@ const ALL_COLUMNS = [
     { key: 'category', label: 'Category' },
     { key: 'meta_title', label: 'Meta Title' },
     { key: 'meta_description', label: 'Meta Description' },
+    // Yoast "Social" tab - empty = Yoast falls back to the meta title / description. Hidden until picked in Columns.
+    { key: 'og_title', label: 'Facebook / OG Title', defaultVisible: false },
+    { key: 'og_description', label: 'Facebook / OG Description', defaultVisible: false },
+    { key: 'twitter_title', label: 'X Title', defaultVisible: false },
+    { key: 'twitter_description', label: 'X Description', defaultVisible: false },
+    // Read-only: which image a social share shows (Yoast OG image, else featured image, else none)
+    { key: 'social_image', label: 'Social Image', defaultVisible: false },
     { key: 'publish_date', label: 'Publish Date' },
     // Yoast "Advanced" (sidebar of the WP editor): noindex / nofollow for this post.
     { key: 'robots_index', label: 'Show in Search' },
@@ -50,6 +57,10 @@ const FIELD_LABELS = {
     publish_date: 'Publish Date',
     meta_title: 'Meta Title',
     meta_description: 'Meta Description',
+    og_title: 'Facebook / OG Title',
+    og_description: 'Facebook / OG Description',
+    twitter_title: 'X Title',
+    twitter_description: 'X Description',
     robots_index: 'Show in search results',
     robots_follow: 'Follow links',
 };
@@ -280,6 +291,23 @@ function seoLengthHtml(field, value) {
     return `<span class="len-count ${over || under ? 'len-warn' : 'len-ok'}" title="${tip}">${n} / ${g.max}</span>`;
 }
 
+/** OG / X field: editable; empty shows what Yoast will use instead (meta title / description) as a placeholder. */
+function socialText(r, field) {
+    const fallback = field.endsWith('_title') ? r.meta_title : r.meta_description;
+    const ph = fallback ? `Empty - Yoast uses: ${String(fallback).slice(0, 80)}` : 'Empty - Yoast uses the meta value';
+    return `<textarea class="cell-input cell-text" rows="2" data-id="${r.id}" data-field="${field}" spellcheck="false" placeholder="${escapeHtml(ph)}">${escapeHtml(r[field] || '')}</textarea>`;
+}
+
+/** Social image source: OG image / featured image (thumbnail link) or a "None" warning. */
+function socialImageCell(img) {
+    if (!img || img.source === 'none' || !img.url) {
+        return '<span class="badge badge-draft" title="No Yoast Social image and no featured image - shares on Facebook / LinkedIn / X show no picture">None</span>';
+    }
+    const label = img.source === 'og' ? 'OG image' : 'Featured';
+    return `<a class="social-img" href="${escapeHtml(img.url)}" target="_blank" rel="noopener" title="${escapeHtml(img.url)}">`
+        + `<img src="${escapeHtml(img.url)}" alt="" loading="lazy"><span class="badge ${img.source === 'og' ? 'badge-publish' : 'badge-neutral'}">${label}</span></a>`;
+}
+
 /** Meta title / description cell: the textarea plus its live length counter. */
 function editableMeta(r, field) {
     return `${editableText(r, field)}<span class="len-slot" data-len-for="${field}">${seoLengthHtml(field, r[field])}</span>`;
@@ -319,6 +347,13 @@ function renderCell(r, key) {
             return `<td class="col-meta_title">${editableMeta(r, 'meta_title')}</td>`;
         case 'meta_description':
             return `<td class="col-meta_description">${editableMeta(r, 'meta_description')}</td>`;
+        case 'og_title':
+        case 'og_description':
+        case 'twitter_title':
+        case 'twitter_description':
+            return `<td class="col-${key}">${socialText(r, key)}</td>`;
+        case 'social_image':
+            return `<td class="col-social_image">${socialImageCell(r.social_image)}</td>`;
         case 'publish_date':
             return `<td class="col-publish_date"><input type="datetime-local" class="cell-input mono" data-id="${r.id}" data-field="publish_date" value="${toDatetimeLocal(r.publish_date)}"></td>`;
         case 'robots_index':

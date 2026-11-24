@@ -47,6 +47,7 @@ dw_csv_write($out, [
     'Origin', 'Origin URL', 'Type', 'Destination', 'Destination URL', 'Format',
     'Origin Post ID', 'Origin Post Title', 'Origin Post Type', 'Origin Post Status',
     'Destination Post ID', 'Destination Post Title', 'Destination Post Type', 'Destination Post Status',
+    'Redirect Hops', 'Chain Ends At', 'Destination Noindex',
 ]);
 
 foreach ($rows as $r) {
@@ -59,6 +60,9 @@ foreach ($rows as $r) {
         $r['origin'], $originUrl, $r['type'], $r['url'], $destUrl, $r['format'],
         $op['id'] ?? '', $op['title'] ?? '', $op['post_type'] ?? '', $op['status'] ?? '',
         $dp['id'] ?? '', $dp['title'] ?? '', $dp['post_type'] ?? '', $dp['status'] ?? '',
+        $r['chain_hops'] ?: '',
+        ($r['chain_hops'] ?? 0) > 1 ? ($r['chain_gone'] ? '410 Gone' : ($r['chain_loop'] ? 'loop' : $r['chain_final'])) : '',
+        !empty($r['dest_noindex']) ? 'yes' : '',
     ]);
 }
 fclose($out);

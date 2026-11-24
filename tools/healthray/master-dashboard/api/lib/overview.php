@@ -227,12 +227,13 @@ function ov_core(mysqli $conn)
  * Fingerprint of everything dw_load_yoast_redirects() + dw_attach_redirect_matches()
  * read: the redirect options + permalink structure, every real-type post's
  * slug/status/parent/date, the category tree (with names and post counts, for
- * category-archive destinations), category assignments and Yoast primary
- * categories. One multi_query batch.
+ * category-archive destinations), category assignments, Yoast primary
+ * categories, and per-post noindex + wpseo_titles (noindex destinations).
+ * One multi_query batch.
  */
 function ov_redirect_fingerprint(mysqli $conn)
 {
-    $opts = ov_sql_list($conn, [DW_OPT_REDIRECT_BASE, DW_OPT_REDIRECT_PLAIN, DW_OPT_REDIRECT_REGEX, 'permalink_structure', 'category_base', 'home']);
+    $opts = ov_sql_list($conn, [DW_OPT_REDIRECT_BASE, DW_OPT_REDIRECT_PLAIN, DW_OPT_REDIRECT_REGEX, 'permalink_structure', 'category_base', 'home', 'wpseo_titles']);
     $excluded = ov_sql_list($conn, dw_excluded_post_types());
     $rows = ov_multi($conn, [
         "SELECT COUNT(*) AS n, COALESCE(GROUP_CONCAT(option_name, ':', MD5(option_value) ORDER BY option_name), '') AS h
@@ -244,11 +245,13 @@ function ov_redirect_fingerprint(mysqli $conn)
         "SELECT COUNT(*) AS n, COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', object_id, term_taxonomy_id))), 0) AS h FROM wp_term_relationships",
         "SELECT COUNT(*) AS n, COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', post_id, meta_value))), 0) AS h
          FROM wp_postmeta WHERE meta_key = '_yoast_wpseo_primary_category'",
+        "SELECT COUNT(*) AS n, COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', post_id, meta_value))), 0) AS h
+         FROM wp_postmeta WHERE meta_key = '" . $conn->real_escape_string(DW_ROBOTS_META['robots_index']) . "'",
     ]);
     $parts = array_map(fn($r) => ($r[0]['n'] ?? '') . '/' . ($r[0]['h'] ?? ''), $rows);
     // Bump when the matching logic changes, so memos computed by older code are dropped
-    // (v2: CPT URL prefixes; v3: category archive destinations).
-    return md5('v3#' . implode('#', $parts));
+    // (v2: CPT URL prefixes; v3: category archive destinations; v4: chains + noindex destinations).
+    return md5('v4#' . implode('#', $parts));
 }
 
 /** Memo file for one site's redirect metrics (system temp dir - not web-reachable, not the DB). */
@@ -293,6 +296,8 @@ function ov_redirects(mysqli $conn, $dbKey, $fresh = false)
         'regex'        => count($rows) - $plain,
         'conflicts'    => count(dw_apply_redirect_match_filter($rows, 'origin_live')),
         'dest_missing' => count(dw_apply_redirect_match_filter($rows, 'dest_missing')),
+        'chains'       => count(dw_apply_redirect_match_filter($rows, 'chain')),
+        'dest_noindex' => count(dw_apply_redirect_match_filter($rows, 'dest_noindex')),
         'healthy'      => count(dw_apply_redirect_match_filter($rows, 'healthy')),
         'gone_410'     => $byType['410'] ?? 0,
         'by_type'      => (object) $byType,

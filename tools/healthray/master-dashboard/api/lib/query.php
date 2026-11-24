@@ -120,7 +120,7 @@ function dw_parse_input(array $input, array $knownPostTypes)
         'search'     => trim((string) ($input['search'] ?? '')),
         // SEO gap filter (Content tab + Overview deep links) - same definitions as api/lib/overview.php
         'seo'        => in_array($input['seo'] ?? '', ['missing_title', 'missing_desc', 'missing_kw', 'dup_title', 'dup_desc',
-            'long_title', 'long_desc', 'short_desc', 'noindex', 'nofollow'], true) ? $input['seo'] : '',
+            'long_title', 'long_desc', 'short_desc', 'no_image', 'noindex', 'nofollow'], true) ? $input['seo'] : '',
         'sort'       => $sortKey,
         'dir'        => $sortDir,
     ];
@@ -215,6 +215,12 @@ function dw_build_where(array $f)
             $params[] = ['type' => 's', 'value' => $t];
         }
         $params[] = ['type' => 's', 'value' => $key];
+    } elseif (($f['seo'] ?? '') === 'no_image') {
+        // Nothing for a social share to show: no Yoast "Social" image and no featured image that still exists.
+        $conditions[] = "NOT EXISTS (SELECT 1 FROM wp_postmeta im WHERE im.post_id = p.ID
+                AND im.meta_key = '_yoast_wpseo_opengraph-image' AND TRIM(im.meta_value) <> '')
+            AND NOT EXISTS (SELECT 1 FROM wp_postmeta tm INNER JOIN wp_posts a ON a.ID = tm.meta_value AND a.post_type = 'attachment'
+                WHERE tm.post_id = p.ID AND tm.meta_key = '_thumbnail_id')";
     } elseif (in_array($f['seo'] ?? '', ['long_title', 'long_desc', 'short_desc'], true)) {
         // Length of the custom value (characters, after trimming). %%variable%% templates are skipped -
         // their real length is only known once Yoast fills them in. Limits: DW_SEO_LENGTH (constants.php).
@@ -506,10 +512,32 @@ function dw_robots_sync_indexable(mysqli $conn, $postId, $metaKey, $metaValue)
     $stmt->execute();
 }
 
+/**
+ * The image a social share of this post uses: ['source' => og|featured|none, 'url' => ...].
+ * Yoast's "Social" image wins; otherwise Yoast falls back to the featured image; a featured image whose
+ * attachment is gone counts as none.
+ */
+function dw_social_image(array $meta, array $thumbUrl)
+{
+    $og = trim((string) ($meta['_yoast_wpseo_opengraph-image'] ?? ''));
+    if ($og !== '') {
+        return ['source' => 'og', 'url' => $og];
+    }
+    $t = (int) ($meta['_thumbnail_id'] ?? 0);
+    if ($t > 0 && isset($thumbUrl[$t])) {
+        return ['source' => 'featured', 'url' => $thumbUrl[$t]];
+    }
+    return ['source' => 'none', 'url' => ''];
+}
+
 /** Yoast meta keys whose value Yoast's front end reads from a wp_yoast_indexable column, not from postmeta. */
 const DW_SEO_META_INDEXABLE_COL = [
-    '_yoast_wpseo_title'    => 'title',
-    '_yoast_wpseo_metadesc' => 'description',
+    '_yoast_wpseo_title'                 => 'title',
+    '_yoast_wpseo_metadesc'              => 'description',
+    '_yoast_wpseo_opengraph-title'       => 'open_graph_title',
+    '_yoast_wpseo_opengraph-description' => 'open_graph_description',
+    '_yoast_wpseo_twitter-title'         => 'twitter_title',
+    '_yoast_wpseo_twitter-description'   => 'twitter_description',
 ];
 
 /**
@@ -851,6 +879,25 @@ function dw_hydrate_batch(mysqli $conn, array $rows)
     }
     $parentPaths = dw_parent_paths($conn, $parentMap);
 
+    // ── featured image URLs (attachment guid), for the Social image column ──
+    $thumbIds = [];
+    foreach ($metaByPost as $m) {
+        $t = (int) ($m['_thumbnail_id'] ?? 0);
+        if ($t > 0) {
+            $thumbIds[$t] = true;
+        }
+    }
+    $thumbUrl = [];
+    if ($thumbIds) {
+        $ph = implode(',', array_fill(0, count($thumbIds), '?'));
+        $stmt = $conn->prepare("SELECT ID, guid FROM wp_posts WHERE ID IN ($ph) AND post_type = 'attachment'");
+        dw_stmt_bind($stmt, array_map(fn($id) => ['type' => 'i', 'value' => $id], array_keys($thumbIds)));
+        $stmt->execute();
+        foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $a) {
+            $thumbUrl[(int) $a['ID']] = (string) $a['guid'];
+        }
+    }
+
     $home = dw_home_url($conn);
     $postPermalinkStructure = dw_permalink_structure($conn);
     $noindexDefaults = dw_yoast_noindex_defaults($conn);
@@ -898,6 +945,9 @@ function dw_hydrate_batch(mysqli $conn, array $rows)
             'robots_index'      => dw_robots_field_value('robots_index', $metaByPost[$id][DW_ROBOTS_META['robots_index']] ?? null),
             'robots_index_default' => empty($noindexDefaults[$row['post_type']]), // true = the type shows in search by default
             'robots_follow'     => dw_robots_field_value('robots_follow', $metaByPost[$id][DW_ROBOTS_META['robots_follow']] ?? null),
+        ] + array_map(fn($key) => (string) ($metaByPost[$id][$key] ?? ''), DW_SOCIAL_META) + [
+            // What a share on Facebook / LinkedIn / X shows: Yoast's OG image, else the featured image, else nothing.
+            'social_image'      => dw_social_image($metaByPost[$id], $thumbUrl),
         ];
     }
     return $out;

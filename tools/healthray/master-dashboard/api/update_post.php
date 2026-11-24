@@ -25,7 +25,7 @@ $stmt = $conn->prepare('SELECT post_title, post_name, post_status, post_date, po
 $stmt->bind_param('i', $id);
 $stmt->execute();
 $beforeRow = $stmt->get_result()->fetch_assoc() ?: null;
-$metaKeyFor = ['meta_title' => '_yoast_wpseo_title', 'meta_description' => '_yoast_wpseo_metadesc'] + DW_ROBOTS_META;
+$metaKeyFor = ['meta_title' => '_yoast_wpseo_title', 'meta_description' => '_yoast_wpseo_metadesc'] + DW_SOCIAL_META + DW_ROBOTS_META;
 $beforeMeta = null;
 if (isset($metaKeyFor[$field])) {
     $stmt = $conn->prepare('SELECT meta_value FROM wp_postmeta WHERE post_id = ? AND meta_key = ? ORDER BY meta_id LIMIT 1 FOR UPDATE');
@@ -107,6 +107,10 @@ switch ($field) {
 
     case 'meta_title':
     case 'meta_description':
+    case 'og_title':
+    case 'og_description':
+    case 'twitter_title':
+    case 'twitter_description':
         $ok = dw_upsert_postmeta($conn, $id, $metaKeyFor[$field], $value);
         if ($ok) {
             dw_seo_meta_sync_indexable($conn, $id, $metaKeyFor[$field], $value);   // the live page reads the indexable
@@ -162,6 +166,7 @@ if ($beforeRow || isset($metaKeyFor[$field])) {
         && ((string) $c['before'] !== (string) $c['after'] || $c['before'] === null)));
     if ($changes) {
         $labels = ['title' => 'title', 'slug' => 'slug', 'status' => 'status', 'publish_date' => 'publish date', 'meta_title' => 'meta title', 'meta_description' => 'meta description',
+            'og_title' => 'Facebook / OG title', 'og_description' => 'Facebook / OG description', 'twitter_title' => 'X title', 'twitter_description' => 'X description',
             'robots_index' => 'show in search results', 'robots_follow' => 'follow links'];
         $title  = $beforeRow ? md_activity_short($beforeRow['post_title'], 50) : '';
         $fromText = md_activity_short($changes[0]['before'] ?? '', 40) ?: '(empty)';

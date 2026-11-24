@@ -9,7 +9,7 @@
     <link rel="icon" href="../../../assets/icons/master-dashboard.svg" type="image/svg+xml">
     <!-- Apply the saved theme before first paint, so a light-theme user never sees a dark flash -->
     <script>try { var t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.setAttribute('data-theme', t); } catch (e) { }</script>
-    <link rel="stylesheet" href="style.css?v=20261124a">
+    <link rel="stylesheet" href="style.css?v=20261124b">
     <link rel="stylesheet" href="css/links.css?v=20261117b">
     <link rel="stylesheet" href="css/menu-order.css?v=20261117b">
     <link rel="stylesheet" href="css/replace.css?v=20261117b">
@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="css/history.css?v=20261117b">
     <link rel="stylesheet" href="css/overview.css?v=20261117b">
     <link rel="stylesheet" href="css/canonical.css?v=20261117b">
+    <link rel="stylesheet" href="css/internal.css?v=20261124b">
     <link rel="stylesheet" href="css/finder.css?v=20261117b">
     <script src="../../../usage/track.js" defer></script>
 </head>
@@ -55,6 +56,7 @@
             <button type="button" class="tab view-tab" data-view="content" data-group="content" role="tab" title="Posts &amp; pages — inline edit, status, export (g c)">Posts &amp; Pages</button>
             <button type="button" class="tab view-tab" data-view="menu" data-group="content" role="tab" title="Menu Order — reorder and edit title, slug, date (g m)">Menu Order</button>
             <button type="button" class="tab view-tab" data-view="fixer" data-group="links" role="tab" title="Links — check, edit, fix, unlink and export every link in post content (g l)">Links</button>
+            <button type="button" class="tab view-tab" data-view="internal" data-group="links" role="tab" title="Internal links — inbound links per post, orphan pages, links to 410 / redirected URLs (g i)">Internal links</button>
             <button type="button" class="tab view-tab" data-view="keywords" data-group="seo" role="tab" title="Focus Keywords — Yoast keyword duplicates (g k)">Focus Keywords</button>
             <button type="button" class="tab view-tab" data-view="canonical" data-group="seo" role="tab" title="Canonicals — canonical URLs that redirect or are gone (g n)">Canonicals</button>
             <button type="button" class="tab view-tab" data-view="redirects" data-group="seo" role="tab" title="Redirects — Yoast 301/410 rules (g r)">Redirects</button>
@@ -269,6 +271,7 @@
                         <option value="long_title">Meta title too long (over 60)</option>
                         <option value="long_desc">Meta description too long (over 155)</option>
                         <option value="short_desc">Meta description too short (under 70)</option>
+                        <option value="no_image">No featured / OG image (shares show no picture)</option>
                         <option value="noindex">Hidden from search (noindex)</option>
                         <option value="nofollow">Links not followed (nofollow)</option>
                     </select>
@@ -615,6 +618,8 @@
                         <option value="">Any status</option>
                         <option value="origin_live">⚠ Origin still live (conflict)</option>
                         <option value="dest_missing">⚠ Destination missing</option>
+                        <option value="chain">⚠ Redirect chain (A → B → C)</option>
+                        <option value="dest_noindex">⚠ Destination is noindex</option>
                         <option value="healthy">Healthy</option>
                     </select>
                     <select id="rFormat" title="Format">
@@ -1115,6 +1120,98 @@
             </div>
         </div>
 
+        <!-- ══ Internal links (js/internal.js, api/internal_links.php) ══ -->
+        <div id="internalView" style="display:none">
+            <!-- Stat cards switch view + filter -->
+            <div class="stats-grid kpi-row" id="il-stats">
+                <button type="button" class="stat-card k-neutral" data-il-mode="posts" data-il-filter="" title="Every published post">
+                    <div class="stat-label"><i class="dot"></i>Published posts</div>
+                    <div class="stat-val" id="il-k-scanned">—</div>
+                    <div class="stat-hint">content, FAQs, Elementor, menus</div>
+                </button>
+                <button type="button" class="stat-card k-danger" data-il-mode="posts" data-il-filter="orphan_idx" title="Indexed posts no other post links to, not in a menu">
+                    <div class="stat-label"><i class="dot"></i>Orphans (indexed)</div>
+                    <div class="stat-val" id="il-k-orphan_idx">—</div>
+                    <div class="stat-hint">add links from related posts</div>
+                </button>
+                <button type="button" class="stat-card k-warn" data-il-mode="posts" data-il-filter="weak" title="Indexed posts with only one other post linking to them">
+                    <div class="stat-label"><i class="dot"></i>Only 1 inbound link</div>
+                    <div class="stat-val" id="il-k-weak">—</div>
+                    <div class="stat-hint">weakly linked</div>
+                </button>
+                <button type="button" class="stat-card k-neutral" data-il-mode="posts" data-il-filter="orphan_all" title="Every orphan, including noindex pages (PPC, thank-you…)">
+                    <div class="stat-label"><i class="dot"></i>All orphans</div>
+                    <div class="stat-val" id="il-k-orphan_all">—</div>
+                    <div class="stat-hint">incl. noindex pages</div>
+                </button>
+                <button type="button" class="stat-card k-danger" data-il-mode="links" title="Internal links to a 410, a redirected URL or a retired post">
+                    <div class="stat-label"><i class="dot"></i>Links to retired URLs</div>
+                    <div class="stat-val" id="il-k-links">—</div>
+                    <div class="stat-hint" id="il-k-links-hint">410 · redirect · retired post</div>
+                </button>
+            </div>
+
+            <div class="card-panel">
+                <div class="panel-label">
+                    <span>Internal links inside content — menus count, PHP templates / footers don't</span>
+                    <div class="stats-row"><span>Matching <b id="il-st-total">0</b></span></div>
+                </div>
+                <p class="il-note" id="il-capped" hidden>Large site: only the first posts were audited (row cap) - counts may be low.</p>
+
+                <div class="toolbar">
+                    <select id="il-mode" title="What to list" aria-label="View">
+                        <option value="posts">Posts: inbound links</option>
+                        <option value="links">Links to retired URLs</option>
+                    </select>
+                    <div class="search-wrap">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
+                        <input type="search" id="il-search" placeholder="Search title, URL, anchor…" autocomplete="off" aria-label="Search">
+                    </div>
+                    <select id="il-filter" title="Which posts" aria-label="Which posts" data-il-posts>
+                        <option value="">All posts</option>
+                        <option value="orphan_idx" selected>Orphans (indexed)</option>
+                        <option value="weak">Only 1 inbound link</option>
+                        <option value="orphan_all">All orphans (incl. noindex)</option>
+                        <option value="menu_only">Linked from a menu only</option>
+                    </select>
+                    <select id="il-type" title="Post type" aria-label="Post type" data-il-posts><option value="">All types</option></select>
+                    <select id="il-sort" title="Sort" aria-label="Sort" data-il-posts>
+                        <option value="inbound_asc">Fewest inbound first</option>
+                        <option value="inbound_desc">Most inbound first</option>
+                        <option value="out_desc">Most links out first</option>
+                    </select>
+                    <select id="il-kind" title="Issue" aria-label="Issue" data-il-links hidden>
+                        <option value="">All issues</option>
+                        <option value="gone">410 Gone</option>
+                        <option value="not_live">Retired post (404)</option>
+                        <option value="redirect">Redirects</option>
+                    </select>
+                    <div class="toolbar-end">
+                        <button type="button" class="btn" id="il-refresh" title="Re-run the audit (r)">↻ Refresh</button>
+                        <a class="btn" id="il-export-posts" href="#" title="Every published post with inbound / outbound counts">⬇ Posts CSV</a>
+                        <a class="btn primary" id="il-export-links" href="#" title="Every link to a retired URL">⬇ Retired links CSV</a>
+                    </div>
+                </div>
+
+                <div class="toolbar il-bulk" id="il-bulk" hidden>
+                    <span><b id="il-sel-count">0</b> selected</span>
+                    <button type="button" class="btn small" id="il-bulk-final" title="Rewrite each link to where its redirect ends">Point to final</button>
+                    <button type="button" class="btn danger small" id="il-bulk-unlink" title="Remove the links, keep the text">Unlink</button>
+                    <button type="button" class="btn small" id="il-bulk-clear">Clear selection</button>
+                </div>
+            </div>
+
+            <div class="card-panel">
+                <div class="table-wrap">
+                    <table id="il-table">
+                        <thead id="il-head"></thead>
+                        <tbody id="il-body"><tr><td colspan="7" class="state-msg"><span class="spinner"></span> Loading…</td></tr></tbody>
+                    </table>
+                </div>
+                <div id="il-pager"></div>
+            </div>
+        </div>
+
     
     </div>
 
@@ -1432,19 +1529,20 @@
     <!-- Bump ?v= on the files you change (or all of them) so LAN browsers don't keep running stale CSS/JS -->
     <script src="js/common.js?v=20261117b"></script>
     <script src="js/ui.js?v=20261117b"></script>
-    <script src="js/content.js?v=20261124a"></script>
+    <script src="js/content.js?v=20261124b"></script>
     <script src="js/fixer.js?v=20261124a"></script>
     <script src="js/history.js?v=20261117c"></script>
-    <script src="js/redirects.js?v=20261117b"></script>
+    <script src="js/redirects.js?v=20261124b"></script>
     <script src="js/bulk.js?v=20261117b"></script>
     <script src="js/menu-order.js?v=20261117b"></script>
     <script src="js/replace.js?v=20261117b"></script>
     <script src="js/keywords.js?v=20261117b"></script>
     <script src="js/canonical.js?v=20261117b"></script>
+    <script src="js/internal.js?v=20261124b"></script>
     <script src="js/finder.js?v=20261117b"></script>
-    <script src="js/overview.js?v=20261117b"></script>
+    <script src="js/overview.js?v=20261124b"></script>
     <script src="js/views.js?v=20261117b"></script>
-    <script src="js/app.js?v=20261117b"></script>
+    <script src="js/app.js?v=20261124b"></script>
 </body>
 
 </html>

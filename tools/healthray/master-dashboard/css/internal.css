@@ -1,0 +1,24 @@
+/* Internal links tab (js/internal.js) - scoped to #internalView. */
+
+#internalView [hidden] { display: none !important; }
+#internalView .stat-card.active { border-color: var(--c); box-shadow: 0 0 0 1px var(--c); background: color-mix(in srgb, var(--c) 7%, var(--surface)); }
+
+#internalView .il-note { margin: 0 0 10px; font-size: 12px; color: var(--warn); }
+#internalView .il-bulk { gap: 8px; align-items: center; }
+
+#internalView .il-post { min-width: 260px; }
+#internalView .il-title { font-weight: 600; color: var(--text); margin-bottom: 2px; }
+#internalView .il-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+#internalView .il-anchor { font-size: 12px; color: var(--text2, var(--text)); margin-bottom: 2px; }
+#internalView .il-reason { margin-top: 4px; font-size: 11.5px; color: var(--text3); word-break: break-word; max-width: 300px; }
+#internalView .il-from { font-size: 12px; line-height: 1.5; min-width: 200px; }
+#internalView .il-from a { color: var(--text); }
+#internalView td.num, #internalView th.num { text-align: right; font-variant-numeric: tabular-nums; }
+#internalView .il-zero { color: var(--danger, #d64545); }
+
+@media (max-width: 760px) {
+    #internalView .il-post { min-width: 200px; }
+    #internalView .toolbar select { flex: 1 1 140px; }
+    #internalView .toolbar-end { margin-left: 0; width: 100%; flex-wrap: wrap; }
+    #internalView .toolbar-end .btn { flex: 1 1 auto; justify-content: center; }
+}

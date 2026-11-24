@@ -361,6 +361,8 @@
             out.push(
                 { label: 'Redirects hiding a live post', n: r.conflicts, sev: 'danger', go: { tab: 'redirects', match: 'origin_live' } },
                 { label: 'Redirects with no destination', n: r.dest_missing, sev: 'warn', go: { tab: 'redirects', match: 'dest_missing' } },
+                { label: 'Redirect chains', n: r.chains || 0, sev: 'warn', go: { tab: 'redirects', match: 'chain' } },
+                { label: 'Redirects to a noindex page', n: r.dest_noindex || 0, sev: 'warn', go: { tab: 'redirects', match: 'dest_noindex' } },
             );
         }
         if (k) {
@@ -500,12 +502,13 @@
         } else out.push(kpiSkel, kpiSkel, kpiSkel);
 
         if (r) {
-            const bad = r.conflicts + r.dest_missing;
+            const chains = (r.chains || 0) + (r.dest_noindex || 0);
+            const bad = r.conflicts + r.dest_missing + chains;
             out.push(kpi({
                 label: 'Redirect issues', value: bad, sev: r.conflicts ? 'danger' : sevOf(bad),
-                sub: bad ? `${fmtNum(r.conflicts)} conflicts · ${fmtNum(r.dest_missing)} no destination` : `${pluralize(r.total, 'rule')}, all healthy`,
-                go: { tab: 'redirects', match: r.conflicts ? 'origin_live' : (r.dest_missing ? 'dest_missing' : '') },
-                title: 'Yoast redirects whose origin is still a live post, or whose destination is not a live post',
+                sub: bad ? `${fmtNum(r.conflicts)} conflicts · ${fmtNum(r.dest_missing)} no destination` + (chains ? ` · ${fmtNum(chains)} chain / noindex` : '') : `${pluralize(r.total, 'rule')}, all healthy`,
+                go: { tab: 'redirects', match: r.conflicts ? 'origin_live' : r.dest_missing ? 'dest_missing' : r.chains ? 'chain' : r.dest_noindex ? 'dest_noindex' : '' },
+                title: 'Yoast redirects whose origin is still a live post, whose destination is not a live post, that chain through another redirect, or that land on a noindex page',
             }));
         } else if (st.redirErr) out.push(kpi({ label: 'Redirects', value: '!', sev: 'danger', sub: 'Could not load - retry', act: 'retry' }));
         else out.push(kpiSkel);
@@ -601,6 +604,17 @@
                 title: 'Plain redirects whose destination path does not match a live post',
             }),
             row({
+                label: 'Redirect chains', value: r.chains || 0, sev: sevOf(r.chains || 0),
+                sub: r.chains ? 'Destination is itself redirected' : 'Every redirect is one hop',
+                go: { tab: 'redirects', match: 'chain' },
+                title: 'A -> B -> C: visitors and crawlers pass through more than one redirect',
+            }),
+            row({
+                label: 'Noindex destination', value: r.dest_noindex || 0, sev: sevOf(r.dest_noindex || 0),
+                sub: r.dest_noindex ? 'Redirect lands on a page hidden from search' : 'No redirect lands on a noindex page',
+                go: { tab: 'redirects', match: 'dest_noindex' },
+            }),
+            row({
                 label: '410 Gone', value: r.gone_410, sev: 'info',
                 sub: 'Retired URLs',
                 go: { tab: 'redirects', type: '410' },
@@ -612,7 +626,7 @@
             }),
         ];
         setCard('ov-card-redirects', card('redirects', 'Redirects', rows.join(''), {
-            issues: r.conflicts + r.dest_missing, level: r.conflicts ? 'danger' : 'warn',
+            issues: r.conflicts + r.dest_missing + (r.chains || 0) + (r.dest_noindex || 0), level: r.conflicts ? 'danger' : 'warn',
             note: r.regex ? 'Regex rules are listed but never matched against posts.' : '',
         }), { busy: st.loading.redirects });
     }

@@ -65,7 +65,7 @@ index.html          one page, views toggled by a two-level nav: #navGroups (Over
                     Tools) above #viewTabs (each .view-tab has data-group; only the active group's tabs show,
                     the row hides for one-tab groups; a group click reopens its last tab, md.nav.last).
                     A new tab = a .view-tab with data-group + a VIEWS entry (hash: #overview #content #links #fixer
-                    #redirects #menu #replace #keywords #canonical; retired #links / #bulk still work via
+                    #redirects #menu #replace #keywords #canonical #internal; retired #links / #bulk still work via
                     VIEW_ALIASES in app.js; Link Fixer keeps its filters after a "?": #fixer?page=2&status=error&find=...,
                     Find & Replace accepts #replace?find=...&replace=... and searches straight away)
 style.css           base + shared components (stat cards, modals, export menu, dialogs, History drawer, nav,
@@ -85,6 +85,8 @@ js/replace.js       Find & Replace tab (IIFE; fr- ids): literal text search over
                     JSON + serialized aware, backups + undo; its "Replace history" opens the shared History
                     drawer filtered to Find & Replace (openHistory({source:'replace'}))
 js/keywords.js      Focus Keywords tab (IIFE; kw- ids, read-only): duplicate Yoast focus keywords, client-side table/CSV
+js/internal.js      Internal links tab (IIFE; il- ids, #internal, g i, read-only + fixes via fixer_write.php): inbound links
+                    per published post / orphans, and internal links to 410 / redirected / retired URLs (api/internal_links.php)
 js/canonical.js     Canonicals tab (IIFE; cn- ids, #canonical, g n): canonical URLs that redirect / are gone / name a
                     retired post; remove or "use redirect target", client-side filters + CSV
 css/*.css           one stylesheet per tab, scoped to its view (css/links.css = the fx- Links tab, loaded
@@ -269,6 +271,17 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
   (Healthray `/%category%/%postname%/`, Botphonic flat). Pages/CPTs use the
   parent/slug chain. Trashed slugs are cleaned of `__trashed` before building URLs.
 - **Regex redirects** are listed but never matched against posts or live-checked.
+- **Redirect chains + noindex destinations** (`dw_attach_redirect_chains()`, lib/redirects.php): every plain 3xx rule gets
+  `chain_hops` / `chain_final` / `chain_gone` / `chain_loop` (same walk as Canonicals, `dw_canonical_follow()`) and
+  `dest_noindex` (live destination post set to noindex, on the post or by its type default). Match filters `chain` and
+  `dest_noindex`; "healthy" excludes both. Row action "Point to final" = an edit through `redirect_save.php`.
+- **Internal links audit** (lib/internal_links.php): sources = post_content + FAQ answers + `_elementor_data` (read-only:
+  Elementor links are counted and flagged but fixed in Elementor, `source: 'elementor'`); targets matched on real
+  permalinks (front page also at `/`). Orphan = 0 inbound, not front page, not in a nav menu. PHP templates / footers /
+  widgets aren't in the DB, so they never count. Retired links are matched on the redirect store, never live-checked.
+- **Social fields** (`DW_SOCIAL_META`, constants.php): Content columns og_title / og_description / twitter_title /
+  twitter_description (hidden by default) save through `update_post.php` and sync `wp_yoast_indexable` like the meta
+  fields. `social_image` (read-only) = Yoast OG image, else featured image, else none; SEO filter `no_image`.
 - **Redirect live check targets the origin URL** (does the rule fire?).
 - Links tab caps one load at `dw_links_row_cap()` (3000 posts) and shows a
   banner when capped.
@@ -310,6 +323,7 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 | `replace_history.php` | GET | Find & Replace journal, newest first |
 | `kw_options.php` / `kw_list.php` | GET | Focus Keywords: types + categories / rows with duplicate flags |
 | `kw_save.php` | POST | Focus Keywords: save staged keyword edits (JSON `changes:[{post_id, focus_keyword, expected}]`, max 500). All-or-nothing; each row's stored `_yoast_wpseo_focuskw` must still equal `expected` (else 409 + per-row `conflict` errors). Empty = meta deleted; syncs `wp_yoast_indexable.primary_focus_keyword`, bumps `post_modified`. Edits in the tab stage inline and save only via the save bar's Review & save (`confirmDialog`) |
+| `internal_links.php` | GET | Internal links tab: `dw_internal_links_audit()` (lib/internal_links.php) - published posts with `inbound` (unique source posts), `inbound_links`, `outbound`, `in_menu`, `indexable`, `sources`; and `links` to retired URLs (`kind` gone / redirect / not_live, `final` = end of the chain). `format=csv&mode=posts|links` |
 | `canonical_report.php` | GET/POST | Canonicals: posts whose canonical hits a 410 / 3xx rule / retired post (`paths=` restricts to those URLs, `unmatched=0`, `format=csv`, `summary=1` counts only) |
 | `canonical_fix.php` | POST | `items` JSON `[{post_id, expected, canonical}]` (max 1000, `''` = remove). All-or-nothing, 409 on conflict |
 | `robots_summary.php` | GET | Overview Search visibility: published posts per site (all `$DATABASES`, own connection each) by indexed / noindex on post / noindex by type default / nofollow, + `by_type` |

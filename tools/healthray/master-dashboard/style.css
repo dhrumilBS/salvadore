@@ -923,6 +923,8 @@ tbody tr:hover .btn-icon,
     color: var(--warn);
     cursor: help;
 }
+/* Redirect chain / noindex-destination note under the Destination match badge */
+.r-chain-note { margin-top: 4px; font-size: 11.5px; color: var(--text3); overflow-wrap: anywhere; }
 
 /* ── States ─────────────────────────────────────────────── */
 .state-msg {
@@ -1931,6 +1933,10 @@ body.drawer-open #drawerScrim { opacity: 1; pointer-events: auto; }
     white-space: normal;
 }
 .cell-input.cell-text:focus { overflow: auto; min-height: 56px; }
+
+/* Content tab Social Image column (js/content.js socialImageCell) */
+.social-img { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.social-img img { width: 48px; height: 28px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); background: var(--surface2, #f3f4f6); }
 
 /* Meta title / description length counter (js/content.js seoLengthHtml) */
 .len-slot { display: block; text-align: right; min-height: 14px; }

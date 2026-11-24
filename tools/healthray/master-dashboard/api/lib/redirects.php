@@ -327,6 +327,66 @@ function dw_attach_redirect_matches(mysqli $conn, array $rows)
     }
     unset($r);
 
+    return dw_attach_redirect_chains($conn, $rows);
+}
+
+/**
+ * Chains and noindex destinations, per plain 3xx rule:
+ *   chain_hops  = rules a visitor passes through (1 = direct; 2+ = the destination is itself redirected)
+ *   chain_final = absolute URL the chain ends at ('' when it ends in a 410 or loops)
+ *   chain_gone / chain_loop = the chain ends in a 410 / comes back to a URL it already passed
+ *   dest_noindex = the destination is a live post set to noindex (on the post, or by its type's default)
+ * Same chain walk as the Canonicals tab (dw_canonical_follow(), max 5 hops, plain rules only).
+ */
+function dw_attach_redirect_chains(mysqli $conn, array $rows)
+{
+    require_once __DIR__ . '/canonical.php';
+    $store = dw_redirect_load($conn);
+    $home  = dw_home_url($conn);
+
+    // Noindex destinations: explicit per-post noindex ("1"), or the type default unless the post forces index ("2").
+    $destIds = [];
+    foreach ($rows as $r) {
+        if ($r['dest_live'] && ($r['dest_post']['post_type'] ?? '') !== 'category') {
+            $destIds[(int) $r['dest_post']['id']] = $r['dest_post']['post_type'];
+        }
+    }
+    $robots = [];
+    if ($destIds) {
+        $ph = implode(',', array_fill(0, count($destIds), '?'));
+        $stmt = $conn->prepare("SELECT post_id, MAX(meta_value) AS v FROM wp_postmeta WHERE post_id IN ($ph) AND meta_key = ? GROUP BY post_id");
+        $params = array_map(fn($id) => ['type' => 'i', 'value' => $id], array_keys($destIds));
+        $params[] = ['type' => 's', 'value' => DW_ROBOTS_META['robots_index']];
+        dw_stmt_bind($stmt, $params);
+        $stmt->execute();
+        foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $m) {
+            $robots[(int) $m['post_id']] = trim((string) $m['v']);
+        }
+    }
+    $typeNoindex = dw_yoast_noindex_defaults($conn);
+
+    foreach ($rows as &$r) {
+        $r['chain_hops'] = 0;
+        $r['chain_final'] = '';
+        $r['chain_gone'] = false;
+        $r['chain_loop'] = false;
+        $r['dest_noindex'] = false;
+        if ($r['format'] !== 'plain' || $r['url'] === '' || dw_redirect_type_is_gone($r['type'])) {
+            continue;
+        }
+        $f = dw_canonical_follow($store, ['origin' => $r['origin'], 'type' => $r['type'], 'url' => $r['url']], $home);
+        $r['chain_hops'] = count($f['hops']);
+        $r['chain_gone'] = $f['gone'];
+        $r['chain_loop'] = $f['final'] === null && !$f['gone'];
+        $r['chain_final'] = $f['final'] === null ? '' : ($f['external'] ? $f['final'] : dw_canonical_abs($home, $f['final']));
+
+        // Category archives carry a term id, which can equal some post's id - never look them up as posts.
+        if ($r['dest_live'] && ($r['dest_post']['post_type'] ?? '') !== 'category' && isset($destIds[(int) $r['dest_post']['id']])) {
+            $v = $robots[(int) $r['dest_post']['id']] ?? '';
+            $r['dest_noindex'] = $v === '1' || ($v !== '2' && !empty($typeNoindex[$r['dest_post']['post_type']]));
+        }
+    }
+    unset($r);
     return $rows;
 }
 
@@ -349,8 +409,17 @@ function dw_apply_redirect_match_filter(array $rows, $matchFilter)
     if ($matchFilter === 'dest_missing') {
         return array_values(array_filter($rows, fn($r) => $r['url'] !== '' && !$r['dest_live']));
     }
+    // A visitor passes through 2+ rules (or the chain ends in a 410 / loops).
+    if ($matchFilter === 'chain') {
+        return array_values(array_filter($rows, fn($r) => ($r['chain_hops'] ?? 0) > 1));
+    }
+    // Sends visitors (and link equity) to a page hidden from search.
+    if ($matchFilter === 'dest_noindex') {
+        return array_values(array_filter($rows, fn($r) => !empty($r['dest_noindex'])));
+    }
     if ($matchFilter === 'healthy') {
-        return array_values(array_filter($rows, fn($r) => !$r['origin_live'] && ($r['url'] === '' || $r['dest_live'])));
+        return array_values(array_filter($rows, fn($r) => !$r['origin_live'] && ($r['url'] === '' || $r['dest_live'])
+            && ($r['chain_hops'] ?? 0) <= 1 && empty($r['dest_noindex'])));
     }
     return $rows;
 }
@@ -366,7 +435,7 @@ function dw_parse_redirect_input(array $input)
     }
 
     $match = trim((string) ($input['match'] ?? ''));
-    if (!in_array($match, ['origin_live', 'dest_missing', 'healthy'], true)) {
+    if (!in_array($match, ['origin_live', 'dest_missing', 'chain', 'dest_noindex', 'healthy'], true)) {
         $match = '';
     }
 
