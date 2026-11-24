@@ -226,27 +226,29 @@ function ov_core(mysqli $conn)
 /**
  * Fingerprint of everything dw_load_yoast_redirects() + dw_attach_redirect_matches()
  * read: the redirect options + permalink structure, every real-type post's
- * slug/status/parent/date, the category tree, category assignments and Yoast
- * primary categories. One multi_query batch.
+ * slug/status/parent/date, the category tree (with names and post counts, for
+ * category-archive destinations), category assignments and Yoast primary
+ * categories. One multi_query batch.
  */
 function ov_redirect_fingerprint(mysqli $conn)
 {
-    $opts = ov_sql_list($conn, [DW_OPT_REDIRECT_BASE, DW_OPT_REDIRECT_PLAIN, DW_OPT_REDIRECT_REGEX, 'permalink_structure', 'home']);
+    $opts = ov_sql_list($conn, [DW_OPT_REDIRECT_BASE, DW_OPT_REDIRECT_PLAIN, DW_OPT_REDIRECT_REGEX, 'permalink_structure', 'category_base', 'home']);
     $excluded = ov_sql_list($conn, dw_excluded_post_types());
     $rows = ov_multi($conn, [
         "SELECT COUNT(*) AS n, COALESCE(GROUP_CONCAT(option_name, ':', MD5(option_value) ORDER BY option_name), '') AS h
          FROM wp_options WHERE option_name IN ($opts)",
         "SELECT COUNT(*) AS n, COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', ID, post_type, post_status, post_name, post_parent, post_date))), 0) AS h
          FROM wp_posts WHERE post_type NOT IN ($excluded)",
-        "SELECT COUNT(*) AS n, COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', tt.term_id, tt.term_taxonomy_id, tt.parent, t.slug))), 0) AS h
+        "SELECT COUNT(*) AS n, COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', tt.term_id, tt.term_taxonomy_id, tt.parent, t.slug, t.name, tt.count))), 0) AS h
          FROM wp_term_taxonomy tt JOIN wp_terms t ON t.term_id = tt.term_id WHERE tt.taxonomy = 'category'",
         "SELECT COUNT(*) AS n, COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', object_id, term_taxonomy_id))), 0) AS h FROM wp_term_relationships",
         "SELECT COUNT(*) AS n, COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', post_id, meta_value))), 0) AS h
          FROM wp_postmeta WHERE meta_key = '_yoast_wpseo_primary_category'",
     ]);
     $parts = array_map(fn($r) => ($r[0]['n'] ?? '') . '/' . ($r[0]['h'] ?? ''), $rows);
-    // Bump when the matching logic changes, so memos computed by older code are dropped (v2: CPT URL prefixes).
-    return md5('v2#' . implode('#', $parts));
+    // Bump when the matching logic changes, so memos computed by older code are dropped
+    // (v2: CPT URL prefixes; v3: category archive destinations).
+    return md5('v3#' . implode('#', $parts));
 }
 
 /** Memo file for one site's redirect metrics (system temp dir - not web-reachable, not the DB). */

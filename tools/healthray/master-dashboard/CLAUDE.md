@@ -211,6 +211,10 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 - **"Live" means published/private/scheduled** (`dw_live_statuses()`): a
   redirect origin matching a *trashed* post is a retired URL, not a conflict;
   a destination matching only a trashed post counts as missing.
+- **Redirect destinations can be category archives** (`dw_resolve_paths_to_categories()`, lib/redirects.php):
+  paths no post claims are matched as `<permalink front>/<category_base or "category">/<category path>`; a
+  category counts as live only while it has posts (an empty archive 404s). Badge `post_type` = `category`.
+  Change the matching -> bump the version prefix in `ov_redirect_fingerprint()` so old memos are dropped.
 - **`api/_test_store.php` is CLI-only** (404 over the web).
 
 - **Nothing auto-saves.** Content edits stage locally (`contentDirty`), show an

@@ -177,6 +177,73 @@ function dw_resolve_paths_to_posts(mysqli $conn, array $paths)
     return $result;
 }
 
+/**
+ * Resolve site-relative paths to category archives. WordPress builds a category URL from the
+ * permalink structure's static front ("blog/" for "/blog/%postname%/"), the category base
+ * (category_base option, default "category") and the category's full parent/child slug path.
+ * Returns path => ['id','title','post_type' => 'category','status'] or null. WordPress answers an
+ * archive with no published posts with a 404, so an empty category gets status "empty" (not live).
+ */
+function dw_resolve_paths_to_categories(mysqli $conn, array $paths)
+{
+    $result = array_fill_keys($paths, null);
+    if (!$paths) {
+        return $result;
+    }
+
+    $structure = dw_permalink_structure($conn);
+    $pos = strpos($structure, '%');
+    $front = trim($pos === false ? '' : substr($structure, 0, $pos), '/');
+    $res = $conn->query("SELECT option_value FROM wp_options WHERE option_name = 'category_base' LIMIT 1");
+    $row = $res ? $res->fetch_assoc() : null;
+    $base = trim((string) ($row['option_value'] ?? ''), '/');
+    $prefix = trim(($front !== '' ? $front . '/' : '') . ($base !== '' ? $base : 'category'), '/') . '/';
+
+    $bySlug = [];
+    foreach ($paths as $path) {
+        if (stripos($path, $prefix) !== 0) {
+            continue;
+        }
+        $catPath = trim(substr($path, strlen($prefix)), '/');
+        if ($catPath === '') {
+            continue;
+        }
+        $segments = explode('/', $catPath);
+        $bySlug[end($segments)][] = ['path' => $path, 'cat' => $catPath];
+    }
+    if (!$bySlug) {
+        return $result;
+    }
+
+    $slugs = array_keys($bySlug);
+    $ph = implode(',', array_fill(0, count($slugs), '?'));
+    $stmt = $conn->prepare("SELECT t.term_id, t.slug, t.name, tt.count
+        FROM wp_terms t INNER JOIN wp_term_taxonomy tt ON tt.term_id = t.term_id AND tt.taxonomy = 'category'
+        WHERE t.slug IN ($ph)");
+    dw_stmt_bind($stmt, array_map(fn($s) => ['type' => 's', 'value' => $s], $slugs));
+    $stmt->execute();
+    $terms = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    if (!$terms) {
+        return $result;
+    }
+
+    $fullPaths = dw_category_paths($conn, array_map('intval', array_column($terms, 'term_id')));
+    foreach ($terms as $t) {
+        $full = $fullPaths[(int) $t['term_id']] ?? '';
+        foreach ($bySlug[$t['slug']] ?? [] as $want) {
+            if ($result[$want['path']] === null && strcasecmp($full, $want['cat']) === 0) {
+                $result[$want['path']] = [
+                    'id'        => (int) $t['term_id'],
+                    'title'     => $t['name'],
+                    'post_type' => 'category',
+                    'status'    => (int) $t['count'] > 0 ? 'publish' : 'empty',
+                ];
+            }
+        }
+    }
+    return $result;
+}
+
 /** Apply the shared search/type/format/match filters used by both the list and export endpoints. */
 function dw_filter_redirects(array $rows, array $f)
 {
@@ -241,6 +308,14 @@ function dw_attach_redirect_matches(mysqli $conn, array $rows)
         }
     }
     $matches = dw_resolve_paths_to_posts($conn, $paths);
+    // Paths no post claimed may be category archives ("/blog/category/hospital-operations/") -
+    // a common, valid 301 destination that would otherwise be flagged "destination missing".
+    $unresolved = array_keys(array_filter($matches, fn($m) => $m === null));
+    foreach (dw_resolve_paths_to_categories($conn, $unresolved) as $path => $term) {
+        if ($term !== null) {
+            $matches[$path] = $term;
+        }
+    }
 
     foreach ($rows as &$r) {
         $r['origin_post'] = $r['format'] === 'plain' ? ($matches[$r['origin']] ?? null) : null;
