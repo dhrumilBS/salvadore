@@ -34,7 +34,7 @@ const contentState = {
     mod_from: '',
     mod_to: '',
     search: '',
-    seo: '',      // SEO gap filter: missing_title | missing_desc | missing_kw | dup_title
+    seo: '',      // SEO gap filter: missing_title | missing_desc | missing_kw | dup_title | dup_desc | long_title | long_desc | short_desc | noindex | nofollow
     category: '', // category term_id - Post tab only (cleared on any other type)
     sort: 'post_date',
     dir: 'DESC',
@@ -265,6 +265,26 @@ function editableText(r, field) {
     return `<textarea class="cell-input cell-text" rows="2" data-id="${r.id}" data-field="${field}" spellcheck="false">${escapeHtml(r[field])}</textarea>`;
 }
 
+/* Meta length guide - keep in step with DW_SEO_LENGTH (api/lib/constants.php), which drives the length filters. */
+const SEO_LENGTH = { meta_title: { max: 60 }, meta_description: { min: 70, max: 155 } };
+
+/** "52 / 60" under a meta field: green when inside the guide, amber when outside it, hidden when empty. */
+function seoLengthHtml(field, value) {
+    const g = SEO_LENGTH[field];
+    const v = String(value ?? '').trim();
+    if (!g || !v) return '';
+    if (v.includes('%%')) return '<span class="len-count len-tpl" title="Uses Yoast variables - the final length is known only once Yoast fills them in">template</span>';
+    const n = [...v].length;
+    const over = n > g.max, under = g.min && n < g.min;
+    const tip = over ? `Over ${g.max} characters - Google will likely cut it off` : under ? `Under ${g.min} characters - room to say more` : 'Good length';
+    return `<span class="len-count ${over || under ? 'len-warn' : 'len-ok'}" title="${tip}">${n} / ${g.max}</span>`;
+}
+
+/** Meta title / description cell: the textarea plus its live length counter. */
+function editableMeta(r, field) {
+    return `${editableText(r, field)}<span class="len-slot" data-len-for="${field}">${seoLengthHtml(field, r[field])}</span>`;
+}
+
 /** Path only (host is the same on every row) - full URL on hover, copy + open kept. */
 function permalinkCell(url) {
     if (!url) return '<span class="url-empty">—</span>';
@@ -296,9 +316,9 @@ function renderCell(r, key) {
         case 'category':
             return `<td class="col-category"><span class="truncate" title="${escapeHtml(decodeEntities(r.category))}">${escapeHtml(decodeEntities(r.category)) || '—'}</span></td>`;
         case 'meta_title':
-            return `<td class="col-meta_title">${editableText(r, 'meta_title')}</td>`;
+            return `<td class="col-meta_title">${editableMeta(r, 'meta_title')}</td>`;
         case 'meta_description':
-            return `<td class="col-meta_description">${editableText(r, 'meta_description')}</td>`;
+            return `<td class="col-meta_description">${editableMeta(r, 'meta_description')}</td>`;
         case 'publish_date':
             return `<td class="col-publish_date"><input type="datetime-local" class="cell-input mono" data-id="${r.id}" data-field="publish_date" value="${toDatetimeLocal(r.publish_date)}"></td>`;
         case 'robots_index':
@@ -641,6 +661,13 @@ function bindContentTab() {
     });
     tbody.addEventListener('keydown', e => {
         if (e.key === 'Enter' && e.target.classList.contains('cell-text')) { e.preventDefault(); e.target.blur(); }
+    });
+    // Live length counter while typing a meta title / description
+    tbody.addEventListener('input', e => {
+        const input = e.target;
+        if (!SEO_LENGTH[input.dataset?.field]) return;
+        const slot = input.parentElement.querySelector(`.len-slot[data-len-for="${input.dataset.field}"]`);
+        if (slot) slot.innerHTML = seoLengthHtml(input.dataset.field, input.value);
     });
     tbody.addEventListener('click', e => {
         const btn = e.target.closest('.btn-save-row');

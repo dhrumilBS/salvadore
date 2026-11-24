@@ -1932,6 +1932,13 @@ body.drawer-open #drawerScrim { opacity: 1; pointer-events: auto; }
 }
 .cell-input.cell-text:focus { overflow: auto; min-height: 56px; }
 
+/* Meta title / description length counter (js/content.js seoLengthHtml) */
+.len-slot { display: block; text-align: right; min-height: 14px; }
+.len-count { display: inline-block; margin-top: 2px; padding: 0 6px; border-radius: 8px; font-size: 11px; line-height: 16px; font-variant-numeric: tabular-nums; }
+.len-count.len-ok { color: var(--ok); background: var(--ok-dim); }
+.len-count.len-warn { color: var(--warn); background: var(--warn-dim); font-weight: 600; }
+.len-count.len-tpl { color: var(--muted, #888); }
+
 /* ── Bulk URL Update: 1-2-3 guide ── */
 .bulk-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0 0 12px; padding: 0; list-style: none; counter-reset: bstep; }
 .bulk-steps li { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px 10px 44px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface2); counter-increment: bstep; }

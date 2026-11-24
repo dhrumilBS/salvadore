@@ -826,6 +826,68 @@ async function fxWrite(op, pairs, btn = null) {
     return done;
 }
 
+/**
+ * New-tab rule: internal links -> same tab, external -> new tab (+ rel noopener).
+ * scope 'page' = the posts listed on this page; 'site' = every post in the current types/status/dates.
+ * Dry run first, confirmDialog with the per-post counts, then the write; the list reloads after.
+ */
+async function fxRunTargetRule(scope) {
+    const btn = fx$('fx-target-btn');
+    const body = { scope };
+    if (scope === 'page') {
+        const ids = [...new Set(fx.links.map(l => l.post_id))];
+        if (!ids.length) { toast('No links on this page', 'warn'); return; }
+        body.post_ids = JSON.stringify(ids);
+    } else {
+        Object.assign(body, { post_type: fx.postTypes.join(','), status: fx.status, ...fx.dates });
+    }
+    const call = async extra => {
+        try {
+            return await api('link_target.php', { method: 'POST', body: new URLSearchParams({ ...body, ...extra }) });
+        } catch (err) {
+            console.error(err);
+            return { success: false, msg: 'Network error' };
+        }
+    };
+
+    const idle = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner fx-spin"></span> Checking…';
+    const preview = await call({ dry_run: 1 });
+    btn.disabled = false;
+    btn.innerHTML = idle;
+    if (!preview.success) { toast(preview.msg || 'Could not check links', 'err'); return; }
+    if (!preview.posts) {
+        toast(`All ${pluralize(preview.checked, 'post')} already follow the rule`, 'ok');
+        return;
+    }
+
+    const summary = (internal, external) => [
+        internal && `${pluralize(internal, 'internal link')} → same tab`,
+        external && `${pluralize(external, 'external link')} → new tab`,
+    ].filter(Boolean).join(' · ');
+    const ok = await confirmDialog({
+        title: `Apply the new-tab rule to ${pluralize(preview.posts, 'post')}?`,
+        message: `${summary(preview.internal, preview.external)}. Checked ${pluralize(preview.checked, 'post')}`
+            + `${preview.capped ? ' (limit reached - run it again for the rest)' : ''}. Each post can be undone from History.`,
+        changes: preview.items.map(i => ({ post: `#${i.post_id} · ${i.title || '(no title)'}`, to: summary(i.internal, i.external) })),
+        okLabel: `Update ${pluralize(preview.posts, 'post')}`,
+    });
+    if (!ok) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner fx-spin"></span> Saving…';
+    const res = await call({});
+    btn.disabled = false;
+    btn.innerHTML = idle;
+    if (!res.success) { toast(res.msg || 'Update failed', 'err'); return; }
+    if (res.errors?.length) alertDialog(`Updated ${pluralize(res.posts, 'post')} - some were not changed`, 'These were skipped:', res.errors);
+    else toast(`New-tab rule applied to ${pluralize(res.posts, 'post')}. Purge the page cache to see it live.`, 'ok');
+    refreshHistoryCount();
+    onLinksChanged();
+    loadFixer();
+}
+
 /** Every row of this exact field+href now points at the new URL. */
 function fxApplyReplace(link, newUrl, newHref) {
     const key = fxKey(link);
@@ -1422,6 +1484,16 @@ function bindFixerTab() {
         });
         exportMenu.classList.remove('open');
         toast(live ? 'Live-checked export started — this can take a while for large sites' : 'Export started', live ? 'warn' : 'ok');
+    }));
+
+    // New-tab rule (link_target.php): preview, confirm, apply
+    const targetMenu = fx$('fx-target-menu');
+    fx$('fx-target-btn').addEventListener('click', e => { e.stopPropagation(); exportMenu.classList.remove('open'); targetMenu.classList.toggle('open'); });
+    document.addEventListener('click', () => targetMenu.classList.remove('open'));
+    targetMenu.addEventListener('click', e => e.stopPropagation());
+    targetMenu.querySelectorAll('.export-item').forEach(item => item.addEventListener('click', () => {
+        targetMenu.classList.remove('open');
+        fxRunTargetRule(item.dataset.scope);
     }));
 
     // Edit modal

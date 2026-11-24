@@ -9,7 +9,7 @@
     <link rel="icon" href="../../../assets/icons/master-dashboard.svg" type="image/svg+xml">
     <!-- Apply the saved theme before first paint, so a light-theme user never sees a dark flash -->
     <script>try { var t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.setAttribute('data-theme', t); } catch (e) { }</script>
-    <link rel="stylesheet" href="style.css?v=20261117b">
+    <link rel="stylesheet" href="style.css?v=20261124a">
     <link rel="stylesheet" href="css/links.css?v=20261117b">
     <link rel="stylesheet" href="css/menu-order.css?v=20261117b">
     <link rel="stylesheet" href="css/replace.css?v=20261117b">
@@ -265,6 +265,10 @@
                         <option value="missing_desc">Missing meta description</option>
                         <option value="missing_kw">Missing focus keyword</option>
                         <option value="dup_title">Duplicate meta title</option>
+                        <option value="dup_desc">Duplicate meta description</option>
+                        <option value="long_title">Meta title too long (over 60)</option>
+                        <option value="long_desc">Meta description too long (over 155)</option>
+                        <option value="short_desc">Meta description too short (under 70)</option>
                         <option value="noindex">Hidden from search (noindex)</option>
                         <option value="nofollow">Links not followed (nofollow)</option>
                     </select>
@@ -438,6 +442,17 @@
                             <div class="export-menu-footer">
                                 <label class="col-check"><input type="checkbox" id="fx-export-live"> Include live HTTP status <span class="col-note">(slow)</span></label>
                             </div>
+                        </div>
+                    </div>
+                    <div class="export-wrap">
+                        <button type="button" class="btn" id="fx-target-btn" title="Internal links open in the same tab, external links in a new tab (target=&quot;_blank&quot; + rel=&quot;noopener&quot;)">
+                            New-tab rule ▾
+                        </button>
+                        <div class="export-menu" id="fx-target-menu">
+                            <div class="export-menu-header">Internal → same tab · External → new tab</div>
+                            <div class="export-item" data-scope="page">Posts on this page <span class="ei-badge">page</span></div>
+                            <div class="export-item" data-scope="site">All posts in these types, status and dates <span class="ei-badge warn">site</span></div>
+                            <div class="export-menu-footer"><span class="col-note">Shows what will change before saving. Post content + FAQ answers; Elementor layouts aren't touched. Undo per post in History.</span></div>
                         </div>
                     </div>
                     <a class="fx-site-url" id="fx-site-url" target="_blank" rel="noopener" title="Open the site"></a>
@@ -1417,8 +1432,8 @@
     <!-- Bump ?v= on the files you change (or all of them) so LAN browsers don't keep running stale CSS/JS -->
     <script src="js/common.js?v=20261117b"></script>
     <script src="js/ui.js?v=20261117b"></script>
-    <script src="js/content.js?v=20261117b"></script>
-    <script src="js/fixer.js?v=20261118a"></script>
+    <script src="js/content.js?v=20261124a"></script>
+    <script src="js/fixer.js?v=20261124a"></script>
     <script src="js/history.js?v=20261117c"></script>
     <script src="js/redirects.js?v=20261117b"></script>
     <script src="js/bulk.js?v=20261117b"></script>

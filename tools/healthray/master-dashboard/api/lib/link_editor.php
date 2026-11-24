@@ -295,6 +295,142 @@ function dw_fx_apply(mysqli $conn, $op, array $item, $dbKey)
     return $result;
 }
 
+/* ══════════════════════════ New-tab rule (internal same tab, external new tab) ══════════════════════════ */
+
+/** Value of one attribute in an opening tag (quoted or bare), or null when absent. */
+function dw_fx_tag_attr($tag, $name)
+{
+    return preg_match('/\s' . $name . '\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'>]+))/i', $tag, $m)
+        ? html_entity_decode(($m[1] ?? '') . ($m[2] ?? '') . ($m[3] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8')
+        : null;
+}
+
+/** Drop every occurrence of an attribute from an opening tag. */
+function dw_fx_tag_remove_attr($tag, $name)
+{
+    return preg_replace('/\s' . $name . '\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'>]+)/i', '', $tag);
+}
+
+/** Set an attribute (replacing any existing one), written just before the tag's closing ">". */
+function dw_fx_tag_set_attr($tag, $name, $value)
+{
+    $tag = dw_fx_tag_remove_attr($tag, $name);
+    $attr = ' ' . $name . '="' . htmlspecialchars($value, ENT_QUOTES | ENT_HTML5, 'UTF-8') . '"';
+    return preg_replace('/\s*(\/?)>$/', $attr . '$1>', $tag, 1);
+}
+
+/**
+ * Apply the link-target rule to every <a href> in one HTML blob:
+ * - internal links (relative, or this site's host with or without www) lose target="_blank"
+ *   and the noopener / noreferrer that only existed for it;
+ * - external http(s) links get target="_blank" and rel "noopener" (other rel tokens, e.g. nofollow, kept).
+ * Anchors (#), mailto:, tel:, javascript: and other schemes are left alone.
+ * Returns [newHtml, internalFixed, externalFixed].
+ */
+function dw_fx_target_rule($html, $siteHost)
+{
+    $internal = 0;
+    $external = 0;
+    $out = preg_replace_callback(DW_FX_A_OPEN, function ($m) use ($siteHost, &$internal, &$external) {
+        $tag  = $m[0];
+        $href = trim(html_entity_decode($m[2], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        if ($href === '' || $href[0] === '#') {
+            return $tag;
+        }
+        if (str_starts_with($href, '//')) {
+            $href = 'https:' . $href;
+        }
+        $isAbsolute = (bool) preg_match('/^[a-z][a-z0-9+.-]*:/i', $href);
+        if ($isAbsolute && !preg_match('#^https?://#i', $href)) {
+            return $tag; // mailto:, tel:, javascript: ...
+        }
+        $isInternal = !$isAbsolute || ($siteHost !== '' && dw_fx_bare_host($href) === $siteHost);
+
+        $target = strtolower(trim((string) dw_fx_tag_attr($tag, 'target')));
+        $rel    = preg_split('/\s+/', strtolower(trim((string) dw_fx_tag_attr($tag, 'rel'))), -1, PREG_SPLIT_NO_EMPTY);
+
+        if ($isInternal) {
+            if ($target !== '_blank') {
+                return $tag;
+            }
+            $tag = dw_fx_tag_remove_attr($tag, 'target');
+            $rel = array_values(array_diff($rel, ['noopener', 'noreferrer']));
+            $tag = $rel ? dw_fx_tag_set_attr($tag, 'rel', implode(' ', $rel)) : dw_fx_tag_remove_attr($tag, 'rel');
+            $internal++;
+            return $tag;
+        }
+
+        if ($target === '_blank' && in_array('noopener', $rel, true)) {
+            return $tag;
+        }
+        $tag = dw_fx_tag_set_attr($tag, 'target', '_blank');
+        if (!in_array('noopener', $rel, true)) {
+            $rel[] = 'noopener';
+        }
+        $tag = dw_fx_tag_set_attr($tag, 'rel', implode(' ', $rel));
+        $external++;
+        return $tag;
+    }, (string) $html);
+    return [$out ?? (string) $html, $internal, $external];
+}
+
+/**
+ * Preview or apply the new-tab rule to one field (post_content or one FAQ answer), atomically, journaled
+ * like every other Link Fixer write (undo from History). Returns
+ * ['status' => preview|updated|no_change|error, 'internal' => n, 'external' => n, 'journal_id'?].
+ */
+function dw_fx_apply_target_rule(mysqli $conn, $postId, $source, $metaKey, $siteHost, $dbKey, $dryRun)
+{
+    $source  = $source === 'faq' ? 'faq' : 'content';
+    $metaKey = $source === 'faq' ? (string) $metaKey : null;
+    if ($source === 'faq' && !dw_fx_is_faq_key($metaKey)) {
+        return ['status' => 'error', 'message' => 'Not an FAQ answer field'];
+    }
+
+    $conn->begin_transaction();
+    try {
+        $found = dw_fx_fetch_source($conn, $postId, $source, $metaKey);
+        if ($found === null) {
+            $conn->rollback();
+            return ['status' => 'error', 'message' => $source === 'faq' ? 'FAQ field not found' : 'Post not found'];
+        }
+        [$before, $title] = $found;
+        [$after, $internal, $external] = dw_fx_target_rule($before, $siteHost);
+        if ($dryRun || $after === $before) {
+            $conn->rollback();
+            return ['status' => $after === $before ? 'no_change' : 'preview', 'internal' => $internal, 'external' => $external, 'title' => $title];
+        }
+        if (!dw_fx_save_source($conn, $postId, $source, $metaKey, $after)) {
+            $conn->rollback();
+            return ['status' => 'error', 'message' => 'Database write failed'];
+        }
+        $conn->commit();
+    } catch (Throwable $e) {
+        $conn->rollback();
+        return ['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()];
+    }
+
+    $parts = [];
+    if ($internal) {
+        $parts[] = "$internal internal -> same tab";
+    }
+    if ($external) {
+        $parts[] = "$external external -> new tab";
+    }
+    $entry = dw_fx_journal_append($dbKey, [
+        'action'   => 'link_target',
+        'post_id'  => (int) $postId,
+        'title'    => $title,
+        'source'   => $source,
+        'meta_key' => $metaKey,
+        'from'     => 'Link targets before the new-tab rule',
+        'to'       => implode(', ', $parts),
+        'count'    => $internal + $external,
+    ], $before, $after);
+
+    return ['status' => 'updated', 'internal' => $internal, 'external' => $external, 'title' => $title, 'journal_id' => $entry['id'] ?? null];
+}
+
 /* ══════════════════════════ Change journal (History + Undo) ══════════════════════════
  * One append-only JSON-lines file per site in ../../backups (web access
  * denied by its .htaccess). Each line holds the field's full previous value

@@ -92,6 +92,9 @@ try {
             : $conn->prepare('UPDATE wp_postmeta SET meta_value = ? WHERE meta_id = ?');
         $stmt->bind_param('si', $res['value'], $id);
         $stmt->execute();
+        if ($kind === 'meta') {
+            dw_seo_meta_sync_indexable($conn, (int) $row['post_id'], $field, $res['value']);   // Yoast title/description only
+        }
         $matches += $res['count'];
         $changes[] = ['kind' => $kind, 'id' => $id, 'post_id' => (int) $row['post_id'], 'field' => $field, 'count' => $res['count'], 'before' => $row['v'], 'after' => $res['value']];
     }

@@ -118,3 +118,10 @@ function dw_links_row_cap()
 {
     return 3000;
 }
+
+/**
+ * Meta length guide (characters) for the Content tab's length filters and live counters.
+ * Google shows roughly 50-60 characters of a title and 120-160 of a description before cutting it off.
+ * Keep js/content.js SEO_LENGTH in step.
+ */
+const DW_SEO_LENGTH = ['title_max' => 60, 'desc_min' => 70, 'desc_max' => 155];

@@ -163,7 +163,7 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
   `link`/`text` kinds are display-only (Link Fixer / Find & Replace, whose own journals do the undo -
   `ref: {journal:'fixer'|'replace', id, ids?}`). "Before" values are read under the same row lock as the write.
 - Who logs: `update_post` (content), `bulk_update_status` (bulk, one entry), `add_redirect` / `redirect_save` (redirects, one entry per save),
-  `menu_save` (menu, one entry per save), `replace_apply`/`replace_undo`, `fixer_write`/`fixer_undo`, `kw_save` (keywords),
+  `menu_save` (menu, one entry per save), `replace_apply`/`replace_undo`, `fixer_write`/`fixer_undo`, `link_target` (fixer), `kw_save` (keywords),
   `canonical_fix` (canonical).
   A new write endpoint must log too.
 - `activity_list.php` merges the older journals at read time (`fx-<id>` / `fr-<op>` entries) unless an activity
@@ -252,6 +252,13 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
   named zone (`America/Los_Angeles`, empty `gmt_offset`, -7/-8h with DST); Healthray uses `gmt_offset` 5.5. A publish-date
   write or undo also syncs `wp_yoast_indexable.object_published_at` (`dw_sync_published_indexable()`).
 - **Yoast meta keys** use the `_yoast_wpseo_*` prefix on these installs.
+- **Meta title / description writes sync the indexable**: Yoast's front end reads `wp_yoast_indexable.title` /
+  `.description`, not postmeta, and only WP admin saves rebuild it. Every write and undo of `_yoast_wpseo_title` /
+  `_yoast_wpseo_metadesc` (Content save, History undo, Find & Replace apply + undo) calls `dw_seo_meta_sync_indexable()`.
+  A new path that writes them must too.
+- **Meta length filters** (`long_title`, `long_desc`, `short_desc`, + `dup_desc`) use `DW_SEO_LENGTH` (constants.php:
+  title 60, description 70-155); the Content tab's live counter (`SEO_LENGTH`, js/content.js) must match. `%%var%%`
+  templates are skipped (their real length is unknown).
 - **Robots (Yoast "Advanced": noindex / nofollow)** are Content-tab fields `robots_index` (`''` = post type default,
   `index`, `noindex`) and `robots_follow` (`follow`, `nofollow`), stored as Yoast does (`DW_ROBOTS_META` in
   lib/query.php: `meta-robots-noindex` 1/2/no row, `meta-robots-nofollow` 1/no row). Every write and undo also
@@ -290,6 +297,7 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 | `bulk_update_status.php` | POST | one status for many post IDs |
 | `fixer_list.php` | GET | Link Fixer: one page of posts + every link (content + FAQ), `link=` site-wide find |
 | `fixer_write.php` | POST | `op=replace|unlink`, `items=` JSON (max 1000) - each journaled |
+| `link_target.php` | POST | Links "New-tab rule": `scope=page` (`post_ids` JSON, max 500) or `site` (types/status/dates, capped at `dw_links_row_cap()`), `dry_run=1` = counts only. Internal links lose `target="_blank"`, external http(s) get it + `rel` noopener (`dw_fx_target_rule()`); content + FAQ fields, not `_elementor_data`. Each changed field journaled (`action: link_target`), one activity entry |
 | `fixer_history.php` | GET | this site's Link Fixer journal, newest first (legacy; History uses activity_list) |
 | `activity_list.php` | GET | unified History: `source`, `q`, `limit`, `offset` -> entries, total, counts_by_source, recent_24h, admin_url |
 | `activity_undo.php` | POST | undo one History entry (`id`; also `fx-`/`fr-` journal ids) - per-change, skipped if changed since |

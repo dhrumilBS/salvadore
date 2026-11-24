@@ -247,6 +247,8 @@ if ($dbChanges) {
                 if (in_array($key, DW_ROBOTS_META, true)) {
                     dw_robots_sync_indexable($conn, $pid, $key, $c['before'] ?? null);
                 }
+                // Meta title / description (update_post.php): same indexable sync as the save.
+                dw_seo_meta_sync_indexable($conn, $pid, $key, $c['before'] ?? null);
                 $restoredChanges[] = $c;
             }
         }

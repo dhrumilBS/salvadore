@@ -119,7 +119,8 @@ function dw_parse_input(array $input, array $knownPostTypes)
         'mod_to'     => dw_valid_date($input['mod_to'] ?? null) ? $input['mod_to'] : null,
         'search'     => trim((string) ($input['search'] ?? '')),
         // SEO gap filter (Content tab + Overview deep links) - same definitions as api/lib/overview.php
-        'seo'        => in_array($input['seo'] ?? '', ['missing_title', 'missing_desc', 'missing_kw', 'dup_title', 'noindex', 'nofollow'], true) ? $input['seo'] : '',
+        'seo'        => in_array($input['seo'] ?? '', ['missing_title', 'missing_desc', 'missing_kw', 'dup_title', 'dup_desc',
+            'long_title', 'long_desc', 'short_desc', 'noindex', 'nofollow'], true) ? $input['seo'] : '',
         'sort'       => $sortKey,
         'dir'        => $sortDir,
     ];
@@ -199,18 +200,33 @@ function dw_build_where(array $f)
         // Set to noindex / nofollow on the post itself (Yoast "Advanced"), not via the post type's default.
         $conditions[] = "EXISTS (SELECT 1 FROM wp_postmeta rm WHERE rm.post_id = p.ID AND rm.meta_key = ? AND TRIM(rm.meta_value) = '1')";
         $params[]     = ['type' => 's', 'value' => DW_ROBOTS_META[$f['seo'] === 'noindex' ? 'robots_index' : 'robots_follow']];
-    } elseif (($f['seo'] ?? '') === 'dup_title') {
+    } elseif (in_array($f['seo'] ?? '', ['dup_title', 'dup_desc'], true)) {
+        // Duplicate meta description works the same way as duplicate title.
+        $key = $f['seo'] === 'dup_title' ? '_yoast_wpseo_title' : '_yoast_wpseo_metadesc';
         $excluded = dw_excluded_post_types();
         $ph = implode(',', array_fill(0, count($excluded), '?'));
         $conditions[] = "EXISTS (SELECT 1 FROM wp_postmeta m1
-            INNER JOIN wp_postmeta m2 ON m2.meta_key = '_yoast_wpseo_title' AND m2.post_id <> m1.post_id
+            INNER JOIN wp_postmeta m2 ON m2.meta_key = m1.meta_key AND m2.post_id <> m1.post_id
                 AND LOWER(TRIM(m2.meta_value)) = LOWER(TRIM(m1.meta_value))
             INNER JOIN wp_posts p2 ON p2.ID = m2.post_id AND p2.post_status = 'publish' AND p2.post_type NOT IN ($ph)
-            WHERE m1.post_id = p.ID AND m1.meta_key = '_yoast_wpseo_title'
+            WHERE m1.post_id = p.ID AND m1.meta_key = ?
                 AND TRIM(m1.meta_value) <> '' AND LOCATE('%%', m1.meta_value) = 0)";
         foreach ($excluded as $t) {
             $params[] = ['type' => 's', 'value' => $t];
         }
+        $params[] = ['type' => 's', 'value' => $key];
+    } elseif (in_array($f['seo'] ?? '', ['long_title', 'long_desc', 'short_desc'], true)) {
+        // Length of the custom value (characters, after trimming). %%variable%% templates are skipped -
+        // their real length is only known once Yoast fills them in. Limits: DW_SEO_LENGTH (constants.php).
+        [$key, $cmp, $limit] = [
+            'long_title' => ['_yoast_wpseo_title', '>', DW_SEO_LENGTH['title_max']],
+            'long_desc'  => ['_yoast_wpseo_metadesc', '>', DW_SEO_LENGTH['desc_max']],
+            'short_desc' => ['_yoast_wpseo_metadesc', '<', DW_SEO_LENGTH['desc_min']],
+        ][$f['seo']];
+        $conditions[] = "EXISTS (SELECT 1 FROM wp_postmeta lm WHERE lm.post_id = p.ID AND lm.meta_key = ?
+            AND TRIM(lm.meta_value) <> '' AND LOCATE('%%', lm.meta_value) = 0 AND CHAR_LENGTH(TRIM(lm.meta_value)) $cmp ?)";
+        $params[] = ['type' => 's', 'value' => $key];
+        $params[] = ['type' => 'i', 'value' => $limit];
     }
 
     return [implode(' AND ', $conditions), $params];
@@ -487,6 +503,30 @@ function dw_robots_sync_indexable(mysqli $conn, $postId, $metaKey, $metaValue)
         $stmt = $conn->prepare("UPDATE wp_yoast_indexable SET is_robots_nofollow = ? WHERE object_id = ? AND object_type = 'post'");
     }
     $stmt->bind_param('ii', $idx, $postId);
+    $stmt->execute();
+}
+
+/** Yoast meta keys whose value Yoast's front end reads from a wp_yoast_indexable column, not from postmeta. */
+const DW_SEO_META_INDEXABLE_COL = [
+    '_yoast_wpseo_title'    => 'title',
+    '_yoast_wpseo_metadesc' => 'description',
+];
+
+/**
+ * Keep wp_yoast_indexable's title / description in step with a meta title / description write.
+ * Saving in WP admin rebuilds the indexable; a direct DB write doesn't, so without this the live
+ * page keeps the old text. Empty = NULL, as Yoast stores "not set" (the type's template applies).
+ * The OG / X columns are left alone: when empty, Yoast falls back to the meta description itself.
+ */
+function dw_seo_meta_sync_indexable(mysqli $conn, $postId, $metaKey, $metaValue)
+{
+    $col = DW_SEO_META_INDEXABLE_COL[$metaKey] ?? null;
+    if ($col === null) {
+        return;
+    }
+    $v = $metaValue === null || trim((string) $metaValue) === '' ? null : (string) $metaValue;
+    $stmt = $conn->prepare("UPDATE wp_yoast_indexable SET `$col` = ? WHERE object_id = ? AND object_type = 'post'");
+    $stmt->bind_param('si', $v, $postId);
     $stmt->execute();
 }
 

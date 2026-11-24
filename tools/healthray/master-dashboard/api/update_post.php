@@ -106,12 +106,11 @@ switch ($field) {
         break;
 
     case 'meta_title':
-        $ok = dw_upsert_postmeta($conn, $id, '_yoast_wpseo_title', $value);
-        $saved = $value;
-        break;
-
     case 'meta_description':
-        $ok = dw_upsert_postmeta($conn, $id, '_yoast_wpseo_metadesc', $value);
+        $ok = dw_upsert_postmeta($conn, $id, $metaKeyFor[$field], $value);
+        if ($ok) {
+            dw_seo_meta_sync_indexable($conn, $id, $metaKeyFor[$field], $value);   // the live page reads the indexable
+        }
         $saved = $value;
         break;
 

@@ -523,6 +523,9 @@ function fr_undo_op(mysqli $conn, string $site, string $id): array
             $stmt = $conn->prepare($sql);
             $stmt->bind_param('si', $c['before'], $c['id']);
             $stmt->execute();
+            if ($c['kind'] === 'meta' && function_exists('dw_seo_meta_sync_indexable')) {
+                dw_seo_meta_sync_indexable($conn, (int) $c['post_id'], $c['field'], $c['before']);
+            }
             $restored++;
         }
         $conn->commit();
