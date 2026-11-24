@@ -1,0 +1,85 @@
+/* Page guides (js/guide.js), the Links "link opening rule" card (js/fixer.js) and the Overview task launcher
+   (js/overview.js). Shared tokens only - light and dark themes both work. */
+
+/* ── Page guide: what this page does + how to use + main actions ── */
+.page-guide {
+    background: linear-gradient(135deg, var(--accent-dim), var(--surface) 70%);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 16px 18px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-sm);
+}
+.pg-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.pg-text { flex: 1 1 420px; min-width: 0; }
+.pg-title { margin: 0 0 4px; font-size: 19px; font-weight: 700; color: var(--text); letter-spacing: -.01em; }
+.pg-what { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--text2); max-width: 760px; }
+.pg-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pg-toggle { background: transparent; }
+.pg-more { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.page-guide.is-open .pg-more { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 18px; }
+.pg-steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; gap: 8px; }
+.pg-steps li { counter-increment: step; position: relative; padding-left: 32px; font-size: 13px; line-height: 1.5; color: var(--text); }
+.pg-steps li::before {
+    content: counter(step); position: absolute; left: 0; top: -1px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 12px; font-weight: 700;
+    display: grid; place-items: center;
+}
+.pg-tip { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text2); background: var(--surface); border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px 12px; align-self: start; }
+.guide-flash { animation: guide-flash 1.4s ease-out 1; }
+@keyframes guide-flash { 0%, 40% { box-shadow: 0 0 0 4px var(--accent-dim), 0 0 0 6px var(--accent); } 100% { box-shadow: none; } }
+
+@media (max-width: 900px) {
+    .page-guide.is-open .pg-more { grid-template-columns: 1fr; }
+}
+
+/* ── Links: link opening rule card ── */
+.rule-card {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; align-items: center;
+    background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--text3);
+    border-radius: var(--r-lg); padding: 14px 16px; margin-bottom: 14px; box-shadow: var(--shadow-sm);
+}
+.rule-card.is-ok { border-left-color: var(--ok); }
+.rule-card.is-bad { border-left-color: var(--warn); }
+.rule-card.is-err { border-left-color: var(--danger); }
+.rule-icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--surface2); color: var(--text2); }
+.rule-card.is-ok .rule-icon { background: var(--ok-dim); color: var(--ok); }
+.rule-card.is-bad .rule-icon { background: var(--warn-dim); color: var(--warn); }
+.rule-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rule-title { font-weight: 700; font-size: 14.5px; color: var(--text); }
+.rule-status { font-size: 13px; font-weight: 600; color: var(--text2); }
+.rule-card.is-ok .rule-status { color: var(--ok); }
+.rule-card.is-bad .rule-status { color: var(--warn); }
+.rule-explain { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 6px; font-size: 12.5px; color: var(--text2); }
+.rule-explain span { display: inline-flex; align-items: center; gap: 6px; }
+.rule-chip { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: var(--surface2); color: var(--text); }
+.rule-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.rule-scope { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.rule-scope button { border: 0; background: var(--surface); padding: 6px 10px; font: inherit; font-size: 12.5px; color: var(--text2); cursor: pointer; }
+.rule-scope button[aria-pressed="true"] { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+@media (max-width: 900px) {
+    .rule-card { grid-template-columns: 1fr; }
+    .rule-icon { display: none; }
+    .rule-actions { justify-content: flex-start; }
+}
+
+/* ── Overview: "What do you want to do?" ── */
+.ov-tasks { margin: 0 0 18px; }
+.ov-tasks-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.ov-tasks-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--text); }
+.ov-tasks-sub { font-size: 12.5px; color: var(--text3); }
+.ov-task-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.ov-task {
+    display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 10px; align-items: start; text-align: left;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px;
+    font: inherit; color: var(--text); cursor: pointer; box-shadow: var(--shadow-sm);
+    transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+.ov-task:hover, .ov-task:focus-visible { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-md); outline: none; }
+.ov-task-ico { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; background: var(--accent-dim); color: var(--accent); }
+.ov-task-name { font-weight: 600; font-size: 13.5px; line-height: 1.3; }
+.ov-task-desc { font-size: 12px; color: var(--text3); line-height: 1.4; margin-top: 2px; }
+
+/* .btn sets display, which would beat the hidden attribute */
+.rule-card [hidden], .page-guide [hidden] { display: none !important; }

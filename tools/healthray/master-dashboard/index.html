@@ -18,6 +18,8 @@
     <link rel="stylesheet" href="css/overview.css?v=20261117b">
     <link rel="stylesheet" href="css/canonical.css?v=20261117b">
     <link rel="stylesheet" href="css/internal.css?v=20261124b">
+    <link rel="stylesheet" href="css/changes.css?v=20261124c">
+    <link rel="stylesheet" href="css/guide.css?v=20261124f">
     <link rel="stylesheet" href="css/finder.css?v=20261117b">
     <script src="../../../usage/track.js" defer></script>
 </head>
@@ -55,10 +57,11 @@
             <button type="button" class="tab view-tab active" data-view="overview" data-group="dashboard" role="tab" title="Overview — what needs fixing on this site (g o)">Overview</button>
             <button type="button" class="tab view-tab" data-view="content" data-group="content" role="tab" title="Posts &amp; pages — inline edit, status, export (g c)">Posts &amp; Pages</button>
             <button type="button" class="tab view-tab" data-view="menu" data-group="content" role="tab" title="Menu Order — reorder and edit title, slug, date (g m)">Menu Order</button>
-            <button type="button" class="tab view-tab" data-view="fixer" data-group="links" role="tab" title="Links — check, edit, fix, unlink and export every link in post content (g l)">Links</button>
+            <button type="button" class="tab view-tab" data-view="changes" data-group="content" role="tab" title="Recent changes — what changed, when, by whom and how; bulk changes made outside this dashboard (g x)">Recent changes</button>
+            <button type="button" class="tab view-tab" data-view="fixer" data-group="links" role="tab" title="Link checker — check, edit, fix, unlink and export every link in post content (g l)">Link checker</button>
             <button type="button" class="tab view-tab" data-view="internal" data-group="links" role="tab" title="Internal links — inbound links per post, orphan pages, links to 410 / redirected URLs (g i)">Internal links</button>
             <button type="button" class="tab view-tab" data-view="keywords" data-group="seo" role="tab" title="Focus Keywords — Yoast keyword duplicates (g k)">Focus Keywords</button>
-            <button type="button" class="tab view-tab" data-view="canonical" data-group="seo" role="tab" title="Canonicals — canonical URLs that redirect or are gone (g n)">Canonicals</button>
+            <button type="button" class="tab view-tab" data-view="canonical" data-group="seo" role="tab" title="Canonical URLs — canonicals that redirect or are gone (g n)">Canonical URLs</button>
             <button type="button" class="tab view-tab" data-view="redirects" data-group="seo" role="tab" title="Redirects — Yoast 301/410 rules (g r)">Redirects</button>
             <button type="button" class="tab view-tab" data-view="replace" data-group="tools" role="tab" title="Find &amp; Replace — text in titles, content, Elementor, SEO and meta (g s)">Find &amp; Replace</button>
         </div>
@@ -121,6 +124,9 @@
                     </button>
                 </div>
             </header>
+
+            <!-- "What do you want to do?" task launcher (js/overview.js renderTasks) -->
+            <section class="ov-tasks" id="ov-tasks" aria-label="Common tasks"></section>
 
             <!-- Hero: site health (checks passing + what needs attention) beside the KPI tiles -->
             <div class="ov-hero">
@@ -447,17 +453,6 @@
                             </div>
                         </div>
                     </div>
-                    <div class="export-wrap">
-                        <button type="button" class="btn" id="fx-target-btn" title="Internal links open in the same tab, external links in a new tab (target=&quot;_blank&quot; + rel=&quot;noopener&quot;)">
-                            New-tab rule ▾
-                        </button>
-                        <div class="export-menu" id="fx-target-menu">
-                            <div class="export-menu-header">Internal → same tab · External → new tab</div>
-                            <div class="export-item" data-scope="page">Posts on this page <span class="ei-badge">page</span></div>
-                            <div class="export-item" data-scope="site">All posts in these types, status and dates <span class="ei-badge warn">site</span></div>
-                            <div class="export-menu-footer"><span class="col-note">Shows what will change before saving. Post content + FAQ answers; Elementor layouts aren't touched. Undo per post in History.</span></div>
-                        </div>
-                    </div>
                     <a class="fx-site-url" id="fx-site-url" target="_blank" rel="noopener" title="Open the site"></a>
 
                     <div class="fx-scan-end">
@@ -478,6 +473,31 @@
                     <div class="frow"><label class="flabel" for="fx-mod-from">Modified from</label><input type="date" id="fx-mod-from" data-fx-date="mod_from"></div>
                     <div class="frow"><label class="flabel" for="fx-mod-to">Modified to</label><input type="date" id="fx-mod-to" data-fx-date="mod_to"></div>
                     <button type="button" class="btn small" id="fx-dates-clear">Clear</button>
+                </div>
+            </section>
+
+            <!-- Link opening rule (js/fixer.js fxRule*): checked automatically, reviewed link by link before saving -->
+            <section class="rule-card" id="fx-rule" aria-live="polite">
+                <div class="rule-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </div>
+                <div>
+                    <div class="rule-head">
+                        <span class="rule-title">How links open</span>
+                        <span class="rule-status" id="fx-rule-status">Checking…</span>
+                    </div>
+                    <div class="rule-explain">
+                        <span><span class="rule-chip">Your site</span> links open in the <b>same tab</b></span>
+                        <span><span class="rule-chip">Other sites</span> links open in a <b>new tab</b>, so visitors don’t leave you</span>
+                    </div>
+                </div>
+                <div class="rule-actions">
+                    <div class="rule-scope" role="group" aria-label="Which posts">
+                        <button type="button" data-rule-scope="site" aria-pressed="true" title="Every post in the content types, status and dates chosen above">All matching posts</button>
+                        <button type="button" data-rule-scope="page" aria-pressed="false" title="Only the posts listed on this page">This page</button>
+                    </div>
+                    <button type="button" class="btn" id="fx-rule-check" title="Check again">↻ Check</button>
+                    <button type="button" class="btn primary" id="fx-rule-fix" hidden>Review &amp; fix</button>
                 </div>
             </section>
 
@@ -1120,6 +1140,93 @@
             </div>
         </div>
 
+        <!-- ══ Recent changes (js/changes.js, api/recent_changes.php) ══ -->
+        <div id="changesView" style="display:none">
+            <div class="stats-grid kpi-row" id="rc-stats">
+                <div class="stat-card k-neutral">
+                    <div class="stat-label"><i class="dot"></i>Posts changed</div>
+                    <div class="stat-val" id="rc-k-total">—</div>
+                    <div class="stat-hint">in the selected period</div>
+                </div>
+                <div class="stat-card k-warn">
+                    <div class="stat-label"><i class="dot"></i>Bulk changes</div>
+                    <div class="stat-val" id="rc-k-bulk">—</div>
+                    <div class="stat-hint" id="rc-k-bulk-hint">10+ posts in one minute</div>
+                </div>
+                <button type="button" class="stat-card k-danger" data-rc-via="unknown" title="No revision and no dashboard entry - plugin, import, script or direct DB edit">
+                    <div class="stat-label"><i class="dot"></i>No revision</div>
+                    <div class="stat-val" id="rc-k-unknown">—</div>
+                    <div class="stat-hint">plugin / import / script?</div>
+                </button>
+                <button type="button" class="stat-card k-neutral" data-rc-via="dashboard" title="Made through this dashboard (see History)">
+                    <div class="stat-label"><i class="dot"></i>This dashboard</div>
+                    <div class="stat-val" id="rc-k-dashboard">—</div>
+                    <div class="stat-hint">details in History</div>
+                </button>
+                <button type="button" class="stat-card k-neutral" data-rc-via="editor" title="Saved in the WordPress editor / Elementor (a revision exists)">
+                    <div class="stat-label"><i class="dot"></i>WP editor</div>
+                    <div class="stat-val" id="rc-k-editor">—</div>
+                    <div class="stat-hint" id="rc-k-editor-hint">who saved them</div>
+                </button>
+                <div class="stat-card k-neutral">
+                    <div class="stat-label"><i class="dot"></i>Media uploads</div>
+                    <div class="stat-val" id="rc-k-uploads">—</div>
+                    <div class="stat-hint">new files in the period</div>
+                </div>
+            </div>
+
+            <div class="card-panel">
+                <div class="panel-label">
+                    <span>Bulk changes - click one to see its posts</span>
+                    <button type="button" class="btn small" id="rc-batch-clear" hidden>Show all changes</button>
+                </div>
+                <div class="rc-batches" id="rc-batches"></div>
+            </div>
+
+            <div class="card-panel">
+                <div class="panel-label">
+                    <span>Every modified post - newest first</span>
+                    <div class="stats-row"><span>Matching <b id="rc-st-total">0</b></span></div>
+                </div>
+                <p class="il-note" id="rc-capped" hidden>Many changes: only the newest 3000 are listed.</p>
+                <div class="toolbar">
+                    <select id="rc-days" title="Period" aria-label="Period">
+                        <option value="1">Last 24 hours</option>
+                        <option value="3">Last 3 days</option>
+                        <option value="7" selected>Last 7 days</option>
+                        <option value="14">Last 14 days</option>
+                        <option value="30">Last 30 days</option>
+                        <option value="90">Last 90 days</option>
+                    </select>
+                    <div class="search-wrap">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
+                        <input type="search" id="rc-search" placeholder="Search title, URL, editor…" autocomplete="off" aria-label="Search">
+                    </div>
+                    <select id="rc-via" title="How it was changed" aria-label="How">
+                        <option value="">Any way</option>
+                        <option value="unknown">No revision (plugin / import / script?)</option>
+                        <option value="dashboard">This dashboard</option>
+                        <option value="editor">WP editor / Elementor</option>
+                    </select>
+                    <select id="rc-type" title="Post type" aria-label="Post type"><option value="">All types</option></select>
+                    <div class="toolbar-end">
+                        <button type="button" class="btn" id="rc-refresh" title="Reload (r)">↻ Refresh</button>
+                        <a class="btn primary" id="rc-export" href="#" title="Every change in the period as CSV">⬇ Export CSV</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-panel">
+                <div class="table-wrap">
+                    <table id="rc-table">
+                        <thead><tr><th>Modified</th><th>Post</th><th>How</th><th>Who / what</th><th>Bulk</th><th class="r-act-col">Actions</th></tr></thead>
+                        <tbody id="rc-body"><tr><td colspan="6" class="state-msg"><span class="spinner"></span> Loading…</td></tr></tbody>
+                    </table>
+                </div>
+                <div id="rc-pager"></div>
+            </div>
+        </div>
+
         <!-- ══ Internal links (js/internal.js, api/internal_links.php) ══ -->
         <div id="internalView" style="display:none">
             <!-- Stat cards switch view + filter -->
@@ -1530,7 +1637,7 @@
     <script src="js/common.js?v=20261117b"></script>
     <script src="js/ui.js?v=20261117b"></script>
     <script src="js/content.js?v=20261124b"></script>
-    <script src="js/fixer.js?v=20261124a"></script>
+    <script src="js/fixer.js?v=20261124f"></script>
     <script src="js/history.js?v=20261117c"></script>
     <script src="js/redirects.js?v=20261124b"></script>
     <script src="js/bulk.js?v=20261117b"></script>
@@ -1538,11 +1645,13 @@
     <script src="js/replace.js?v=20261117b"></script>
     <script src="js/keywords.js?v=20261117b"></script>
     <script src="js/canonical.js?v=20261117b"></script>
-    <script src="js/internal.js?v=20261124b"></script>
+    <script src="js/internal.js?v=20261124e"></script>
+    <script src="js/changes.js?v=20261124c"></script>
+    <script src="js/guide.js?v=20261124f"></script>
     <script src="js/finder.js?v=20261117b"></script>
-    <script src="js/overview.js?v=20261124b"></script>
+    <script src="js/overview.js?v=20261124f"></script>
     <script src="js/views.js?v=20261117b"></script>
-    <script src="js/app.js?v=20261124b"></script>
+    <script src="js/app.js?v=20261124d"></script>
 </body>
 
 </html>

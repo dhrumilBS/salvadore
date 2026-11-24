@@ -252,6 +252,7 @@ async function loadFixer() {
         fxRenderTable();
         fxRenderPagination();
         fxUpdateScanMeta();
+        fxRuleCheck(false);
         ok = true;
     } catch (err) {
         if (isAbort(err)) return;
@@ -826,66 +827,107 @@ async function fxWrite(op, pairs, btn = null) {
     return done;
 }
 
-/**
- * New-tab rule: internal links -> same tab, external -> new tab (+ rel noopener).
- * scope 'page' = the posts listed on this page; 'site' = every post in the current types/status/dates.
- * Dry run first, confirmDialog with the per-post counts, then the write; the list reloads after.
+/* ══════════════════════════ How links open (link_target.php) ══════════════════════════
+ * The rule card above the stats: "your site" links open in the same tab, "other sites" in a new tab
+ * (target="_blank" + rel="noopener"). Checked automatically (dry run) whenever the post list loads, so the
+ * status is always visible; "Review & fix" lists every link that changes in confirmDialog before saving.
+ * Scope: 'site' = every post in the chosen types / status / dates, 'page' = the posts listed on this page.
  */
-async function fxRunTargetRule(scope) {
-    const btn = fx$('fx-target-btn');
-    const body = { scope };
-    if (scope === 'page') {
-        const ids = [...new Set(fx.links.map(l => l.post_id))];
-        if (!ids.length) { toast('No links on this page', 'warn'); return; }
-        body.post_ids = JSON.stringify(ids);
-    } else {
-        Object.assign(body, { post_type: fx.postTypes.join(','), status: fx.status, ...fx.dates });
-    }
-    const call = async extra => {
-        try {
-            return await api('link_target.php', { method: 'POST', body: new URLSearchParams({ ...body, ...extra }) });
-        } catch (err) {
-            console.error(err);
-            return { success: false, msg: 'Network error' };
-        }
-    };
+const fxRule = { scope: 'site', preview: null, seq: 0, busy: false, key: '', at: 0 };
+const FX_RULE_TTL_MS = 60000; // a page change with the same filters reuses the last check for a minute
 
-    const idle = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner fx-spin"></span> Checking…';
-    const preview = await call({ dry_run: 1 });
-    btn.disabled = false;
-    btn.innerHTML = idle;
-    if (!preview.success) { toast(preview.msg || 'Could not check links', 'err'); return; }
-    if (!preview.posts) {
-        toast(`All ${pluralize(preview.checked, 'post')} already follow the rule`, 'ok');
+function fxRuleBody() {
+    if (fxRule.scope === 'page') {
+        return { scope: 'page', post_ids: JSON.stringify([...new Set(fx.links.map(l => l.post_id))]) };
+    }
+    return { scope: 'site', post_type: fx.postTypes.join(','), status: fx.status, ...fx.dates };
+}
+
+async function fxRuleCall(extra) {
+    try {
+        return await api('link_target.php', { method: 'POST', body: new URLSearchParams({ ...fxRuleBody(), ...extra }) });
+    } catch (err) {
+        console.error(err);
+        return { success: false, msg: 'Network error' };
+    }
+}
+
+function fxRuleShow(state, text) {
+    const card = fx$('fx-rule');
+    card.classList.remove('is-ok', 'is-bad', 'is-err');
+    if (state) card.classList.add(state);
+    fx$('fx-rule-status').innerHTML = text;
+    fx$('fx-rule-fix').hidden = state !== 'is-bad';
+}
+
+/** Dry run for the current scope; updates the card. Latest call wins. force=false reuses a fresh result for the same filters. */
+async function fxRuleCheck(force = true) {
+    if (fxRule.scope === 'page' && !fx.links.length) {
+        fxRule.preview = null;
+        fxRuleShow('is-ok', 'No links on this page');
         return;
     }
+    const key = JSON.stringify(fxRuleBody());
+    if (!force && key === fxRule.key && fxRule.preview && Date.now() - fxRule.at < FX_RULE_TTL_MS) return;
+    fxRule.key = key;
+    fxRule.at = Date.now();
+    const seq = ++fxRule.seq;
+    fxRuleShow('', '<span class="spinner fx-spin"></span> Checking…');
+    const res = await fxRuleCall({ dry_run: 1 });
+    if (seq !== fxRule.seq) return;
+    if (!res.success) { fxRule.preview = null; fxRuleShow('is-err', escapeHtml(res.msg || 'Could not check')); return; }
+    fxRule.preview = res;
+    const where = fxRule.scope === 'page' ? 'on this page' : 'in these types';
+    if (!res.posts) {
+        fxRuleShow('is-ok', `✓ All ${fmtNum(res.checked)} posts ${where} follow the rule`);
+        return;
+    }
+    const n = res.internal + res.external;
+    fxRuleShow('is-bad', `⚠ ${pluralize(n, 'link')} in ${pluralize(res.posts, 'post')} open the wrong way`
+        + `${res.capped ? ' (first batch - run again after fixing)' : ''}`);
+}
 
-    const summary = (internal, external) => [
-        internal && `${pluralize(internal, 'internal link')} → same tab`,
-        external && `${pluralize(external, 'external link')} → new tab`,
-    ].filter(Boolean).join(' · ');
+/** Review every changing link, then save. */
+async function fxRuleFix() {
+    const p = fxRule.preview;
+    if (!p || !p.posts || fxRule.busy) return;
+    const changes = [];
+    p.items.forEach(i => {
+        const extra = (i.internal + i.external) - i.links.length;
+        // The URL itself doesn't change - show it with its new behaviour, not as a struck-out "before".
+        i.links.forEach(l => changes.push({
+            post: `#${i.post_id} · ${i.title || '(no title)'}${l.field === 'FAQ' ? ' · FAQ' : ''}`,
+            to: `${l.href}  →  ${l.internal ? 'opens in the same tab (your site)' : 'opens in a new tab (other site)'}`,
+        }));
+        if (extra > 0) changes.push({ post: `#${i.post_id} · ${i.title || '(no title)'}`, to: `…and ${pluralize(extra, 'more link')}` });
+    });
     const ok = await confirmDialog({
-        title: `Apply the new-tab rule to ${pluralize(preview.posts, 'post')}?`,
-        message: `${summary(preview.internal, preview.external)}. Checked ${pluralize(preview.checked, 'post')}`
-            + `${preview.capped ? ' (limit reached - run it again for the rest)' : ''}. Each post can be undone from History.`,
-        changes: preview.items.map(i => ({ post: `#${i.post_id} · ${i.title || '(no title)'}`, to: summary(i.internal, i.external) })),
-        okLabel: `Update ${pluralize(preview.posts, 'post')}`,
+        title: `Fix how ${pluralize(p.internal + p.external, 'link')} open?`,
+        message: [
+            p.external ? `${pluralize(p.external, 'link')} to other websites will open in a new tab (with rel="noopener" for safety).` : '',
+            p.internal ? `${pluralize(p.internal, 'link')} to your own site will open in the same tab.` : '',
+            'Only the link settings change - text and URLs stay the same. Each post can be undone from History.',
+        ].filter(Boolean).join(' '),
+        changes,
+        okLabel: `Fix ${pluralize(p.posts, 'post')}`,
     });
     if (!ok) return;
 
+    fxRule.busy = true;
+    const btn = fx$('fx-rule-fix');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner fx-spin"></span> Saving…';
-    const res = await call({});
+    const res = await fxRuleCall({});
+    fxRule.busy = false;
     btn.disabled = false;
-    btn.innerHTML = idle;
-    if (!res.success) { toast(res.msg || 'Update failed', 'err'); return; }
-    if (res.errors?.length) alertDialog(`Updated ${pluralize(res.posts, 'post')} - some were not changed`, 'These were skipped:', res.errors);
-    else toast(`New-tab rule applied to ${pluralize(res.posts, 'post')}. Purge the page cache to see it live.`, 'ok');
+    btn.textContent = 'Review & fix';
+    if (!res.success) { toast(res.msg || 'Not saved', 'err'); return; }
+    if (res.errors?.length) alertDialog(`Fixed ${pluralize(res.posts, 'post')} - some were skipped`, 'These were not changed:', res.errors);
+    else toast(`Fixed ${pluralize(res.posts, 'post')}. Purge the page cache to see it on the live site.`, 'ok');
     refreshHistoryCount();
     onLinksChanged();
-    loadFixer();
+    fxRule.key = ''; // force a fresh check
+    loadFixer(); // reload re-runs the check
 }
 
 /** Every row of this exact field+href now points at the new URL. */
@@ -1486,14 +1528,13 @@ function bindFixerTab() {
         toast(live ? 'Live-checked export started — this can take a while for large sites' : 'Export started', live ? 'warn' : 'ok');
     }));
 
-    // New-tab rule (link_target.php): preview, confirm, apply
-    const targetMenu = fx$('fx-target-menu');
-    fx$('fx-target-btn').addEventListener('click', e => { e.stopPropagation(); exportMenu.classList.remove('open'); targetMenu.classList.toggle('open'); });
-    document.addEventListener('click', () => targetMenu.classList.remove('open'));
-    targetMenu.addEventListener('click', e => e.stopPropagation());
-    targetMenu.querySelectorAll('.export-item').forEach(item => item.addEventListener('click', () => {
-        targetMenu.classList.remove('open');
-        fxRunTargetRule(item.dataset.scope);
+    // How links open (rule card)
+    fx$('fx-rule-check').addEventListener('click', () => fxRuleCheck(true));
+    fx$('fx-rule-fix').addEventListener('click', fxRuleFix);
+    document.querySelectorAll('#fx-rule [data-rule-scope]').forEach(b => b.addEventListener('click', () => {
+        fxRule.scope = b.dataset.ruleScope;
+        document.querySelectorAll('#fx-rule [data-rule-scope]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+        fxRuleCheck(true);
     }));
 
     // Edit modal

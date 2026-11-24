@@ -82,14 +82,20 @@ foreach ($ids as $postId) {
     }
     $postInternal = 0;
     $postExternal = 0;
+    $postLinks = [];
     $title = $titleByPost[$postId] ?? '';
     foreach ($fields as [$source, $metaKey, $value]) {
         if (stripos($value, '<a') === false) {
             continue;
         }
-        [, $in, $ex] = dw_fx_target_rule($value, $siteHost);
+        [, $in, $ex, $det] = dw_fx_target_rule($value, $siteHost);
         if (!$in && !$ex) {
             continue;
+        }
+        foreach ($det as $x) {
+            if (count($postLinks) < 40) { // enough to review; the save still fixes every link
+                $postLinks[] = $x + ['field' => $source === 'faq' ? 'FAQ' : 'content'];
+            }
         }
         $r = $dryRun
             ? ['status' => 'preview', 'internal' => $in, 'external' => $ex]
@@ -121,7 +127,7 @@ foreach ($ids as $postId) {
         $totals['posts']++;
         $totals['internal'] += $postInternal;
         $totals['external'] += $postExternal;
-        $items[] = ['post_id' => $postId, 'title' => $title, 'internal' => $postInternal, 'external' => $postExternal];
+        $items[] = ['post_id' => $postId, 'title' => $title, 'internal' => $postInternal, 'external' => $postExternal, 'links' => $postLinks];
     }
 }
 

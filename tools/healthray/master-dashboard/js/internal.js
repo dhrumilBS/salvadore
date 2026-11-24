@@ -305,6 +305,13 @@
         return false;
     }
 
+    /** Open on a given posts filter (Overview task launcher). */
+    function ilPreset(filter, mode = 'posts') {
+        st.filter = filter || '';
+        if (pager) setMode(mode, st.filter);
+    }
+
+    window.ilPreset = ilPreset;
     window.bindInternalTab = bindInternalTab;
     window.loadInternal = loadInternal;
     window.ilHandleKey = ilHandleKey;

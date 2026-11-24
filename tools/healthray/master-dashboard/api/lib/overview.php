@@ -106,10 +106,13 @@ function ov_core(mysqli $conn)
         "SELECT p.ID AS id, p.post_type,
                 MAX(CASE WHEN m.meta_key = '_yoast_wpseo_title' THEN m.meta_value END) AS meta_title,
                 MAX(CASE WHEN m.meta_key = '_yoast_wpseo_metadesc' AND TRIM(m.meta_value) <> '' THEN 1 ELSE 0 END) AS has_desc,
-                MAX(CASE WHEN m.meta_key = '_yoast_wpseo_focuskw' THEN m.meta_value END) AS focus_kw
+                MAX(CASE WHEN m.meta_key = '_yoast_wpseo_focuskw' THEN m.meta_value END) AS focus_kw,
+                MAX(CASE WHEN m.meta_key = '_yoast_wpseo_metadesc' THEN m.meta_value END) AS meta_desc,
+                MAX(CASE WHEN m.meta_key = '_yoast_wpseo_opengraph-image' AND TRIM(m.meta_value) <> '' THEN 1 ELSE 0 END) AS has_og_image,
+                MAX(CASE WHEN m.meta_key = '_thumbnail_id' AND m.meta_value REGEXP '^[1-9][0-9]*$' THEN 1 ELSE 0 END) AS has_thumb
          FROM wp_posts p
          LEFT JOIN wp_postmeta m ON m.post_id = p.ID
-             AND m.meta_key IN ('_yoast_wpseo_title', '_yoast_wpseo_metadesc', '_yoast_wpseo_focuskw')
+             AND m.meta_key IN ('_yoast_wpseo_title', '_yoast_wpseo_metadesc', '_yoast_wpseo_focuskw', '_yoast_wpseo_opengraph-image', '_thumbnail_id')
          WHERE p.post_status = 'publish' AND $realType
          GROUP BY p.ID, p.post_type",
         // 3: revisions - same arithmetic as ../version/api.php?action=meta
@@ -149,7 +152,9 @@ function ov_core(mysqli $conn)
     $kwGroups = [];     // type => kw key => count
     $titleGroups = [];  // normalised custom title => count (site-wide)
     $seo = ['published' => 0, 'missing_title' => 0, 'missing_desc' => 0, 'missing_kw' => 0,
-        'dup_kw_posts' => 0, 'dup_kw_terms' => 0, 'dup_title_posts' => 0, 'dup_title_groups' => 0];
+        'dup_kw_posts' => 0, 'dup_kw_terms' => 0, 'dup_title_posts' => 0, 'dup_title_groups' => 0,
+        // Same definitions as the Content tab's filters (DW_SEO_LENGTH, no_image - query.php)
+        'long_title' => 0, 'long_desc' => 0, 'no_image' => 0];
     foreach ($seoRows as $r) {
         $t = $r['post_type'];
         $byType[$t] ??= ['published' => 0, 'missing_title' => 0, 'missing_desc' => 0, 'missing_kw' => 0, 'dup_kw_posts' => 0, 'dup_kw_terms' => 0];
@@ -168,6 +173,16 @@ function ov_core(mysqli $conn)
         if (!(int) $r['has_desc']) {
             $byType[$t]['missing_desc']++;
             $seo['missing_desc']++;
+        }
+        if ($title !== '' && strpos($title, '%%') === false && mb_strlen($title) > DW_SEO_LENGTH['title_max']) {
+            $seo['long_title']++;
+        }
+        $desc = trim((string) ($r['meta_desc'] ?? ''));
+        if ($desc !== '' && strpos($desc, '%%') === false && mb_strlen($desc) > DW_SEO_LENGTH['desc_max']) {
+            $seo['long_desc']++;
+        }
+        if (!(int) $r['has_og_image'] && !(int) $r['has_thumb']) {
+            $seo['no_image']++; // approximate: a thumbnail id whose attachment was deleted still counts as an image here
         }
         $kw = ov_kw_key($r['focus_kw'] ?? '');
         if ($kw === '') {

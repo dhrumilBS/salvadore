@@ -35,12 +35,13 @@
     const nextActivitySignal = latestOnly();
     const nextLinksSignal = latestOnly();
     const nextCanonSignal = latestOnly();
+    const nextInternalSignal = latestOnly();
     const nextRobotsSignal = latestOnly();
     // A click on another site's number: remembered across the site-switch reload, then opened.
     const PENDING_GO_KEY = 'md.ov.pendingGo';
 
     const st = {
-        core: null, redirects: null, activity: null, canon: null, robots: null, // last good payloads
+        core: null, redirects: null, activity: null, canon: null, robots: null, internal: null, // last good payloads
         coreErr: '', redirErr: '', canonErr: '', robotsErr: '',
         loading: { core: false, redirects: false },
         loadedAt: 0,
@@ -92,6 +93,7 @@
         loadActivity();
         loadCanonicals();
         loadRobots();
+        loadInternalLinks();
 
         return Promise.all([core, redirects]).then(() => {
             if (gen !== generation) return;
@@ -130,6 +132,25 @@
                 st.canonErr = errText(err);
             })
             .finally(renderCanonicals);
+    }
+
+    /** Internal links audit (orphans, links to retired URLs) - slowest part, so it only feeds Site health when it lands. */
+    function loadInternalLinks() {
+        api('internal_links.php', { signal: nextInternalSignal() })
+            .then(json => {
+                if (!json.success) throw new Error(json.msg || 'Server error');
+                const posts = json.posts || [];
+                st.internal = {
+                    orphans: posts.filter(p => p.inbound === 0 && !p.is_front && !p.in_menu && p.indexable).length,
+                    retired: (json.links || []).length,
+                };
+            })
+            .catch(err => {
+                if (isAbort(err)) return;
+                console.error(err);
+                st.internal = null;
+            })
+            .finally(renderHealth);
     }
 
     /** Yoast robots (noindex / nofollow) counts for every configured site - own request, like the canonicals. */
@@ -354,6 +375,9 @@
                 { label: 'Missing focus keywords', n: s.missing_kw, sev: 'warn', go: { tab: 'keywords', type: mk.type || topStatusType('publish').type, mode: 'without', others: mk.others } },
                 { label: 'Duplicate focus keywords', n: s.dup_kw_posts, sev: 'warn', go: { tab: 'keywords', type: dk.type || topStatusType('publish').type, mode: 'dup', others: dk.others } },
                 { label: 'Duplicate meta titles', n: s.dup_title_posts, sev: 'warn', go: { tab: 'content', type: 'any', status: 'publish', seo: 'dup_title' } },
+                { label: 'Google titles too long (60+)', n: s.long_title || 0, sev: 'warn', go: { tab: 'content', type: 'any', status: 'publish', seo: 'long_title' } },
+                { label: 'Google descriptions too long (155+)', n: s.long_desc || 0, sev: 'warn', go: { tab: 'content', type: 'any', status: 'publish', seo: 'long_desc' } },
+                { label: 'Posts with no share image', n: s.no_image || 0, sev: 'warn', go: { tab: 'content', type: 'any', status: 'publish', seo: 'no_image' } },
                 { label: 'Posts over the revision limit', n: c.revisions.posts_over, sev: 'warn', go: { tab: 'scroll', card: 'ov-card-revisions' } },
             );
         }
@@ -368,6 +392,12 @@
         if (k) {
             const L = k.live_counts || {};
             out.push({ label: 'Live canonicals on dead URLs', n: (L.gone || 0) + (L.redirect || 0) + (L.not_live || 0), sev: 'danger', go: { tab: 'canonical', scope: 'live' } });
+        }
+        if (st.internal) {
+            out.push(
+                { label: 'Indexed pages nobody links to', n: st.internal.orphans, sev: 'warn', go: { tab: 'view', view: 'internal', il: 'orphan_idx' } },
+                { label: 'Links to deleted / redirected URLs', n: st.internal.retired, sev: 'danger', go: { tab: 'view', view: 'internal', ilmode: 'links' } },
+            );
         }
         if (st.links.urls && !st.links.running) {
             out.push({ label: 'Broken links', n: linkSummary().broken, sev: 'danger', go: { tab: 'fixer', status: 'error' } });
@@ -483,11 +513,14 @@
                 go: { tab: 'content', type: topStatusType('publish').type, status: 'publish' },
                 title: 'Published posts across every real content type',
             }));
+            const fixes = (seo.long_title || 0) + (seo.long_desc || 0) + (seo.no_image || 0);
             out.push(kpi({
-                label: 'SEO gaps', value: gaps, sev: sevOf(gaps),
-                sub: gaps ? `${fmtNum(seo.missing_title)} title · ${fmtNum(seo.missing_desc)} desc · ${fmtNum(seo.missing_kw)} kw` : 'Titles, descriptions, keywords set',
-                go: { tab: 'scroll', card: 'ov-card-seo' },
-                title: 'Published posts missing a Yoast meta title, meta description or focus keyword (each gap counted)',
+                label: 'SEO gaps', value: gaps + fixes, sev: sevOf(gaps + fixes),
+                sub: gaps + fixes
+                    ? [gaps && `${fmtNum(gaps)} missing`, seo.long_title && `${fmtNum(seo.long_title)} long titles`, seo.long_desc && `${fmtNum(seo.long_desc)} long desc`, seo.no_image && `${fmtNum(seo.no_image)} no image`].filter(Boolean).join(' · ')
+                    : 'Titles, descriptions, keywords, images set',
+                go: gaps ? { tab: 'scroll', card: 'ov-card-seo' } : { tab: 'content', type: 'any', status: 'publish', seo: seo.long_title ? 'long_title' : seo.long_desc ? 'long_desc' : 'no_image' },
+                title: 'Published posts missing a meta title / description / focus keyword, with a title over 60 or description over 155 characters, or with no share image (each counted)',
             }));
             const dk = topType('dup_kw_posts');
             out.push(kpi({
@@ -957,6 +990,7 @@
             case 'redirects': goRedirects(spec); break;
             case 'keywords': goKeywords(spec); break;
             case 'fixer': goFixer(spec); break;
+            case 'view': goView(spec); break;
             case 'scroll': {
                 const el = $(spec.card);
                 if (el) {
@@ -970,11 +1004,71 @@
         }
     }
 
+    /** Any tab, then (optionally) a preset, a click, a focus or a scroll - the task launcher's router. */
+    function goView(spec) {
+        showView(spec.view);
+        if ((spec.il !== undefined || spec.ilmode) && typeof window.ilPreset === 'function') window.ilPreset(spec.il || '', spec.ilmode || 'posts');
+        // after the tab is on screen (its guide + controls exist from page load)
+        requestAnimationFrame(() => {
+            const el = spec.click || spec.focus || spec.scroll ? $(spec.click || spec.focus || spec.scroll) : null;
+            if (!el) return;
+            if (spec.click) { el.click(); return; }
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (spec.focus) el.focus();
+            el.classList.remove('guide-flash');
+            void el.offsetWidth;
+            el.classList.add('guide-flash');
+        });
+    }
+
+    /* ── "What do you want to do?" - plain-language entry points for every main job ── */
+    const TASK_ICONS = {
+        broken: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/><line x1="3" y1="3" x2="21" y2="21"/>',
+        edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+        search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+        orphan: '<circle cx="12" cy="12" r="3"/><circle cx="4" cy="6" r="2"/><circle cx="20" cy="6" r="2"/><circle cx="12" cy="21" r="1.5"/>',
+        redirect: '<polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/>',
+        replace: '<path d="M4 7h11"/><path d="m11 3 4 4-4 4"/><path d="M20 17H9"/><path d="m13 21-4-4 4-4"/>',
+        list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+        key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/>',
+        clock: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>',
+        newtab: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
+        order: '<path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/>',
+        canonical: '<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/>',
+    };
+    const TASKS = [
+        { icon: 'broken', name: 'Fix broken links', desc: 'Find links that 404 or redirect and fix them', go: { tab: 'fixer', status: 'error' } },
+        { icon: 'edit', name: 'Edit a page’s Google title or description', desc: 'Change meta title, description, share text', go: { tab: 'view', view: 'content', focus: 'fSearch' } },
+        { icon: 'search', name: 'Find SEO problems', desc: 'Missing / too long titles, duplicates, no share image', go: { tab: 'view', view: 'content', focus: 'fSeo' } },
+        { icon: 'orphan', name: 'Find pages nobody links to', desc: 'Orphan pages and links to deleted URLs', go: { tab: 'view', view: 'internal', il: 'orphan_idx' } },
+        { icon: 'redirect', name: 'Redirect an old URL', desc: 'Moved or deleted a page? Send visitors on', go: { tab: 'view', view: 'redirects', click: 'rAddBtn' } },
+        { icon: 'replace', name: 'Change text everywhere', desc: 'Old phone number, brand name or URL', go: { tab: 'view', view: 'replace', focus: 'fr-find' } },
+        { icon: 'list', name: 'Update many pages from a URL list', desc: 'Paste URLs, change status in one go', go: { tab: 'view', view: 'content', click: 'bulkOpenBtn' } },
+        { icon: 'key', name: 'Fix duplicate focus keywords', desc: 'Two pages competing for one search', go: { tab: 'view', view: 'keywords' } },
+        { icon: 'newtab', name: 'Check how links open', desc: 'Own site same tab, other sites new tab', go: { tab: 'view', view: 'fixer', scroll: 'fx-rule' } },
+        { icon: 'canonical', name: 'Fix canonical URLs', desc: 'Canonicals pointing at dead pages', go: { tab: 'canonical', scope: 'live' } },
+        { icon: 'order', name: 'Reorder pages', desc: 'Drag to set the WordPress page order', go: { tab: 'view', view: 'menu' } },
+        { icon: 'clock', name: 'See what changed recently', desc: 'Who changed what, and bulk changes', go: { tab: 'view', view: 'changes' } },
+    ];
+
+    function renderTasks() {
+        const el = $('ov-tasks');
+        if (!el || el.dataset.done) return;
+        el.dataset.done = '1';
+        el.innerHTML = `<div class="ov-tasks-head"><h3 class="ov-tasks-title">What do you want to do?</h3>
+                <span class="ov-tasks-sub">Pick a job - it opens the right page with the right filter</span></div>
+            <div class="ov-task-grid">${TASKS.map(t => `<button type="button" class="ov-task"${goAttr(t.go)}>
+                <span class="ov-task-ico" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${TASK_ICONS[t.icon]}</svg></span>
+                <span><span class="ov-task-name">${escapeHtml(t.name)}</span><span class="ov-task-desc" style="display:block">${escapeHtml(t.desc)}</span></span>
+            </button>`).join('')}</div>`;
+    }
+
     /* ══════════════════════════ Binding ══════════════════════════ */
 
     function bindOverviewTab() {
         const view = $('overviewView');
         if (!view) return;
+        renderTasks();
 
         view.addEventListener('click', e => {
             const goEl = e.target.closest('[data-ov-go]');

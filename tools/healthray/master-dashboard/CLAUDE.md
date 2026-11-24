@@ -65,7 +65,7 @@ index.html          one page, views toggled by a two-level nav: #navGroups (Over
                     Tools) above #viewTabs (each .view-tab has data-group; only the active group's tabs show,
                     the row hides for one-tab groups; a group click reopens its last tab, md.nav.last).
                     A new tab = a .view-tab with data-group + a VIEWS entry (hash: #overview #content #links #fixer
-                    #redirects #menu #replace #keywords #canonical #internal; retired #links / #bulk still work via
+                    #redirects #menu #replace #keywords #canonical #internal #changes; retired #links / #bulk still work via
                     VIEW_ALIASES in app.js; Link Fixer keeps its filters after a "?": #fixer?page=2&status=error&find=...,
                     Find & Replace accepts #replace?find=...&replace=... and searches straight away)
 style.css           base + shared components (stat cards, modals, export menu, dialogs, History drawer, nav,
@@ -87,6 +87,10 @@ js/replace.js       Find & Replace tab (IIFE; fr- ids): literal text search over
 js/keywords.js      Focus Keywords tab (IIFE; kw- ids, read-only): duplicate Yoast focus keywords, client-side table/CSV
 js/internal.js      Internal links tab (IIFE; il- ids, #internal, g i, read-only + fixes via fixer_write.php): inbound links
                     per published post / orphans, and internal links to 410 / redirected / retired URLs (api/internal_links.php)
+js/guide.js         Page guides: every tab opens with title + one-sentence purpose + collapsible 3 "How to use" steps +
+                    "Good to know" + main actions (PAGE_GUIDES - all copy lives there). Collapse state: mdStore guide.<view>
+js/changes.js       Recent changes tab (IIFE; rc- ids, #changes, g x, read-only): posts modified in the last N days and HOW -
+                    dashboard (History entry) / editor (revision saved) / unknown; bulk changes = 10+ posts in one minute
 js/canonical.js     Canonicals tab (IIFE; cn- ids, #canonical, g n): canonical URLs that redirect / are gone / name a
                     retired post; remove or "use redirect target", client-side filters + CSV
 css/*.css           one stylesheet per tab, scoped to its view (css/links.css = the fx- Links tab, loaded
@@ -179,6 +183,12 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 - Tests: define `MD_ACTIVITY_DIR` (or env var, CLI only) to point the log at a temp dir.
 
 ## Rules that must survive changes
+
+- **UX: every page explains itself.** A new tab gets a PAGE_GUIDES entry (js/guide.js): plain words an intern
+  understands, 3 steps, actions only for things that aren't already a visible button. A feature never hides only
+  inside a dropdown - it gets a visible card / status (e.g. the Links "How links open" card, js/fixer.js fxRule*)
+  and an Overview entry: a "What do you want to do?" task (TASKS in js/overview.js, routed by go({tab:'view', ...}))
+  and, if it finds problems, a Site health check (healthChecks()).
 
 - **List tabs use js/ui.js**: a paged table gets `mdPager` (no hand-built Prev/Next), state rows come
   from `tableStateRow()`, and prefs go through `mdStore` - never raw `localStorage` (only `theme`, which
@@ -324,6 +334,7 @@ Fixer IDs/classes `fx-`-prefixed, so they never collide with the Content tab's.
 | `kw_options.php` / `kw_list.php` | GET | Focus Keywords: types + categories / rows with duplicate flags |
 | `kw_save.php` | POST | Focus Keywords: save staged keyword edits (JSON `changes:[{post_id, focus_keyword, expected}]`, max 500). All-or-nothing; each row's stored `_yoast_wpseo_focuskw` must still equal `expected` (else 409 + per-row `conflict` errors). Empty = meta deleted; syncs `wp_yoast_indexable.primary_focus_keyword`, bumps `post_modified`. Edits in the tab stage inline and save only via the save bar's Review & save (`confirmDialog`) |
 | `internal_links.php` | GET | Internal links tab: `dw_internal_links_audit()` (lib/internal_links.php) - published posts with `inbound` (unique source posts), `inbound_links`, `outbound`, `in_menu`, `indexable`, `sources`; and `links` to retired URLs (`kind` gone / redirect / not_live, `final` = end of the chain). `format=csv&mode=posts|links` |
+| `recent_changes.php` | GET | Recent changes: `days` (1-90). `dw_recent_changes()` (lib/recent_changes.php): each modified post's `via` = dashboard (activity log entry within 180 s) / editor (revision within 180 s, its author = `who`) / unknown; `batches` (10+ posts in one UTC minute) with `also_on` = other sites with 5+ changes that minute. `format=csv` |
 | `canonical_report.php` | GET/POST | Canonicals: posts whose canonical hits a 410 / 3xx rule / retired post (`paths=` restricts to those URLs, `unmatched=0`, `format=csv`, `summary=1` counts only) |
 | `canonical_fix.php` | POST | `items` JSON `[{post_id, expected, canonical}]` (max 1000, `''` = remove). All-or-nothing, 409 on conflict |
 | `robots_summary.php` | GET | Overview Search visibility: published posts per site (all `$DATABASES`, own connection each) by indexed / noindex on post / noindex by type default / nofollow, + `by_type` |

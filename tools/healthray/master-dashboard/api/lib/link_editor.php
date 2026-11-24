@@ -325,13 +325,15 @@ function dw_fx_tag_set_attr($tag, $name, $value)
  *   and the noopener / noreferrer that only existed for it;
  * - external http(s) links get target="_blank" and rel "noopener" (other rel tokens, e.g. nofollow, kept).
  * Anchors (#), mailto:, tel:, javascript: and other schemes are left alone.
- * Returns [newHtml, internalFixed, externalFixed].
+ * Returns [newHtml, internalFixed, externalFixed, details] - details = [{href, internal: bool}] per changed link
+ * (decoded href), for the review list.
  */
 function dw_fx_target_rule($html, $siteHost)
 {
     $internal = 0;
     $external = 0;
-    $out = preg_replace_callback(DW_FX_A_OPEN, function ($m) use ($siteHost, &$internal, &$external) {
+    $details = [];
+    $out = preg_replace_callback(DW_FX_A_OPEN, function ($m) use ($siteHost, &$internal, &$external, &$details) {
         $tag  = $m[0];
         $href = trim(html_entity_decode($m[2], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
         if ($href === '' || $href[0] === '#') {
@@ -357,6 +359,7 @@ function dw_fx_target_rule($html, $siteHost)
             $rel = array_values(array_diff($rel, ['noopener', 'noreferrer']));
             $tag = $rel ? dw_fx_tag_set_attr($tag, 'rel', implode(' ', $rel)) : dw_fx_tag_remove_attr($tag, 'rel');
             $internal++;
+            $details[] = ['href' => $href, 'internal' => true];
             return $tag;
         }
 
@@ -369,9 +372,10 @@ function dw_fx_target_rule($html, $siteHost)
         }
         $tag = dw_fx_tag_set_attr($tag, 'rel', implode(' ', $rel));
         $external++;
+        $details[] = ['href' => $href, 'internal' => false];
         return $tag;
     }, (string) $html);
-    return [$out ?? (string) $html, $internal, $external];
+    return [$out ?? (string) $html, $internal, $external, $details];
 }
 
 /**
