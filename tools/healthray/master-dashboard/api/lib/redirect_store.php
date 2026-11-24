@@ -484,6 +484,15 @@ function dw_redirect_validate(array $store, $origin, $type, $target, $home)
         $out['target'] = '';
     } else {
         $targetNorm = dw_redirect_normalize($target, $home);
+        if ($targetNorm['value'] === '' && dw_redirect_is_home_target($target, $home)) {
+            // "/" or the site's own home URL: Yoast stores a redirect to the homepage with an empty
+            // destination (and sends it to home_url('/')), so keep that form rather than refuse it.
+            $out['target'] = '';
+            $out['warnings'] = array_merge($out['warnings'], dw_redirect_regex_warnings($store, $out['origin']));
+            $out['existing'] = dw_redirect_find($store, $out['origin']);
+            $out['ok'] = true;
+            return $out;
+        }
         if ($targetNorm['value'] === '') {
             $out['error'] = 'A ' . $type . ' redirect needs a destination URL.';
             return $out;
@@ -516,12 +525,40 @@ function dw_redirect_validate(array $store, $origin, $type, $target, $home)
         $out['existing'] = $existing;
     }
 
-    foreach (dw_redirect_matching_regexes($store, $out['origin']) as $rx) {
-        $out['warnings'][] = 'An existing regex rule already matches this URL: ' . $rx['origin'] . ' (' . $rx['type'] . ').';
-    }
+    $out['warnings'] = array_merge($out['warnings'], dw_redirect_regex_warnings($store, $out['origin']));
 
     $out['ok'] = true;
     return $out;
+}
+
+/** Warnings for regex rules that already match a plain origin. */
+function dw_redirect_regex_warnings(array $store, $origin)
+{
+    $warnings = [];
+    foreach (dw_redirect_matching_regexes($store, $origin) as $rx) {
+        $warnings[] = 'An existing regex rule already matches this URL: ' . $rx['origin'] . ' (' . $rx['type'] . ').';
+    }
+    return $warnings;
+}
+
+/**
+ * Is a typed destination explicitly the homepage? "/" or this site's own URL with no path and no query
+ * ("https://healthray.com", "https://www.healthray.com/"). An empty field is NOT - that's a missing destination.
+ */
+function dw_redirect_is_home_target($target, $home)
+{
+    $target = trim((string) $target);
+    if ($target === '/') {
+        return true;
+    }
+    if (!preg_match('~^https?://~i', $target)) {
+        return false;
+    }
+    $p = parse_url($target);
+    $homeHost = preg_replace('~^www\.~i', '', (string) parse_url((string) $home, PHP_URL_HOST));
+    $host = preg_replace('~^www\.~i', '', (string) ($p['host'] ?? ''));
+    return $host !== '' && strcasecmp($host, $homeHost) === 0
+        && trim((string) ($p['path'] ?? ''), '/') === '' && ($p['query'] ?? '') === '' && ($p['fragment'] ?? '') === '';
 }
 
 /**

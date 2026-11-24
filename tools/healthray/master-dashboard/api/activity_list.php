@@ -64,7 +64,7 @@ foreach ($fxEntries as $e) {
         continue;
     }
     $field = ($e['source'] ?? '') === 'faq' ? (string) ($e['meta_key'] ?? '') : 'post_content';
-    $verb  = ['replace' => 'updated', 'unlink' => 'unlinked', 'undo' => 'undo of'][$e['action'] ?? ''] ?? (string) ($e['action'] ?? '');
+    $verb  = ['replace' => 'updated', 'unlink' => 'unlinked', 'undo' => 'undo of', 'link_target' => 'set new-tab rule (internal same tab, external new tab) for'][$e['action'] ?? ''] ?? (string) ($e['action'] ?? '');
     $extra[] = [
         'id'       => 'fx-' . $e['id'],
         'time'     => (string) ($e['t'] ?? ''),

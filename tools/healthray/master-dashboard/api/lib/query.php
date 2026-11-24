@@ -476,7 +476,12 @@ function dw_robots_sync_indexable(mysqli $conn, $postId, $metaKey, $metaValue)
     $v = $metaValue === null ? '' : trim((string) $metaValue);
     if ($metaKey === DW_ROBOTS_META['robots_index']) {
         $idx = $v === '1' ? 1 : ($v === '2' ? 0 : null);
-        $stmt = $conn->prepare("UPDATE wp_yoast_indexable SET is_robots_noindex = ? WHERE object_id = ? AND object_type = 'post'");
+        // is_public too, the way Yoast's post builder derives it: protected / not published / noindex -> 0,
+        // explicit index -> 1, type default -> NULL. Left stale, a page set back to index stays "not public".
+        $stmt = $conn->prepare("UPDATE wp_yoast_indexable SET is_robots_noindex = ?,
+                is_public = CASE WHEN is_robots_noindex = 1 OR is_protected = 1 OR post_status <> 'publish' THEN 0
+                                 WHEN is_robots_noindex = 0 THEN 1 ELSE NULL END
+            WHERE object_id = ? AND object_type = 'post'");
     } else {
         $idx = $v === '1' ? 1 : 0;
         $stmt = $conn->prepare("UPDATE wp_yoast_indexable SET is_robots_nofollow = ? WHERE object_id = ? AND object_type = 'post'");
