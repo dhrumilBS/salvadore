@@ -48,8 +48,9 @@ document.addEventListener("DOMContentLoaded", () => {
             phoneCol: "your-number",
             bedCol: "bed_size",     // "101 – 300 beds" / "300+ or a group" get the 100+ Beds highlight
             pageKeys: ["page-name", "handl_url_cf7-264"],
-            adsHint: "Ads = rows with a utm_campaign value · Organic = rows without one",
-            isAds: row => hasUtmCampaign(row),
+            adsHint: "Ads = rows with a utm_campaign value, or a paid utm_medium (cpc / ppc / paid) or *Ads utm_source even when the campaign placeholder wasn't filled in · Organic = everything else",
+            /* A Meta ad whose {{campaign.name}} macro wasn't filled, or a Google Ads click tagged only with source/medium, is still paid. */
+            isAds: row => hasUtmCampaign(row) || hasPaidUtm(row),
             normalize: null,
             dropCols: [],
             columnOrder: ["your-name", "bed_size", "your-number", "your-email", "your-city", "utm_campaign", "utm_source", "utm_medium", "submit_time"],
@@ -68,12 +69,7 @@ document.addEventListener("DOMContentLoaded", () => {
             bedCol: null,           // no bed size on Botphonic forms
             pageKeys: ["full_url", "handl_ref", "handl_url_base_cf7"],
             adsHint: "Ads = Google click id (gclid), a paid utm_medium (cpc / Lead-search) or an *Ads utm_source · Organic = everything else, incl. utm_campaign \"seo\"",
-            isAds: row => {
-                if (row["gclid"] || row["gclid_cf7"]) return true;
-                const medium = extractUtmVal(row["utm_medium"], "utm_medium").toLowerCase();
-                const source = extractUtmVal(row["utm_source"], "utm_source").toLowerCase();
-                return /cpc|ppc|paid|lead-search/.test(medium) || /ads$|adwords/.test(source);
-            },
+            isAds: row => !!(row["gclid"] || row["gclid_cf7"]) || hasPaidUtm(row),
             normalize: row => {
                 /* Botphonic logs submit_time in UTC (= created_date); Healthray's is already IST. Convert so times, Date Wise and Same Time match. */
                 row["submit_time"] = utcToIst(row["submit_time"]);
@@ -369,8 +365,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             toggle.addEventListener("click", e => {
                 e.stopPropagation();
+                const wasOpen = menu.classList.contains("open");
                 closeAllDropdowns();
-                menu.classList.toggle("open");
+                if (!wasOpen && menu.querySelector("#exportScope")) updateExportScope();
+                menu.classList.toggle("open", !wasOpen);
             });
 
             menu.addEventListener("click", e => e.stopPropagation());
@@ -814,6 +812,12 @@ document.addEventListener("DOMContentLoaded", () => {
         if (EMPTY_CAMPAIGN_VALUES.has(val)) return false;
         if (/^\{.*\}$/.test(val)) return false;   // unreplaced macro, e.g. {campaign}
         return true;
+    }
+    /* Paid click by its UTM tags alone: a paid utm_medium (cpc / ppc / paid / lead-search) or an ad-network utm_source (GoogleAds, FacebookAds, adwords). */
+    function hasPaidUtm(row) {
+        const medium = extractUtmVal(row["utm_medium"], "utm_medium").toLowerCase();
+        const source = extractUtmVal(row["utm_source"], "utm_source").toLowerCase();
+        return /cpc|ppc|paid|lead-search/.test(medium) || /ads$|adwords/.test(source);
     }
     function getAdType(row) {
         return site().isAds(row) ? "Ads" : "Organic";
@@ -1819,6 +1823,31 @@ document.addEventListener("DOMContentLoaded", () => {
         return Array.isArray(v) ? v.join(", ") : String(v);
     }
 
+    /* What "Export CSV / JSON" will contain: the rows on screen, i.e. the date range plus every active filter and the search box. Shown at the top of the Export menu and carried into the file name, so a filtered export (e.g. Type: Organic) is never mistaken for the full report. */
+    function activeExportFilters() {
+        const parts = [...filterChips.querySelectorAll(".filter-chip")].map(el => el.firstChild.textContent.trim());
+        const q = tableSearch.value.trim();
+        if (q) parts.push(`Search: ${q}`);
+        return parts;
+    }
+    function updateExportScope() {
+        const el = document.getElementById("exportScope");
+        const parts = activeExportFilters();
+        const n = filteredRows.length;
+        el.innerHTML = parts.length
+            ? `CSV / JSON export <strong>${n} ${n === 1 ? "row" : "rows"}</strong> matching ${parts.map(p => `<strong>${esc(p)}</strong>`).join(", ")}`
+            : `CSV / JSON export <strong>all ${n} ${n === 1 ? "row" : "rows"}</strong> in these dates`;
+    }
+    /* "report_organic_2026-10-20_2026-10-31.csv" - the active filters, slugged, between "report" and the dates. */
+    function exportFileName(label, ext, withFilters = true) {
+        const slug = !withFilters ? "" : activeExportFilters()
+            .map(p => p.replace(/^(Type|Source|Campaign|Lead|Date|Page|Search):\s*/i, ""))
+            .join("_").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+        const fromVal = document.getElementById("from").value;
+        const toVal = document.getElementById("to").value;
+        return `report${label}${slug ? "_" + slug : ""}_${fromVal}_${toVal}.${ext}`;
+    }
+
     function doExportCSV(rows, isDupOnly) {
         const cols = getVisibleCols();
         const label = isDupOnly ? "_duplicates" : "";
@@ -1837,9 +1866,8 @@ document.addEventListener("DOMContentLoaded", () => {
             return cells.join(",");
         });
 
-        const fromVal = document.getElementById("from").value;
-        const toVal = document.getElementById("to").value;
-        downloadBlob([header, ...lines].join("\r\n"), `report${label}_${fromVal}_${toVal}.csv`, "text/csv;charset=utf-8;");
+        // The duplicates export always covers every row in the dates (it ignores filters), so its name doesn't list them.
+        downloadBlob([header, ...lines].join("\r\n"), exportFileName(label, "csv", !isDupOnly), "text/csv;charset=utf-8;");
         showToast(`Exported ${rows.length} rows as CSV`, "success");
     }
 
@@ -1851,9 +1879,7 @@ document.addEventListener("DOMContentLoaded", () => {
             cols.forEach(c => { obj[c] = rawValue(c, row) || null; });
             return obj;
         });
-        const fromVal = document.getElementById("from").value;
-        const toVal = document.getElementById("to").value;
-        downloadBlob(JSON.stringify(data, null, 2), `report_${fromVal}_${toVal}.json`, "application/json");
+        downloadBlob(JSON.stringify(data, null, 2), exportFileName("", "json"), "application/json");
         showToast(`Exported ${rows.length} rows as JSON`, "success");
     }
 

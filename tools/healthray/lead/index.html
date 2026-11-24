@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-    <link rel="stylesheet" href="css/report.css?v=37">
+    <link rel="stylesheet" href="css/report.css?v=38">
     <script src="../../../usage/track.js" defer></script>
 </head>
 
@@ -76,6 +76,7 @@
                 <span class="caret" aria-hidden="true">▾</span>
             </button>
             <div class="dropdown-menu">
+                <div class="export-scope" id="exportScope" aria-live="polite"></div>
                 <button id="exportCSV" class="dropdown-item">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                         <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -291,7 +292,7 @@
                             </svg>
                         </div>
                         <div class="breakdown-hdr-text">
-                            <strong title="Ads = rows with a utm_campaign value · Organic = rows without one">Organic / Ads</strong>
+                            <strong title="Ads = rows with a utm_campaign value, or a paid utm_medium (cpc / ppc / paid) or *Ads utm_source even when the campaign placeholder wasn't filled in · Organic = everything else">Organic / Ads</strong>
                             <span class="breakdown-unique"></span>
                         </div>
                     </div>
@@ -514,7 +515,7 @@
         <span id="toastMsg"></span>
     </div>
 
-    <script src="js/report.js?v=41"></script>
+    <script src="js/report.js?v=43"></script>
 </body>
 
 </html>

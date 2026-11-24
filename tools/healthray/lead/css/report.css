@@ -188,6 +188,8 @@ body { overflow-x: clip; }
 .dropdown-menu button svg,
 .dropdown-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
 .dropdown-menu hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+.export-scope { padding: 8px 12px 6px; font-size: var(--fs-sm, 12px); color: var(--muted); line-height: 1.4; max-width: 280px; }
+.export-scope strong { color: var(--text); font-weight: 600; }
 
 /* Date range presets (inside the Quick range menu) */
 .preset-btn { font-weight: 500; }
